@@ -432,10 +432,16 @@ def test_al_equipo_no_lo_dejan_poner_a_la_agencia_en_avisos_ni_de_aprobadora():
         r = await promo.put(f"/calendario/tareas/{d.t_colega.id}/entregas", json={
             "tipoPieza": "banner", "aprobadores": [d.a1.id], "fases": [{"nombre": "Boceto"}]})
         assert r.status_code == 422 and "externa" in r.json()["detail"]
-        # Pero sí asignarle una tarea (es para lo que está).
-        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas",
-                             json={"id": f"ta-asig-{d.sufijo}", "titulo": "Para la agencia", "asignadoA": d.a1.id})
+        # Pero sí asignarle una tarea de su agencia (es para lo que está)...
+        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas", json={
+            "id": f"ta-asig-{d.sufijo}", "titulo": "Para la agencia", "asignadoA": d.a1.id,
+            "para": "agencia", "agencia": d.a1.empresa})
         assert r.status_code == 201, r.text
+        # ...no una de Tienda: esa la lleva alguien de Tienda, y no se convierte
+        # en una pieza de la agencia por elegirla (19/11/2026).
+        r = await promo.post(f"/calendario/barras/{d.dentro.id}/tareas",
+                             json={"id": f"ta-asig2-{d.sufijo}", "titulo": "De Tienda", "asignadoA": d.a1.id})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
     correr(prueba)
 
 
@@ -580,12 +586,25 @@ def test_don_tino_con_la_base_tampoco_le_cuenta_nada_de_afuera():
             for herramienta, args in (
                 ("calendario_acciones", {"desde": (d.v[0] - timedelta(days=60)).isoformat(),
                                          "hasta": (d.v[1] + timedelta(days=120)).isoformat()}),
-                ("calendario_tareas", {"responsable": "todos"}),
                 ("calendario_piezas", {"desde": d.v[0].isoformat(), "hasta": (d.v[1] + timedelta(days=120)).isoformat()}),
                 ("calendario_accion", {"accion_id": d.tres.id}),
             ):
                 texto = await cc.ejecutar(herramienta, args, usuario, s)
                 _sin_prohibido(texto, herramienta)
+            # Sus tarjetas sí, aunque la acción quede fuera de su ventana, como
+            # en su tablero (19/11/2026, "Don Tino debe amoldarse a cada
+            # usuario"): de la acción, el nombre y las fechas, sin link. Sus
+            # tareas sin tarjeta de afuera (TRES MESES, MES PASADO) y lo de los
+            # demás, no.
+            texto = await cc.ejecutar("calendario_tareas", {"responsable": "todos"}, usuario, s)
+            tareas = {t["titulo"]: t for t in json.loads(texto)["tareas"]}
+            assert set(tareas) == {"Afiche Black Friday", "Mi tarea FUERA de la ventana"}
+            fuera = tareas["Mi tarea FUERA de la ventana"]["accion"]
+            assert fuera["nombre"] == "Accion FUERA FUTURO" and fuera["fuera_de_lo_que_ve"] is True
+            assert "link" not in fuera and "id" not in fuera
+            for marca in PROHIBIDO:
+                if marca != "FUERA":
+                    assert marca not in texto, marca
         # Y el chat en sí no es para ella.
         r = await Cliente(d.http, d.a1).post("/chat/message", json={"message": "hola", "history": []})
         assert r.status_code == 403

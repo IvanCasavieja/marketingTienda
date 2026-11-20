@@ -58,6 +58,19 @@ class Settings(BaseSettings):
     # calendario, las cenefas, los logins) nunca se quede sin lugar.
     # 0 = sin freno.
     BASE_TOPE_MB: int = 400
+    # Lo que pueden ocupar entre todos los ZIP originales de las rondas (0081).
+    # Un ZIP pesa mucho más que las imágenes (hasta 40 MB contra 50-250 KB):
+    # sin un tope propio, unos pocos ZIP llenarían la base y las imágenes —las
+    # que hacen falta para ver y marcar la pieza— dejarían de guardarse. Hasta
+    # la revisión del 19/11/2026 era una reserva (que después del ZIP
+    # siguieran libres 50 MB debajo de BASE_TOPE_MB), y no las protegía: los
+    # ZIP podían llegar a ocupar 350 de los 400 MB y a las imágenes les
+    # quedaban esos 50, que se acaban en unos meses. Con el tope, los ZIP
+    # nunca pasan de esto y el resto de la base queda para lo demás. Un ZIP
+    # se guarda solo si entra acá y además en la base (BASE_TOPE_MB); si no,
+    # la entrega se hace igual sin él y la ficha lo dice. No se borra nada
+    # para hacerle lugar. 0 = sin tope propio (queda solo el de la base).
+    ZIP_TOPE_MB: int = 100
 
     # Cuánto del calendario ve cada persona ya no es un número de días fijo
     # para las cuentas externas: desde la 0070 cada usuario tiene su alcance

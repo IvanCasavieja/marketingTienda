@@ -97,7 +97,7 @@ from app.services.calendario_copia import (
     nombre_para_la_copia, tareas_por_responsable,
 )
 from app.services.colocacion import ORIGENES_DEL_LOCAL
-from app.services import controles_redexpres, entregas as reglas_entregas, tipos_de_tarea
+from app.services import agencias, controles_redexpres, entregas as reglas_entregas, tipos_de_tarea
 from app.services.entregas import resumenes_de_entregas
 
 logger = logging.getLogger(__name__)
@@ -1249,36 +1249,39 @@ def puede_crear_tarea(usuario: User, pieza: bool) -> bool:
 
 
 async def _cuentas_de_la_agencia(db: AsyncSession, empresa: str | None, mundo: str) -> list[User]:
-    """Las cuentas activas de esa agencia que entran a este mundo."""
-    empresa = externos.limpiar_empresa(empresa)
-    if not empresa:
+    """Las cuentas activas de esa agencia que entran a este mundo. La empresa
+    se compara sin tildes ni mayúsculas: una cuenta guardada con
+    «Disenadores» es de Diseñadores (19/11/2026)."""
+    clave = externos.clave_de_empresa(empresa)
+    if not clave:
         return []
     usuarios = (await db.execute(
         select(User).where(
-            User.es_externo.is_(True), User.is_active.is_(True), externos.empresa_en_sql(User.empresa) == empresa.lower(),
+            User.es_externo.is_(True), User.is_active.is_(True), externos.empresa_en_sql(User.empresa) == clave,
         )
     )).scalars().all()
     return [u for u in usuarios if _puede_ver_el_mundo(u, mundo)]
 
 
 async def _agencia_o_422(db: AsyncSession, empresa: str | None, mundo: str) -> str:
-    """El nombre de la agencia, limpio, si tiene alguna cuenta que entra a
-    este mundo: si no, nadie vería la tarjeta. Los tres tableros (Publicis,
-    Another Monday y Diseñadores, ver app/core/tableros.py) valen aunque
-    todavía no tengan cuentas: la tarjeta espera en su tablero."""
+    """El nombre de la agencia si tiene alguna cuenta que entra a este mundo:
+    si no, nadie vería la tarjeta. Los tres tableros (Publicis, Another
+    Monday y Diseñadores, ver app/core/tableros.py) valen aunque todavía no
+    tengan cuentas: la tarjeta espera en su tablero.
+
+    El nombre vuelve como ya está escrito (app/services/agencias.py): el del
+    tablero, o el de la primera cuenta de esa agencia. Así se ve igual en
+    todos lados, aunque se haya pedido «disenadores»."""
     limpia = externos.limpiar_empresa(empresa)
     if not limpia:
         raise HTTPException(status_code=422, detail="Elegí para qué agencia es")
     cuentas = await _cuentas_de_la_agencia(db, limpia, mundo)
-    if not cuentas and tablero_de(limpia):
-        return tablero_de(limpia)
-    if not cuentas:
+    if not cuentas and not tablero_de(limpia):
         raise HTTPException(
             status_code=422,
             detail=f"«{limpia}» no tiene ninguna cuenta que entre a {MUNDOS.get(mundo, mundo)}: no vería la tarjeta",
         )
-    # Como la tiene guardada su cuenta: así se ve igual en todos lados.
-    return externos.limpiar_empresa(cuentas[0].empresa) or limpia
+    return await agencias.como_ya_esta(db, limpia) or limpia
 
 
 async def _nacer_tarjetas(
@@ -1613,23 +1616,44 @@ async def crear_tarea(
     }
 
 
+_QUIEN_CARGA_LO_DE_AFUERA = "Quien carga lo de una agencia de afuera es alguien del equipo"
+
+
+def _no_es_de_tienda(persona: User) -> str:
+    """Por qué no se puede: eligieron a alguien de una agencia (una cuenta
+    externa) para llevar una tarea de Tienda Inglesa. Publicis, Another
+    Monday y Diseñadores son agencias externas: a ellas se les pide con una
+    pieza, eligiendo su tablero (19/11/2026)."""
+    nombre = (persona.full_name or "").strip() or "Esa persona"
+    empresa = externos.limpiar_empresa(persona.empresa) or "una agencia"
+    return (
+        f"{nombre} es de {empresa}, una agencia externa: quien se encarga de una tarea por Tienda Inglesa "
+        "tiene que ser alguien de Tienda. Para pedirle algo a la agencia, agregá una pieza y elegí su tablero."
+    )
+
+
 async def _para_quien(
     db: AsyncSession, para: str, agencia: str | None, asignado: User | None, mundo: str,
 ) -> tuple[str, str | None]:
     """Quién la hace: ('tienda', None), ('agencia', empresa) o ('fuera', nombre).
 
-    - Asignarla a una cuenta externa es hacerla para su agencia (era lo que
-      se hacía antes de la 0070, y la migración pasó esas tareas a "para la
-      agencia"). Para una agencia de la plataforma, la persona asignada, si
-      hay, tiene que ser de esa agencia: la tarjeta es de ella.
+    - Una tarea de Tienda la lleva alguien de Tienda: una cuenta externa como
+      responsable se rechaza, y la tarea no cambia (19/11/2026: elegir a
+      «Fer (Diseñadores)» en «Responsable de Tienda Inglesa» convertía la
+      tarea interna en una pieza de la agencia). A la agencia se le pide con
+      una pieza (`para` = 'agencia').
+    - Para una agencia de la plataforma, la persona asignada, si hay, tiene
+      que ser de esa agencia: la tarjeta es de ella.
     - Una agencia de afuera no entra a la plataforma: hace falta alguien del
       equipo asignado, que carga sus entregas en su nombre."""
     if asignado is not None and externos.es_externo(asignado):
+        if para == "tienda":
+            raise HTTPException(status_code=422, detail=_no_es_de_tienda(asignado))
         if para == "agencia" and agencia and not externos.misma_empresa(agencia, asignado.empresa):
             raise HTTPException(status_code=422, detail="Esa persona es de otra agencia")
         if para == "fuera":
-            raise HTTPException(status_code=422, detail="Quien carga lo de una agencia de afuera es alguien del equipo")
-        return "agencia", externos.limpiar_empresa(asignado.empresa)
+            raise HTTPException(status_code=422, detail=_QUIEN_CARGA_LO_DE_AFUERA)
+        return "agencia", await agencias.como_ya_esta(db, asignado.empresa)
     if para == "agencia":
         if asignado is not None:
             raise HTTPException(
@@ -1708,9 +1732,18 @@ async def cambiar_tarea(
     if "asignadoA" in campos and payload.asignadoA != tarea.asignado_a_id:
         nuevo = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
         era_de_la_agencia = tarea.para == "agencia"
+        if nuevo is not None and externos.es_externo(nuevo) and not era_de_la_agencia:
+            # Una tarea de Tienda (o lo de una agencia de afuera, que carga
+            # alguien del equipo) no pasa a ser de la agencia por elegir a una
+            # de sus cuentas: se rechaza y queda como estaba (19/11/2026).
+            raise HTTPException(
+                status_code=422,
+                detail=_QUIEN_CARGA_LO_DE_AFUERA if tarea.para == "fuera" else _no_es_de_tienda(nuevo),
+            )
         if nuevo is not None and externos.es_externo(nuevo):
-            # A alguien de una agencia: la tarea pasa a ser para su agencia (0070).
-            tarea.para, tarea.agencia = "agencia", externos.limpiar_empresa(nuevo.empresa)
+            # Una pieza de una agencia, a alguien de una agencia: es de su
+            # agencia (0070), con el nombre como ya está escrito.
+            tarea.para, tarea.agencia = "agencia", await agencias.como_ya_esta(db, nuevo.empresa)
         elif nuevo is not None and era_de_la_agencia:
             # A alguien de Tienda: deja de ser de la agencia (sus entregas
             # quedan, las entrega esta persona).
@@ -1839,8 +1872,11 @@ async def mis_tareas(
         )
     )
     ventana = alcance.ventana_de(current_user)
-    en_alcance = alcance.condicion(CalendarioBarra, ventana)
-    consulta = consulta.where(en_alcance if externo else or_(en_alcance, CalendarioTarea.estado != "hecha"))
+    # Lo de su alcance y, aunque quede afuera, lo que le llega siempre (sus
+    # abiertas, si es del equipo): la misma regla que usa Don Tino.
+    consulta = consulta.where(or_(
+        alcance.condicion(CalendarioBarra, ventana), alcance.condicion_le_llega_siempre(CalendarioTarea, current_user),
+    ))
     filas = (await db.execute(
         consulta.order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
@@ -2119,9 +2155,16 @@ async def guardar_plantilla(
                     f"{MUNDOS.get(payload.mundo, payload.mundo)}: no verían sus tareas. Elegí a otra persona."),
         )
     # Cada agencia nombrada tiene que tener quien vea sus tarjetas en este
-    # mundo (0070); y la persona fija de una tarea para la agencia, ser de ella.
-    for agencia in sorted({t.agencia for t in payload.tareas if t.para == "agencia" and t.agencia}):
-        await _agencia_o_422(db, agencia, payload.mundo)
+    # mundo (0070), y se guarda con el nombre como ya está escrito
+    # (19/11/2026: «disenadores» es Diseñadores); la persona fija de una
+    # tarea para la agencia tiene que ser de ella.
+    como_estan = {
+        agencia: await _agencia_o_422(db, agencia, payload.mundo)
+        for agencia in sorted({t.agencia for t in payload.tareas if t.para == "agencia" and t.agencia})
+    }
+    for t in payload.tareas:
+        if t.para == "agencia" and t.agencia in como_estan:
+            t.agencia = como_estan[t.agencia]
     con_persona = [t for t in payload.tareas if t.asignadoA is not None]
     if con_persona:
         personas = {u.id: u for u in (await db.execute(
@@ -2136,8 +2179,9 @@ async def guardar_plantilla(
                     detail=f"«{t.titulo}» es para {t.agencia}: la persona fija tiene que ser de esa agencia, o ninguna",
                 )
             if t.para == "tienda" and u is not None and externos.es_externo(u):
-                # Una persona de una agencia hace que la tarea sea para su agencia.
-                t.para, t.agencia = "agencia", externos.limpiar_empresa(u.empresa)
+                # Como al crearla a mano: una tarea de Tienda la lleva alguien
+                # de Tienda, y no pasa a ser de la agencia (19/11/2026).
+                raise HTTPException(status_code=422, detail=f"«{t.titulo}»: {_no_es_de_tienda(u)}")
             if t.para == "fuera" and u is not None and externos.es_externo(u):
                 raise HTTPException(
                     status_code=422,
@@ -2240,17 +2284,25 @@ async def aplicar_plantilla(
         if t["asignado_a_id"] is not None and t["asignado_a_id"] not in validos:
             t["asignado_a_id"] = None
             sin_asignar += 1
-    # Una plantilla de antes de la 0070 con una persona de la agencia fija:
-    # esa tarea es para su agencia, como al crearla a mano.
-    externas = {
-        u.id: u for u in (await db.execute(
-            select(User).where(User.id.in_(validos), User.es_externo.is_(True))
-        )).scalars()
-    } if validos else {}
+    # Una tarea de Tienda (o lo de una agencia de afuera) con alguien de una
+    # agencia fijo (una plantilla vieja, o alguien que después pasó a ser de
+    # una agencia): no pasa a ser de la agencia, como tampoco al crearla a
+    # mano (19/11/2026). Se crea sin asignar, y la respuesta lo cuenta.
+    externas = set((await db.execute(
+        select(User.id).where(User.id.in_(validos), User.es_externo.is_(True))
+    )).scalars()) if validos else set()
     for t in plan:
-        u = externas.get(t["asignado_a_id"])
-        if u is not None and t["para"] == "tienda":
-            t["para"], t["agencia"] = "agencia", externos.limpiar_empresa(u.empresa)
+        if t["asignado_a_id"] in externas and t["para"] != "agencia":
+            t["asignado_a_id"] = None
+            sin_asignar += 1
+    # La agencia de cada pieza, como ya está escrita: una plantilla guardada
+    # antes con «disenadores» crea las tarjetas de Diseñadores.
+    como_estan: dict[str, str] = {}
+    for t in plan:
+        if t["para"] == "agencia" and t["agencia"]:
+            if t["agencia"] not in como_estan:
+                como_estan[t["agencia"]] = await agencias.como_ya_esta(db, t["agencia"]) or t["agencia"]
+            t["agencia"] = como_estan[t["agencia"]]
 
     ultimo = (await db.execute(
         select(func.max(CalendarioTarea.orden)).where(CalendarioTarea.barra_id == barra_id)
@@ -2360,6 +2412,8 @@ async def copiar_barra(
       (`calendario.tareas`), como al crearlas a mano. Si no, se copia el resto
       y la respuesta lo dice (`tareasSinPermiso`).
     - Un responsable o un destinatario que ya no puede abrir ese mundo se saca.
+    - Una tarea de Tienda cuyo responsable ahora es de una agencia sale sin
+      responsable (19/11/2026), como al aplicar una plantilla.
     - A cada responsable le llega UN aviso con todas sus tareas.
 
     Todo en una transacción y con una sola revisión: quien mira el calendario
@@ -2398,10 +2452,11 @@ async def copiar_barra(
     pedidos = {t.asignado_a_id for t in tareas if t.asignado_a_id is not None} if copia_tareas else set()
     for a in avisos:
         pedidos.update(ids_de_personas(a.destinatarios))
-    validos = {
-        u.id for u in (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars()
-        if _puede_ver_el_mundo(u, origen.mundo)
-    } if pedidos else set()
+    personas = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all() if pedidos else []
+    validos = {u.id for u in personas if _puede_ver_el_mundo(u, origen.mundo)}
+    # Y quiénes son de una agencia (cuentas externas): una tarea de Tienda no
+    # se copia a su nombre (ver copiar_tareas).
+    de_agencias = {u.id for u in personas if externos.es_externo(u)}
 
     nombre = payload.nombre or nombre_para_la_copia(origen.nombre, origen.desde, origen.hasta, payload.desde)
     barra = CalendarioBarra(**copiar_la_accion(
@@ -2411,6 +2466,7 @@ async def copiar_barra(
     filas_piezas = copiar_piezas(piezas, payload.id, corrimiento)
     copiadas_tareas = copiar_tareas(
         tareas if copia_tareas else [], payload.id, corrimiento, validos, current_user.id,
+        de_agencias=de_agencias,
     )
     # El nombre de una tarjeta lleva el de su acción ("Ciberlunes 2025 -
     # Banners"): en la copia tiene que decir el de la acción nueva, también

@@ -83,8 +83,11 @@ entregas.
 qué tablero va**: Publicis, Another Monday o Diseñadores
 (`backend/app/core/tableros.py`). La pieza no lleva persona: la toma, la hace
 y la responde cualquiera de ese tablero. Cada tablero es una agencia de la
-0069: sus usuarios son cuentas externas con la empresa escrita igual que el
-tablero, entran directo a su tablero y ven solo lo suyo. Se puede mandar una
+0069: sus usuarios son cuentas externas de esa empresa (desde el 19/11/2026 se
+elige de una lista en el panel, y se compara sin tildes ni mayúsculas:
+«Disenadores» es Diseñadores), entran directo a su tablero y ven solo lo suyo.
+En una tarea de Tienda, el responsable es siempre alguien de Tienda: las
+cuentas de las agencias se ofrecen solo en sus piezas. Se puede mandar una
 pieza a uno de los tres aunque todavía no tenga usuarios: espera ahí. El
 equipo ve los tres en pestañas en **Tableros** (y "Otras", si hay tarjetas de
 antes que no son de ninguno).

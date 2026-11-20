@@ -382,6 +382,29 @@ def test_el_freno_de_espacio():
     assert entra(10_000 * mb, mb, 0)
 
 
+def test_los_zip_tienen_su_propio_tope():
+    """Revisión del 19/11/2026: el ZIP de una ronda (hasta 40 MB) se guarda
+    solo si, con los ZIP ya guardados, no pasan entre todos de ZIP_TOPE_MB
+    (100). Antes era una reserva debajo del tope de la base, que dejaba a los
+    ZIP llegar a 350 de los 400 MB: no protegía a las imágenes, que son las
+    que se miran y se marcan. La cuenta es la misma que la de la base."""
+    from app.core.config import Settings
+
+    mb = 1024 * 1024
+    assert Settings().ZIP_TOPE_MB == 100
+    assert not hasattr(Settings(), "ZIP_RESERVA_MB")
+    assert entra(60 * mb, 40 * mb, 100)            # 100 de 100: entra
+    assert not entra(60 * mb + 1, 40 * mb, 100)    # un byte más: no
+    assert entra(10_000 * mb, 40 * mb, 0)          # 0: sin tope propio (queda el de la base)
+
+
+def test_bajar_el_zip_tiene_su_propio_limite_por_minuto():
+    """Un ZIP pesa hasta 40 MB y cada bajada sale de la base: una pantalla que
+    reintentara sola no puede gastar la transferencia del mes."""
+    from app.core.rate_limit import limiter
+    assert "app.api.routes.entregas.bajar_zip" in limiter._route_limits
+
+
 def test_el_mensaje_de_base_llena_dice_que_hacer():
     assert "avisale a quien administra Core Tienda" in MENSAJE_SIN_LUGAR
 

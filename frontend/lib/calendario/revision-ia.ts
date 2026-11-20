@@ -10,6 +10,10 @@
 // Acá está cómo se muestra. Es una ayuda para el aprobador, no una decisión:
 // nada de lo que dice la IA le llega a la agencia salvo que el aprobador lo
 // convierta en una marca suya.
+//
+// Desde el 19/11/2026 dice además, de cada marca de la ronda anterior, si en
+// la pieza nueva se ve hecho (Ivan: "debería de hacerlo"): va al lado de cada
+// marca, en «Lo que se pidió en la ronda N» del Revisor (`cambiosPorMarca`).
 // ---------------------------------------------------------------------------
 
 export type TipoObservacionIA = 'ortografia' | 'marca' | 'legal' | 'precio_vigencia' | 'codigo' | 'otro'
@@ -49,13 +53,39 @@ export type RevisionIA = {
   /** Lo que miró además de las imágenes subidas: archivos del ZIP o del link
    *  (`paginas`: cuántas páginas de un PDF). Vacío si no hubo. */
   revisados?: MaterialRevisado[]
-  /** Lo que no pudo abrir, con el porqué (un link de Smash, un ZIP roto…). */
+  /** Lo que no pudo abrir, con el porqué (un link vencido o con contraseña, un ZIP roto…). */
   noSePudoAbrir?: string[]
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]
+  /** Si se ve hecho lo que pedía cada marca de la ronda anterior (19/11/2026).
+   *  Vacío si no había nada que controlar (una primera ronda, o la anterior
+   *  volvió sin marcas), si la IA no llegó a mirar y en las revisiones de
+   *  antes. */
+  cambiosPedidos?: CambioPedidoIA[]
 }
 
 export type MaterialRevisado = { nombre: string; origen: OrigenIA; paginas: number | null }
+
+/** Lo que dice la IA de una marca de la ronda anterior: si en la pieza nueva
+ *  se ve hecho, si falta o si no se puede saber mirando las imágenes. */
+export type VeredictoIA = 'hecho' | 'falta' | 'dudoso'
+
+export type CambioPedidoIA = {
+  /** La marca de la ronda anterior (la de «Lo que se pidió en la ronda N»). */
+  marcaId: string
+  numero: number
+  veredicto: VeredictoIA
+  /** Una frase corta: «Ahora dice "Válido", con tilde.» */
+  nota: string
+}
+
+/** Cómo se muestra, al lado de cada marca: discreto (Ivan, 19/11/2026: había
+ *  "demasiado inteligencia artificial"). */
+export const VEREDICTO_IA: Record<VeredictoIA, string> = {
+  hecho: 'IA: hecho',
+  falta: 'IA: falta',
+  dudoso: 'IA: dudoso',
+}
 
 export const TIPO_OBSERVACION: Record<TipoObservacionIA, string> = {
   ortografia: 'Ortografía',
@@ -67,10 +97,14 @@ export const TIPO_OBSERVACION: Record<TipoObservacionIA, string> = {
 }
 
 /** "La IA encontró 3 cosas para mirar". Cuenta todas, también las que ya se
- *  descartaron o se hicieron marca: el título no cambia mientras se trabaja. */
-export function tituloRevisionIA(observaciones: ObservacionIA[]): string {
+ *  descartaron o se hicieron marca: el título no cambia mientras se trabaja.
+ *  `conCambiosPedidos`: si además dijo algo de las marcas de la ronda
+ *  anterior. Sin observaciones decía «no encontró nada para marcar» mientras
+ *  al lado de una marca decía «IA: falta»: ahí dice «nada nuevo» (revisión
+ *  del 19/11/2026). */
+export function tituloRevisionIA(observaciones: ObservacionIA[], conCambiosPedidos = false): string {
   const n = observaciones.length
-  if (n === 0) return 'La IA no encontró nada para marcar'
+  if (n === 0) return conCambiosPedidos ? 'La IA no encontró nada nuevo para marcar' : 'La IA no encontró nada para marcar'
   return n === 1 ? 'La IA encontró 1 cosa para mirar' : `La IA encontró ${n} cosas para mirar`
 }
 
@@ -129,4 +163,21 @@ export function marcaDesdeObservacion(
 export function textoConArchivo(o: ObservacionIA): string {
   const archivo = archivoDe(o)
   return archivo ? `En ${archivo}: ${o.texto}` : o.texto
+}
+
+/**
+ * Lo que dijo la IA de cada marca de la ronda anterior, por id de marca, para
+ * ponerlo al lado de cada una (19/11/2026). Solo con la revisión lista:
+ * mientras la IA mira, o si no se pudo, no se muestra nada. Lo que no tenga
+ * la forma esperada (un veredicto que no existe) no se muestra; si una marca
+ * viene dos veces, vale la primera.
+ */
+export function cambiosPorMarca(revision: RevisionIA | null | undefined): Map<string, CambioPedidoIA> {
+  const porMarca = new Map<string, CambioPedidoIA>()
+  if (!revision || revision.estado !== 'lista') return porMarca
+  for (const c of revision.cambiosPedidos ?? []) {
+    if (!c || typeof c.marcaId !== 'string' || !Object.prototype.hasOwnProperty.call(VEREDICTO_IA, c.veredicto)) continue
+    if (!porMarca.has(c.marcaId)) porMarca.set(c.marcaId, c)
+  }
+  return porMarca
 }

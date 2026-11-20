@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { ALCANCES, alcanceDe, nombreDeAlcance, type Alcance } from "@/lib/alcance";
+import { agenciaElegida } from "@/lib/calendario/tipos";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
@@ -60,6 +61,72 @@ function MarcaExterna({ empresa }: { empresa?: string | null }) {
     <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-sky-800 dark:bg-sky-500/15 dark:text-sky-200">
       <Building2 size={10} aria-hidden /> Externa{empresa ? ` · ${empresa}` : ""}
     </span>
+  );
+}
+
+/** La opción de la lista para agregar una agencia que todavía no existe. */
+const AGENCIA_NUEVA = "__nueva__";
+
+/**
+ * La agencia de una cuenta externa (Ivan, 19/11/2026: "¿no debería ser una
+ * selección?"): se elige de las que ya existen —Publicis, Another Monday,
+ * Diseñadores y las de las demás cuentas externas— o se agrega una nueva.
+ * Antes se escribía a mano, y con «Disenadores» sin ñ la cuenta quedaba en
+ * otra agencia y no veía sus tarjetas. El servidor igual guarda una que ya
+ * existe con el nombre que ya tiene.
+ */
+function ElegirAgencia({ valor, agencias, actual, onCambiar }: {
+  valor: string;
+  /** null = todavía no llegó la lista. Al editar, sin la cuenta que se edita. */
+  agencias: string[] | null;
+  /** Al editar: la agencia que la cuenta ya tiene guardada (sigue en la lista). */
+  actual?: string | null;
+  onCambiar: (empresa: string) => void;
+}) {
+  const { opciones, elegida: enLista, yaExiste } = agenciaElegida(agencias, valor, actual);
+  const [escribiendo, setEscribiendo] = useState(false);
+  // Escribiendo una nueva, o una guardada que no está en la lista.
+  const nueva = escribiendo || (!!valor.trim() && agencias !== null && !enLista);
+  const cargando = agencias === null && !!valor.trim();
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <select
+          required
+          aria-label="Agencia"
+          className="input w-full appearance-none pr-8 text-sm"
+          value={nueva ? AGENCIA_NUEVA : (enLista ?? (cargando ? valor : ""))}
+          onChange={(e) => {
+            const v = e.target.value;
+            setEscribiendo(v === AGENCIA_NUEVA);
+            onCambiar(v === AGENCIA_NUEVA ? "" : v);
+          }}
+        >
+          <option value="" disabled>{agencias ? "Elegí la agencia" : "Cargando agencias…"}</option>
+          {cargando && <option value={valor}>{valor}</option>}
+          {(opciones ?? []).map((a) => <option key={a} value={a}>{a}</option>)}
+          <option value={AGENCIA_NUEVA}>Otra agencia (nueva)…</option>
+        </select>
+        <ChevronDown size={13} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+      </div>
+      {nueva && (
+        <>
+          <input
+            required
+            autoFocus={escribiendo}
+            className="input w-full text-sm"
+            maxLength={120}
+            aria-label="Nombre de la agencia nueva"
+            placeholder="Nombre de la agencia nueva"
+            value={valor}
+            onChange={(e) => onCambiar(e.target.value)}
+          />
+          {yaExiste && (
+            <p className="text-xs text-slate-600 dark:text-slate-400">Ya existe: se guarda como «{yaExiste}».</p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -142,6 +209,20 @@ function UserEditorModal({
   // mes. El servidor le saca todo lo demás al marcarla (y no deja dárselo).
   const [externo,  setExterno]  = useState<boolean>(!!user.es_externo);
   const [empresa,  setEmpresa]  = useState<string>(user.empresa ?? "");
+  // Las agencias que ya existen SIN contar esta cuenta (?menos=<id>), que es
+  // como la guarda el servidor: si es la única de su agencia, se le puede
+  // corregir cómo se escribe, y el panel no tiene que decir «Ya existe: se
+  // guarda como» el nombre viejo (revisión del 19/11/2026). null = cargando.
+  const [agencias, setAgencias] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!externo) return;
+    let vigente = true;
+    api.get<string[]>("/admin/agencias", { params: { menos: user.id } })
+      .then(({ data }) => { if (vigente) setAgencias(data); })
+      // Sin la lista igual se puede escribir la agencia («Otra agencia»).
+      .catch(() => { if (vigente) setAgencias([]); });
+    return () => { vigente = false; };
+  }, [externo, user.id]);
   // Hasta dónde ve el calendario (16/11/2026): para cerrarlo a quien no lo
   // necesita entero, y para dárselo de a poco a la agencia (al dueño, por ejemplo).
   const alcanceInicial = alcanceDe(user);
@@ -196,14 +277,25 @@ function UserEditorModal({
   async function save() {
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
     if (!esSucursal && !email.trim()) { toast.error(t("admin.userEditor.emailRequired")); return; }
-    if (externo && !empresa.trim()) { toast.error("Decí de qué empresa es la cuenta externa."); return; }
+    if (externo && !empresa.trim()) { toast.error("Elegí de qué agencia es la cuenta externa."); return; }
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
       // Externa o del equipo, antes que los permisos: al pasarla a externa el
       // servidor le saca lo que no le corresponde.
       if (externo !== !!user.es_externo || (externo && empresa.trim() !== (user.empresa ?? ""))) {
-        await api.patch(`/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+        const { data } = await api.patch<{ empresa: string | null; tarjetas_pasadas?: number; plantillas_pasadas?: number }>(
+          `/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+        // Si era la única cuenta de una agencia que no es un tablero y se le
+        // corrigió el nombre («Publisis» -> «Publicis»), sus tarjetas y
+        // plantillas pasaron al nombre nuevo: que quien administra lo sepa
+        // (19/11/2026). Las de un tablero no se mueven nunca.
+        const contar = (n: number | undefined, una: string, varias: string) => (n ? `${n} ${n === 1 ? una : varias}` : "");
+        const pasadas = [
+          contar(data.tarjetas_pasadas, "tarjeta", "tarjetas"), contar(data.plantillas_pasadas, "plantilla", "plantillas"),
+        ].filter(Boolean);
+        const una = (data.tarjetas_pasadas ?? 0) + (data.plantillas_pasadas ?? 0) === 1;
+        if (pasadas.length) toast.info(`${pasadas.join(" y ")} de «${user.empresa}» ${una ? "pasó" : "pasaron"} a «${data.empresa}».`);
       }
       // Después de lo de externa: al pasarla a externa el servidor la deja en
       // "No lo ve", y si acá se eligió otra cosa, manda esto.
@@ -354,16 +446,10 @@ function UserEditorModal({
                 </span>
               </label>
               {externo && (
-                <label className="mt-2.5 block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Empresa</span>
-                  <input
-                    className="input w-full text-sm"
-                    value={empresa}
-                    maxLength={120}
-                    onChange={(e) => setEmpresa(e.target.value)}
-                    placeholder="Agencia, estudio…"
-                  />
-                </label>
+                <div className="mt-2.5">
+                  <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Agencia</span>
+                  <ElegirAgencia valor={empresa} agencias={agencias} actual={user.empresa} onCambiar={setEmpresa} />
+                </div>
               )}
             </div>
           )}
@@ -619,6 +705,10 @@ export default function AdminPage() {
   const [activeTab,   setActiveTab]   = useState<AdminTab>("usuarios");
   const [lista,       setLista]       = useState<ListaDeUsuarios>("personas");
   const [activityUser, setActivityUser] = useState<AdminUser | null>(null);
+  // Las agencias que ya existen, para elegir la de una cuenta externa nueva
+  // (19/11/2026). Al editar una, el editor pide la lista sin ella (?menos).
+  // null = todavía no llegaron.
+  const [agencias, setAgencias] = useState<string[] | null>(null);
 
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
@@ -673,6 +763,9 @@ export default function AdminPage() {
 
   async function load() {
     setLoading(true);
+    // Aparte: si no llega, igual se puede escribir una agencia (la opción
+    // «Otra agencia»), y el servidor la guarda como ya existe si es la misma.
+    api.get<string[]>("/admin/agencias").then(({ data }) => setAgencias(data)).catch(() => setAgencias([]));
     try {
       const [u, r, p] = await Promise.all([
         api.get("/admin/users"),
@@ -873,9 +966,8 @@ export default function AdminPage() {
             <input required className="input text-sm" placeholder={t("admin.createForm.passwordPlaceholder")}
               value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
             {form.es_externo ? (
-              <input required className="input text-sm" placeholder="Empresa (la agencia, el estudio…)" maxLength={120}
-                aria-label="Empresa"
-                value={form.empresa} onChange={(e) => setForm((f) => ({ ...f, empresa: e.target.value }))} />
+              <ElegirAgencia valor={form.empresa} agencias={agencias}
+                onCambiar={(empresa) => setForm((f) => ({ ...f, empresa }))} />
             ) : (
             <div className="relative">
               <select className="input text-sm w-full appearance-none pr-8" value={form.role_id}

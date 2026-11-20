@@ -325,16 +325,20 @@ class SimuladorDeDonTino:
         prueba del recorrido se dibuja con esos errores para que coincidan.
         Si el pedido dice "sin observaciones", devuelve la lista vacía; si
         dice "falla la ia" (por ejemplo, en el comentario de la agencia), la
-        API simulada se cae, para ver que la entrega sigue igual."""
+        API simulada se cae, para ver que la entrega sigue igual. Si trae los
+        cambios pedidos en la ronda anterior, dice algo de cada marca (ver
+        `_cambios_pedidos`)."""
         bloques = cuerpo["messages"][-1]["content"]
         tamanos = [tuple(int(n) for n in m.groups()) for b in bloques if b.get("type") == "text"
                    for m in [re.match(r"Imagen \d+ de \d+ \((\d+) × (\d+) px\):", b["text"])] if m]
         pedido = next(b["text"] for b in reversed(bloques) if b.get("type") == "text")
         ancho, alto = tamanos[0] if tamanos else (1000, 1000)
+        cambios = self._cambios_pedidos(pedido)
         if "falla la ia" in _norm(pedido):
             raise ConnectionError("IA simulada caída a propósito")
         if "sin observaciones" in _norm(pedido):
-            return mensaje([pensamiento(), texto(json.dumps({"observaciones": []}))], entrada=4_300, salida=900)
+            return mensaje([pensamiento(), texto(json.dumps({"observaciones": [], "cambios_pedidos": cambios},
+                                                            ensure_ascii=False))], entrada=4_300, salida=900)
         obs = [{
             "tipo": "ortografia", "gravedad": "importante", "imagen": 1,
             "texto": "Dice «OFERAT»: debería ser «OFERTA».",
@@ -352,5 +356,21 @@ class SimuladorDeDonTino:
                 "texto": "No se ven los legales que pide el pedido. Deberían ir abajo.",
                 "x": round(ancho * 0.5), "y": round(alto * 0.94),
             })
-        return mensaje([pensamiento(), texto(json.dumps({"observaciones": obs}, ensure_ascii=False))],
+        return mensaje([pensamiento(), texto(json.dumps({"observaciones": obs, "cambios_pedidos": cambios},
+                                                        ensure_ascii=False))],
                        entrada=4_800, salida=1_400)
+
+    @staticmethod
+    def _cambios_pedidos(pedido: str) -> list[dict]:
+        """Lo que dice de cada marca pedida en la ronda anterior (19/11/2026),
+        DE EJEMPLO: no mira la imagen. La primera, hecha; la segunda, que
+        falta; las demás, dudosas. Así se ven las tres en la pantalla de quien
+        aprueba. Sin cambios pedidos (una primera ronda), la lista va vacía."""
+        bloque = re.search(r"<cambios_pedidos>\n(.*?)\n</cambios_pedidos>", pedido, re.S)
+        if not bloque:
+            return []
+        ejemplos = [("hecho", "Se ve el cambio que se pidió."), ("falta", "Sigue igual que en la ronda anterior."),
+                    ("dudoso", "No se llega a ver si se cambió.")]
+        numeros = [int(n) for n in re.findall(r"^- Marca (\d+),", bloque.group(1), re.M)]
+        return [{"numero": n, "veredicto": ejemplos[min(i, 2)][0], "nota": ejemplos[min(i, 2)][1]}
+                for i, n in enumerate(numeros)]

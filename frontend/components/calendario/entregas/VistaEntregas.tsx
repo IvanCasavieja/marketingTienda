@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import {
-  ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileText, Layers, Link2, Loader2, Lock,
-  PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
+  ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileArchive, FileText, Layers, Link2,
+  Loader2, Lock, PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
@@ -13,6 +13,7 @@ import {
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
+import { avisoZipSinGuardar, pesoLegible } from '@/lib/calendario/zip'
 import { useCalendario } from '@/lib/calendario/store'
 import type { Persona } from '@/lib/calendario/tipos'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -654,7 +655,9 @@ const ESTADO_VERSION = {
 /**
  * Una versión, grande: la imagen con sus marcas, las otras imágenes como
  * miniaturas y, abajo, de dónde bajar el original y la vista previa. La usa
- * la ficha para la versión en curso y cada ronda al abrirse.
+ * la ficha para la versión en curso y cada ronda al abrirse. El original es
+ * el ZIP que mandó la agencia, si vino (19/11/2026: se guarda tal cual), o
+ * el link.
  */
 function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
   detalle: DetalleEntregas
@@ -672,12 +675,40 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
   const { user } = useCurrentUser()
   // A quien la hizo (o a la agencia) no se le dice que se la pida a sí misma.
   const laHizoQuienMira = esExterno(user) || (user?.id != null && user.id === version.subidaPor)
+  // El ZIP de la ronda, si vino; `guardado` en false si no había lugar.
+  const zip = version.zip ?? null
+  // Lo que va bajando el ZIP (0 a 1), o null si no se está bajando.
+  const [bajandoZip, setBajandoZip] = useState<number | null>(null)
+
+  /** Bajar el ZIP original de la ronda (19/11/2026, Ivan: "cuando lo subís
+   *  deberías de subir la carpeta comprimida"): el que mandó la agencia, tal
+   *  cual y con su nombre. Viaja con la sesión, como las imágenes. */
+  async function bajarZip() {
+    if (!zip || bajandoZip !== null) return
+    setBajandoZip(0)
+    try {
+      const { data } = await entregasApi.zip(version.id, f => setBajandoZip(f))
+      const url = URL.createObjectURL(data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = zip.nombre
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Que el navegador alcance a empezar la descarga antes de soltarlo.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      toast.error('No se pudo bajar el ZIP. Probá de nuevo.')
+    } finally {
+      setBajandoZip(null)
+    }
+  }
 
   /** Bajar las imágenes de esta ronda (16/11/2026: "para no andar pidiéndolos
    *  por mail"). Son las mismas imágenes comprimidas que se ven (no se guarda
    *  nada nuevo: la base es de 500 MB): sirven para revisar, no para
-   *  publicar. El archivo final es el original, que va por el link; por eso
-   *  el botón dice qué es lo que baja. */
+   *  publicar. El archivo final es el original, que es el ZIP (si vino) o el
+   *  link; por eso el botón dice qué es lo que baja. */
   async function descargar() {
     setBajando(true)
     try {
@@ -734,20 +765,38 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
       )}
 
       {/* De dónde bajar. 44 px para el dedo en el teléfono; en la compu, más
-          chicos. Solo imágenes: lo que baja es la vista previa, y se dice,
-          para que nadie publique una imagen achicada creyendo que es el
+          chicos. Primero el original: el ZIP que mandó la agencia, si vino
+          (19/11/2026), o el link. Después la vista previa, que se dice qué
+          es, para que nadie publique una imagen achicada creyendo que es el
           archivo final. */}
-      {version.imagenes.length > 0 && (version.link || vivas.length > 0) && (
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-          {version.link && (
+      {(zip || (version.imagenes.length > 0 && (version.link || vivas.length > 0))) && (
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+          {zip?.guardado && (
+            <button
+              type="button"
+              onClick={() => void bajarZip()}
+              disabled={bajandoZip !== null}
+              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-bold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
+              title={`El original de esta ronda, tal cual lo mandaron: ${zip.nombre}`}
+            >
+              {bajandoZip !== null ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileArchive className="h-3.5 w-3.5" />}
+              {bajandoZip !== null && bajandoZip > 0
+                ? `Bajando el ZIP… ${Math.round(bajandoZip * 100)}%`
+                : `Bajar el ZIP (${pesoLegible(zip.tamano)})`}
+            </button>
+          )}
+          {version.link && version.imagenes.length > 0 && (
             <a
               href={version.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-bold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
-              title={`El archivo final, en el link: ${version.link}`}
+              className={`flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 transition sm:min-h-[36px] ${zip?.guardado
+                ? 'font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'
+                : 'font-bold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10'}`}
+              title={`El link que dejaron: ${version.link}`}
             >
-              <ExternalLink className="h-3.5 w-3.5" /> {todasPurgadas ? 'Abrir el original' : 'Bajar el original'}
+              {/* Con el ZIP guardado, el original es el ZIP: el link es uno más. */}
+              <ExternalLink className="h-3.5 w-3.5" /> {zip?.guardado ? 'Abrir el link' : todasPurgadas ? 'Abrir el original' : 'Bajar el original'}
             </a>
           )}
           {vivas.length > 0 && (
@@ -761,7 +810,13 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
               {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Vista previa (1600 px)
             </button>
           )}
-          {!version.link && vivas.length > 0 && (
+          {zip && !zip.guardado ? (
+            // No había lugar al entregar (el tope de los ZIP o la base): la
+            // ronda quedó, el ZIP no (y no se borra nada para hacerle lugar).
+            <span className="px-2 font-medium text-amber-800 dark:text-amber-200">
+              {avisoZipSinGuardar(!!version.link, laHizoQuienMira)}
+            </span>
+          ) : !zip && !version.link && vivas.length > 0 && (
             <span className="px-2">
               {laHizoQuienMira ? 'Sin link al original: lo que se baja es la vista previa.' : 'Sin link al original: pedíselo a quien la hace.'}
             </span>

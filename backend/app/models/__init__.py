@@ -37,7 +37,7 @@ from app.models.calendario import (
 from app.models.colocacion import ColocacionFoto, ColocacionLocal, ColocacionPedido
 from app.models.entregas import (
     CalendarioComentario, CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioMarca, CalendarioVersion,
-    CalendarioVersionImagen,
+    CalendarioVersionImagen, CalendarioVersionZip,
 )
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.agenda import AgendaExterna
@@ -58,7 +58,7 @@ __all__ = [
     "CalendarioBarra", "CalendarioPieza", "CalendarioAviso", "CalendarioPosicionesRM", "CalendarioRevision", "CalendarioRevisionMundo",
     "CalendarioTarea",
     "ColocacionPedido", "ColocacionLocal", "ColocacionFoto",
-    "CalendarioEntrega", "CalendarioFase", "CalendarioVersion", "CalendarioVersionImagen", "CalendarioMarca",
+    "CalendarioEntrega", "CalendarioFase", "CalendarioVersion", "CalendarioVersionImagen", "CalendarioVersionZip", "CalendarioMarca",
     "CalendarioDecision", "CalendarioRevisionIA", "CalendarioComentario",
     "AgendaExterna",
 ]

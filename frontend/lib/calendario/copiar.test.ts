@@ -84,6 +84,16 @@ igual('sin permiso de tareas, el resto, y se dice cuántas quedan afuera',
 igual('sin la lista de personas no se adivina a quién se saca',
   queSeCopia(completa, null, true),
   { piezas: 1, tareas: 3, tareasSinPermiso: 0, sinResponsable: 0, avisos: 2, destinatariosQuitados: 0, avisosSinNadie: 0 })
+// 19/11/2026: quien llevaba la tarea de Tienda ahora es de una agencia (9,
+// de Diseñadores, una agencia externa): se copia sin él, como en el servidor.
+// La pieza de su agencia sigue a su nombre.
+const conAgencia = accion({
+  tareas: [tarea('a', 5), tarea('b', 9), { ...tarea('c', 9), tipo: 'push', para: 'agencia', agencia: 'Diseñadores' }],
+})
+igual('una tarea de Tienda no sigue a nombre de alguien de una agencia',
+  queSeCopia(conAgencia, new Set([5, 9]), true, new Set([9])).sinResponsable, 1)
+igual('sin saber quién es de una agencia, como antes',
+  queSeCopia(conAgencia, new Set([5, 9]), true).sinResponsable, 0)
 
 console.log('\nlistas')
 igual('una', enLista(['3 piezas']), '3 piezas')

@@ -236,6 +236,24 @@ def test_el_responsable_que_ya_no_entra_al_mundo_se_saca():
     assert copia.sin_responsable == 1
 
 
+def test_una_tarea_de_tienda_no_se_copia_a_nombre_de_alguien_de_una_agencia():
+    """19/11/2026: quien llevaba la tarea pasó a ser de una agencia (8, de
+    Diseñadores, una agencia externa). La copia de una tarea de Tienda o de
+    una agencia de afuera sale sin responsable; la pieza de su agencia sigue
+    a su nombre, y alguien de Tienda (5) también."""
+    copia = copiar_tareas(
+        [_tarea("tienda", asignado_a_id=8, orden=0),
+         _tarea("pieza", asignado_a_id=8, tipo="banners", orden=1),
+         _tarea("fuera", asignado_a_id=8, para="fuera", agencia="Estudio Afuera", tipo="mailing", orden=2),
+         _tarea("agencia", asignado_a_id=8, para="agencia", agencia="Diseñadores", tipo="push", orden=3),
+         _tarea("equipo", asignado_a_id=5, orden=4)],
+        "br-2026", UN_ANIO, responsables_validos={5, 8}, creado_por=42, de_agencias={8},
+    )
+    assert [f["asignado_a_id"] for f in copia.filas] == [None, None, None, 8, 5]
+    assert [f["para"] for f in copia.filas] == ["tienda", "tienda", "fuera", "agencia", "tienda"]
+    assert copia.sin_responsable == 3
+
+
 def test_una_tarea_que_cuelga_de_otra_accion_queda_suelta():
     [v] = copiar_tareas([_tarea("a", parent_id="de-otra-accion")], "br-2026", UN_ANIO, set(), 1).filas
     assert v["parent_id"] is None

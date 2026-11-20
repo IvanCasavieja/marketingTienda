@@ -11,6 +11,8 @@ Necesita una base Postgres en la última migración (TEST_DATABASE_URL); sin
 ella se saltea. Todo corre adentro de una transacción que se deshace al final.
 """
 import asyncio
+import io
+import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -26,6 +28,7 @@ if URL:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
+    from app.api.routes import entregas as rutas_de_entregas
     from app.core import alcance
     from app.core.database import get_db
     from app.core.rate_limit import limiter
@@ -34,7 +37,9 @@ if URL:
     from app.models.calendario import (
         CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
     )
-    from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioFase
+    from app.models.entregas import (
+        CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioVersionImagen, CalendarioVersionZip,
+    )
     from app.models.notificacion import Notificacion
     from app.models.revision_ia import CalendarioRevisionIA
     from app.models.role import ALL_PERMISSIONS
@@ -146,6 +151,10 @@ async def _correr(prueba):
                 raise
 
     app.dependency_overrides[get_db] = get_db_de_prueba
+    # El ZIP de una ronda se baja de a partes con su propia sesión
+    # (_partes_del_zip, 19/11/2026): que lea de esta misma base de prueba.
+    sesiones_antes = rutas_de_entregas.AsyncSessionLocal
+    rutas_de_entregas.AsyncSessionLocal = Sesion
     limite_antes = limiter.enabled
     limiter.enabled = False
     try:
@@ -157,6 +166,7 @@ async def _correr(prueba):
             await prueba(d)
     finally:
         limiter.enabled = limite_antes
+        rutas_de_entregas.AsyncSessionLocal = sesiones_antes
         app.dependency_overrides.pop(get_db, None)
         await trans.rollback()
         await conn.close()
@@ -721,6 +731,8 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
             "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
         assert r.status_code == 200, r.text
+        # La respuesta dice cuántas pasaron al nombre nuevo.
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 0)
         # Sigue viendo su tarjeta (pasó al nombre nuevo) y conserva su alcance.
         assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
         async with d.Sesion() as s:
@@ -733,6 +745,7 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         r = await promo.patch(f"/admin/users/{d.a1.id}/externo", json={
             "es_externo": True, "empresa": f"Otra Agencia {d.sufijo}"})
         assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
         assert await _tarjeta(Cliente(d.http, d.a2), de_pampa) is not None
         assert await _tarjeta(Cliente(d.http, d.a1), de_pampa) is None
     correr(prueba)
@@ -783,11 +796,27 @@ def test_al_equipo_sus_tareas_le_llegan_aunque_no_vea_la_accion():
             assert any(tarea_id in (n["origen_ref"] or "") for n in avisos), usuario.full_name
             # La ficha de esa acción sigue cerrada para esa persona.
             assert (await c.get(f"/calendario/ubicar/{barra.id}")).status_code == 404
+            # Don Tino, con la misma regla (19/11/2026: "Don Tino debe amoldarse
+            # a cada usuario"): «¿qué tengo pendiente?» la nombra, sin link a una
+            # ficha que no abre; y la ficha sigue cerrada.
+            async with d.Sesion() as s:
+                quien = await s.get(User, usuario.id)
+                datos = json.loads(await cc.ejecutar("calendario_tareas", {"responsable": "yo"}, quien, s))
+                assert [t["titulo"] for t in datos["tareas"]] == ["Preparar el brief"], usuario.full_name
+                accion = datos["tareas"][0]["accion"]
+                assert accion["nombre"] == barra.nombre and accion["fuera_de_lo_que_ve"] is True
+                assert "link" not in accion and "id" not in accion
+                cerrada = json.loads(await cc.ejecutar("calendario_accion", {"accion_id": barra.id}, quien, s))
+                assert "error" in cerrada
         # Una hecha de una acción fuera de su alcance ya no se le muestra.
         r = await Cliente(d.http, d.limitado).patch(f"/calendario/tareas/{casos[0][2]}", json={"estado": "hecha"})
         assert r.status_code == 200, r.text
         mias = (await Cliente(d.http, d.limitado).get("/calendario/mis-tareas")).json()
         assert all(x["id"] != casos[0][2] for x in mias)
+        async with d.Sesion() as s:
+            quien = await s.get(User, d.limitado.id)
+            texto = await cc.ejecutar("calendario_tareas", {"responsable": "yo", "estados": ["hecha"]}, quien, s)
+            assert "Preparar el brief" not in texto
         # Quien ve todo no tiene ninguna marcada como fuera de alcance.
         r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-t-{d.sufijo}", "titulo": "Otra", "asignadoA": d.lucia.id})
@@ -956,6 +985,7 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
             "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
         assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 1)
         async with d.Sesion() as s:
             tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
         assert tareas[0]["agencia"] == f"Estudio del Sur {d.sufijo}" and tareas[1].get("agencia") is None
@@ -976,6 +1006,83 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
         r = await lider.post(f"/calendario/barras/{d.ahora.id}/plantilla", json={"plantillaId": plantilla, "ids": ids})
         assert r.status_code == 201, r.text
         assert r.json()["agenciasSinCuentas"] == [f"Estudio del Sur {d.sufijo}"]
+    correr(prueba)
+
+
+def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
+    """Revisión del 19/11/2026: Fer, la única cuenta de Diseñadores (una
+    agencia externa, como Publicis), pasa a Publicis porque se eligió mal, y
+    después vuelve. Eso se tomaba como «le corrigieron el nombre a la
+    agencia»: se llevaba a Publicis todas las tarjetas y las plantillas de
+    Diseñadores, y al volver se traía las de Publicis. Un tablero no se
+    renombra: cada tarjeta y cada plantilla se queda en el suyo. Corregir el
+    nombre de una agencia que no es un tablero («Publisis» -> «Publicis») las
+    sigue pasando, y la respuesta dice cuántas."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        de_dis, de_pub = f"ta-vd-{d.sufijo}", f"ta-vp-{d.sufijo}"
+        for tarea_id, agencia in ((de_dis, "Diseñadores"), (de_pub, "Publicis")):
+            r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+                "id": tarea_id, "tipo": "push", "para": "agencia", "agencia": agencia})
+            assert r.status_code == 201, r.text
+        plantilla = f"pl-vuelta-{d.sufijo}"
+        r = await lider.put(f"/calendario/plantillas/{plantilla}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": "Diseñadores",
+                 "ancla": "inicio", "dias": -3},
+                {"id": "t2", "titulo": "Banners", "tipo": "banners", "opciones": ["Header"], "para": "agencia",
+                 "agencia": "Publicis", "ancla": "inicio", "dias": -2},
+            ]})
+        assert r.status_code == 200, r.text
+
+        async def cada_una_en_su_tablero():
+            async with d.Sesion() as s:
+                assert (await s.get(CalendarioTarea, de_dis)).agencia == "Diseñadores"
+                assert (await s.get(CalendarioTarea, de_pub)).agencia == "Publicis"
+                tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
+            assert [t["agencia"] for t in tareas] == ["Diseñadores", "Publicis"]
+
+        # Ida y vuelta.
+        for empresa in ("Publicis", "Diseñadores"):
+            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": empresa})
+            assert r.status_code == 200, r.text
+            assert r.json()["empresa"] == empresa
+            assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+            await cada_una_en_su_tablero()
+        # De vuelta en Diseñadores, Fer ve su tarjeta y no la de Publicis.
+        c = Cliente(d.http, fer)
+        assert await _tarjeta(c, de_dis) is not None
+        assert await _tarjeta(c, de_pub) is None
+        # Con el tablero escrito de otra forma («DISENADORES», guardado a mano
+        # antes del 19/11) es el mismo tablero: tampoco se lleva nada.
+        async with d.Sesion() as s:
+            (await s.get(User, fer.id)).empresa = "DISENADORES"
+            await s.commit()
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": "Another Monday"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        await cada_una_en_su_tablero()
+
+        # «Publisis» no es un tablero: es Publicis mal escrito. Su única
+        # cuenta pasa a Publicis y se lleva su tarjeta y su plantilla.
+        publisis = await _persona(d, "Pato Publisis", externo=True, empresa=f"Publisis {d.sufijo}")
+        mal_escrita = f"ta-vm-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": mal_escrita, "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        r = await lider.put(f"/calendario/plantillas/{plantilla}-m", json={
+            "mundo": MUNDO, "nombre": "Mal escrita", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}",
+                 "ancla": "inicio", "dias": -3}]})
+        assert r.status_code == 200, r.text
+        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, mal_escrita)).agencia == "Publicis"
+            assert (await s.get(CalendarioPlantilla, f"{plantilla}-m")).tareas[0]["agencia"] == "Publicis"
+        await cada_una_en_su_tablero()
     correr(prueba)
 
 
@@ -1350,9 +1457,9 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
     """Ivan (19/11/2026): "¿Qué pasaría si en vez de una imagen me hubieran
     pasado una carpeta o un link? (…) vos directamente como plataforma ya
     descargués todas las cosas". El ZIP viaja en el campo `zip` del
-    multipart, no se guarda, y se le pasa en memoria a la revisión de la IA,
-    que corre después de contestar. Acá la revisión es un espía: lo de abrir
-    el ZIP está en test_materiales.py."""
+    multipart y se le pasa en memoria a la revisión de la IA, que corre
+    después de contestar (además se guarda tal cual: ver las pruebas de abajo).
+    Acá la revisión es un espía: lo de abrir el ZIP está en test_materiales.py."""
     from app.services import revision_ia
 
     llamadas = []
@@ -1371,11 +1478,17 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         zip_bueno = _zip_de_prueba({"Cenefas/cenefa 1.jpg": JPEG, "folleto.pdf": b"%PDF-1.4 x", "notas.txt": b"hola"})
         imagen = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
 
-        # El ZIP solo no alcanza: quien aprueba tiene que ver la pieza (las
-        # imágenes de adentro las saca el navegador y van como imágenes).
+        # Un ZIP solo alcanza si de adentro sale al menos una imagen para que
+        # quien aprueba vea la pieza. Acá nada se puede abrir (la «cenefa» y el
+        # «folleto» son de mentira): se rechaza, diciendo por qué.
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
                           files=[("zip", ("piezas.zip", zip_bueno, "application/zip"))])
-        assert r.status_code == 422 and "ver la pieza" in r.json()["detail"], r.text
+        assert r.status_code == 422, r.text
+        assert r.json()["detail"] == (
+            "Del ZIP no salió ninguna imagen para mostrar («Cenefas/cenefa 1.jpg»: no se pudo leer la imagen; "
+            "«folleto.pdf»: no se pudo leer el PDF (¿está dañado?)): subí una imagen o pegá el link al original, "
+            "así quien aprueba ve la pieza"
+        )
         # Un ZIP que no es un ZIP, o sin nada para revisar adentro.
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z0-{d.sufijo}"},
                           files=imagen + [("zip", ("piezas.zip", b"esto no es un zip", "application/zip"))])
@@ -1392,17 +1505,18 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z1-{d.sufijo}"},
                           files=imagen + [("zip", ("piezas.zip", zip_bueno, "application/zip"))])
         assert r.status_code == 201, r.text
-        assert r.json()["zip"] == {"nombre": "piezas.zip", "archivos": ["Cenefas/cenefa 1.jpg", "folleto.pdf"],
-                                   "ignorados": ["notas.txt"]}
+        assert r.json()["zip"] == {"nombre": "piezas.zip", "tamano": len(zip_bueno), "guardado": True, "sumadas": 0,
+                                   "archivos": ["Cenefas/cenefa 1.jpg", "folleto.pdf"], "ignorados": ["notas.txt"]}
         assert llamadas == [(f"ve-z1-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
-                                                    "zip_saltar": frozenset()})]
+                                                    "zip_saltar": frozenset(), "zip_paginas": {}})]
         det = await _detalle(lider, tarea_id)
         assert det["resumen"]["momento"] == "revision" and len(det["fases"][0]["versiones"][0]["imagenes"]) == 1
         assert (await _decidir(lider, f"ve-z1-{d.sufijo}", "cambios", "Volvé a mandarla")).status_code == 200
 
         # Un link solo también se manda a revisar (antes no: la IA lo baja ella).
         assert (await _entregar_link(a1, tarea_id, f"ve-z2-{d.sufijo}")).status_code == 201
-        assert llamadas[-1] == (f"ve-z2-{d.sufijo}", {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset()})
+        assert llamadas[-1] == (f"ve-z2-{d.sufijo}", {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset(),
+                                                      "zip_paginas": {}})
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": f"ve-z2-{d.sufijo}"},
                           files=imagen)
         assert r.status_code == 201 and r.json()["yaExistia"] and r.json().get("zip") is None
@@ -1427,6 +1541,9 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         assert out["observaciones"][0]["origen"] == "zip" and out["observaciones"][0]["imagenId"] is None
         assert out["revisados"] == [{"nombre": "Cenefas/cenefa 1.jpg", "origen": "zip", "paginas": None}]
         assert out["noSePudoAbrir"][0].startswith("No se pudo abrir el link") and out["ignorados"] == ["notas.txt"]
+        # Una revisión sin lo de la ronda anterior (la de antes volvió sin
+        # marcas, o es de antes del 19/11/2026): la lista va vacía.
+        assert out["cambiosPedidos"] == []
         # La agencia (quien entrega) sigue sin ver nada de esto.
         assert (await a1.get(f"/calendario/versiones/ve-z2-{d.sufijo}/revision-ia")).status_code == 403
 
@@ -1445,7 +1562,547 @@ def test_la_entrega_acepta_un_zip_que_la_ia_revisa_en_segundo_plano(monkeypatch)
         assert r.status_code == 201, r.text
         assert r.json()["zip"]["archivos"] == ["folleto.pdf"]
         assert llamadas[-1] == (f"ve-z3-{d.sufijo}", {"zip_datos": zip_bueno, "zip_nombre": "piezas.zip",
-                                                    "zip_saltar": frozenset({0})})
+                                                    "zip_saltar": frozenset({0}), "zip_paginas": {}})
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# El ZIP original de la ronda y las páginas de los PDF (19/11/2026)
+# ---------------------------------------------------------------------------
+
+def _jpeg_de_verdad(ancho=400, alto=300, color="white") -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (ancho, alto), color).save(buf, "JPEG", quality=75)
+    return buf.getvalue()
+
+
+def _pdf_de_prueba(paginas: int) -> bytes:
+    import pymupdf
+
+    doc = pymupdf.open()
+    for i in range(paginas):
+        doc.new_page().insert_text((72, 72), f"Folleto, página {i + 1}")
+    datos = doc.tobytes()
+    doc.close()
+    return datos
+
+
+def _espiar_la_ia(monkeypatch) -> list:
+    from app.services import revision_ia
+
+    llamadas = []
+
+    async def espia(version_id, **kw):
+        llamadas.append((version_id, kw))
+
+    monkeypatch.setattr(revision_ia, "activa", lambda: True)
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    return llamadas
+
+
+async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_subidas=None, link=None,
+                    color="white"):
+    data = {"versionId": version_id}
+    if ya_subidas is not None:
+        data["zipYaSubidas"] = ya_subidas
+    if link:
+        data["link"] = link
+    files = []
+    for i in range(imagenes):
+        files += [("imagenes", (f"i{i}.jpg", _jpeg_de_verdad(color=color), "image/jpeg")),
+                  ("miniaturas", (f"m{i}.jpg", _jpeg_de_verdad(64, 48, color), "image/jpeg"))]
+    if zip_ is not None:
+        files.append(("zip", (zip_[0], zip_[1], "application/zip")))
+    return await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data=data, files=files or None)
+
+
+def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch, caplog):
+    """Ivan (19/11/2026): "no es más fácil guardar el zip en vez de guardar las
+    imágenes? (…) cuando lo subís deberías de subir la carpeta comprimida, no
+    los archivos sueltos". El ZIP queda guardado como el original de la ronda
+    y se baja con las mismas reglas que las imágenes de esa versión: el
+    equipo y la agencia de la tarjeta sí; otra agencia, o alguien a quien la
+    acción le queda fuera de su alcance, no (el mismo 404 que lo que no existe).
+
+    Se baja de a partes de 1 MB (revisión del 19/11/2026: entero eran unos 80
+    MB de memoria por un ZIP de 40): este mide justo 3 partes, y llega igual."""
+    _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1, a2, b1 = (Cliente(d.http, u) for u in (d.lider, d.a1, d.a2, d.b1))
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        # Sin comprimir, lo que el ZIP suma alrededor de los archivos no
+        # cambia con lo que pesan: se ajusta la fuente para que mida 3 MB justos.
+        header = _jpeg_de_verdad()
+        alrededor = len(_zip_de_prueba({"Banners/header.jpg": header, "fuentes/Gotham.otf": b""}))
+        zip_ = _zip_de_prueba({"Banners/header.jpg": header,
+                               "fuentes/Gotham.otf": os.urandom(3 * 1024 * 1024 - alrededor)})
+        assert len(zip_) == 3 * rutas_de_entregas._PARTE_DEL_ZIP
+        version = f"ve-zo-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, version, imagenes=1, zip_=("piezas niño.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["guardado"] is True and r.json()["zip"]["sumadas"] == 0
+
+        # Queda en su lugar, tal cual, con su nombre, su peso y la fecha.
+        async with d.Sesion() as s:
+            fila = (await s.execute(select(
+                CalendarioVersionZip.nombre, CalendarioVersionZip.tamano, CalendarioVersionZip.datos,
+                CalendarioVersionZip.created_at,
+            ).where(CalendarioVersionZip.version_id == version))).one()
+            assert tuple(fila[:3]) == ("piezas niño.zip", len(zip_), zip_) and fila[3] is not None
+        # El detalle de la versión lo dice (sin los bytes), al equipo y a la agencia.
+        for c in (lider, a1):
+            v = (await _detalle(c, tarea_id))["fases"][0]["versiones"][0]
+            assert {k: v["zip"][k] for k in ("nombre", "tamano", "guardado")} == {
+                "nombre": "piezas niño.zip", "tamano": len(zip_), "guardado": True}
+            assert v["zip"]["fecha"]
+
+        # Lo bajan el equipo y las cuentas de la agencia de la tarjeta: tal
+        # cual, con su nombre y con lo que pesa (el avance de la bajada).
+        for c in (lider, a1, a2):
+            r = await c.get(f"/calendario/versiones/{version}/zip")
+            assert r.status_code == 200, r.text
+            assert r.content == zip_ and r.headers["content-type"] == "application/zip"
+            assert r.headers["content-length"] == str(len(zip_))
+            assert r.headers["content-disposition"] == (
+                "attachment; filename=\"piezas ni_o.zip\"; filename*=UTF-8''piezas%20ni%C3%B1o.zip")
+        # Con partes que no lo dividen justo, también; y midiendo justo partes
+        # enteras termina sin otra vuelta a la base (no avisa nada).
+        for parte in (len(zip_) - 1, 100_000):
+            monkeypatch.setattr(rutas_de_entregas, "_PARTE_DEL_ZIP", parte)
+            r = await lider.get(f"/calendario/versiones/{version}/zip")
+            assert r.content == zip_ and r.headers["content-length"] == str(len(zip_)), parte
+        assert "se borró mientras se bajaba" not in caplog.text
+        # Las mismas reglas que las imágenes de la versión: otra agencia, y
+        # alguien del equipo a quien la acción le queda fuera de su alcance,
+        # ni la imagen ni el ZIP (el 404 de lo que no existe).
+        imagen = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        for u in (d.b1, d.limitado, d.sin_cal):
+            c = Cliente(d.http, u)
+            assert (await c.get(f"/calendario/entregas/imagenes/{imagen}")).status_code == 404, u.full_name
+            r = await c.get(f"/calendario/versiones/{version}/zip")
+            assert r.status_code == 404 and r.json()["detail"] == "Esa ronda no tiene un ZIP", (u.full_name, r.text)
+        assert (await b1.get(f"/calendario/versiones/{version}/zip")).status_code == 404
+        # Una ronda sin ZIP, o que no existe: 404.
+        assert (await _decidir(lider, version, "cambios", "Otra vuelta")).status_code == 200
+        assert (await _entregar_link(a1, tarea_id, f"ve-zl-{d.sufijo}")).status_code == 201
+        assert (await _detalle(lider, tarea_id))["fases"][0]["versiones"][-1]["zip"] is None
+        assert (await lider.get(f"/calendario/versiones/ve-zl-{d.sufijo}/zip")).status_code == 404
+        assert (await lider.get("/calendario/versiones/ve-no-existe/zip")).status_code == 404
+    correr(prueba)
+
+
+def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
+    """Revisión del 19/11/2026: mandarle a la base un ZIP de 40 MB arma copias
+    en memoria (unos 120 MB más), y dos entregas grandes a la vez no entran en
+    los 512 MB del servidor. El INSERT del ZIP sale con el semáforo tomado, y
+    adentro no pasa nada más (no espera candados de la base: no se traba)."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    semaforo = rutas_de_entregas._UN_ZIP_POR_VEZ
+    assert isinstance(semaforo, asyncio.Semaphore)
+
+    async def de_a_uno():
+        async with semaforo:
+            return semaforo.locked()
+    assert asyncio.run(de_a_uno())  # con un ZIP adentro, el siguiente espera
+
+    class Espia:
+        tomado = False
+
+        async def __aenter__(self):
+            Espia.tomado = True
+
+        async def __aexit__(self, *error):
+            Espia.tomado = False
+
+    adentro = []
+
+    def anotar(conn, cursor, sentencia, parametros, contexto, varios):
+        if Espia.tomado:
+            adentro.append(" ".join(sentencia.split()[:3]))
+
+    _espiar_la_ia(monkeypatch)
+    monkeypatch.setattr(rutas_de_entregas, "_UN_ZIP_POR_VEZ", Espia())
+
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        zip_ = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad()})
+        r = await _entregar(Cliente(d.http, d.a1), tarea_id, f"ve-uno-{d.sufijo}", imagenes=1,
+                            zip_=("pieza.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201 and r.json()["zip"]["guardado"] is True, r.text
+
+    event.listen(Engine, "before_cursor_execute", anotar)
+    try:
+        correr(prueba)
+    finally:
+        event.remove(Engine, "before_cursor_execute", anotar)
+    assert adentro == ["INSERT INTO calendario_version_zips"]
+
+
+def test_un_zip_con_solo_un_pdf_alcanza_y_sus_paginas_se_ven_y_se_marcan(monkeypatch):
+    """Ivan no entendía por qué un ZIP con solo el PDF del folleto no
+    alcanzaba para entregar ("no entendí este punto"): no tenía que pasar. Al
+    entregar, el servidor llena los lugares de imagen que quedan con las
+    páginas de los PDF (y las imágenes que el navegador no pudo sacar), en el
+    orden del ZIP, y quedan como cualquier imagen de la ronda: quien aprueba
+    las ve y las marca. La IA no vuelve a mirar lo que ya está en la ronda."""
+    from PIL import Image
+
+    llamadas = _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+
+        # Solo el folleto, de dos páginas: alcanza.
+        zip_ = _zip_de_prueba({"folleto.pdf": _pdf_de_prueba(2), "leeme.txt": b"hola"})
+        v1 = f"ve-pdf1-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v1, zip_=("folleto.zip", zip_))
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 2 and r.json()["zip"]["archivos"] == []
+        imagenes = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"]
+        assert [im["orden"] for im in imagenes] == [0, 1]
+        for im in imagenes:
+            r = await lider.get(f"/calendario/entregas/imagenes/{im['id']}")
+            assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+            assert Image.open(io.BytesIO(r.content)).size == (1131, 1600)
+            r = await a1.get(f"/calendario/entregas/imagenes/{im['id']}", params={"tam": "mini"})
+            assert r.status_code == 200 and max(Image.open(io.BytesIO(r.content)).size) == 320
+        # Todo el ZIP ya está en la ronda: la IA mira las imágenes de la ronda
+        # y no recibe el ZIP (no queda ocupando memoria esperando su turno).
+        assert llamadas[-1] == (v1, {"zip_datos": None, "zip_nombre": None, "zip_saltar": frozenset({0}),
+                                     "zip_paginas": {}})
+        # Quien aprueba marca sobre una página como sobre cualquier imagen.
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "marcas": [{"imagenId": imagenes[1]["id"], "x": 0.5, "y": 0.2, "texto": "El precio"}]})
+        assert r.status_code == 200, r.text
+
+        # Con una imagen subida y un PDF largo: llena los 3 lugares que quedan,
+        # y la IA mira las páginas que siguen (desde la 4).
+        zip_ = _zip_de_prueba({"header.jpg": _jpeg_de_verdad(), "catalogo.pdf": _pdf_de_prueba(6)})
+        v2 = f"ve-pdf2-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v2, imagenes=1, zip_=("catalogo.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 3 and r.json()["zip"]["archivos"] == ["catalogo.pdf"]
+        assert len((await _detalle(lider, tarea_id))["fases"][0]["versiones"][1]["imagenes"]) == 4
+        assert llamadas[-1] == (v2, {"zip_datos": zip_, "zip_nombre": "catalogo.zip", "zip_saltar": frozenset({0}),
+                                     "zip_paginas": {1: 3}})
+        assert (await _decidir(lider, v2, "cambios", "Otra vuelta")).status_code == 200
+
+        # Una imagen que la persona sacó de la ronda a propósito (va en
+        # zipYaSubidas) no vuelve; una que el navegador no pudo sacar, sí.
+        zip_ = _zip_de_prueba({"a.jpg": _jpeg_de_verdad(), "b.jpg": _jpeg_de_verdad(), "c.jpg": _jpeg_de_verdad()})
+        v3 = f"ve-pdf3-{d.sufijo}"
+        r = await _entregar(a1, tarea_id, v3, imagenes=1, zip_=("abc.zip", zip_), ya_subidas="[0, 1]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 1
+        assert len((await _detalle(lider, tarea_id))["fases"][0]["versiones"][2]["imagenes"]) == 2
+        assert (await _decidir(lider, v3, "cambios", "Otra más")).status_code == 200
+
+        # Un ZIP del que no sale nada para ver (el PDF pide contraseña) no
+        # alcanza solo, y dice por qué; con el link, sí.
+        import pymupdf
+        doc = pymupdf.open()
+        doc.new_page()
+        cerrado = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="x", owner_pw="x")
+        doc.close()
+        zip_ = _zip_de_prueba({"cerrado.pdf": cerrado})
+        r = await _entregar(a1, tarea_id, f"ve-pdf4-{d.sufijo}", zip_=("cerrado.zip", zip_))
+        assert r.status_code == 422 and "«cerrado.pdf»: el PDF está protegido con contraseña" in r.json()["detail"], r.text
+        r = await _entregar(a1, tarea_id, f"ve-pdf4-{d.sufijo}", zip_=("cerrado.zip", zip_),
+                            link="https://we.tl/t-AbCdEf12")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["sumadas"] == 0 and r.json()["zip"]["guardado"] is True
+    correr(prueba)
+
+
+async def _zips_guardados(d) -> int:
+    """Lo que ocupan entre todos los ZIP guardados (con sus bytes)."""
+    async with d.Sesion() as s:
+        return (await s.execute(
+            select(func.coalesce(func.sum(CalendarioVersionZip.tamano), 0))
+            .where(CalendarioVersionZip.datos.isnot(None))
+        )).scalar_one()
+
+
+def test_con_el_tope_de_los_zip_lleno_no_se_guarda_la_entrega_sigue_y_no_se_borra_nada(monkeypatch, caplog):
+    """Revisión del 19/11/2026: los ZIP tienen su propio tope entre todos
+    (ZIP_TOPE_MB), aunque la base tenga lugar; antes era una reserva que no
+    protegía a las imágenes. Con el tope lleno la entrega se hace igual: la
+    versión y sus imágenes, y del ZIP el nombre y el peso, para que la ficha
+    diga que no se guardó. NUNCA se borra nada para hacerle lugar. Y con
+    lugar se guarda: lo que cuenta es lo que pesan los guardados (uno que no
+    se guardó no ocupa nada)."""
+    from sqlalchemy import text
+
+    from app.core.config import settings
+
+    _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        mb = 1024 * 1024
+        async with d.Sesion() as s:
+            tamano = (await s.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+        # La base, con lugar de sobra: lo que frena acá es el tope de los ZIP.
+        monkeypatch.setattr(settings, "BASE_TOPE_MB", -(-tamano // mb) + 200)
+        primero = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad()})
+        v1, v2, v3 = (f"ve-zt{i}-{d.sufijo}" for i in (1, 2, 3))
+        r = await _entregar(a1, tarea_id, v1, imagenes=1, zip_=("r1.zip", primero), ya_subidas="[0]")
+        assert r.status_code == 201 and r.json()["zip"]["guardado"] is True, r.text
+        assert (await _decidir(lider, v1, "cambios", "Otra vuelta")).status_code == 200
+
+        # El tope, con entre 1 y 2 MB libres: un ZIP de 3 MB no entra.
+        ocupado = await _zips_guardados(d)
+        assert ocupado >= len(primero)
+        monkeypatch.setattr(settings, "ZIP_TOPE_MB", -(-ocupado // mb) + 1)
+        segundo = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad(), "fuente.otf": os.urandom(3 * mb)})
+        caplog.clear()
+        r = await _entregar(a1, tarea_id, v2, imagenes=1, zip_=("r2.zip", segundo), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["guardado"] is False
+        # Lo frenó el tope de los ZIP (queda en el log para quien administra), no la base.
+        assert "(ZIP_TOPE_MB)" in caplog.text and "(BASE_TOPE_MB)" not in caplog.text
+        det = await _detalle(lider, tarea_id)
+        v_1, v_2 = det["fases"][0]["versiones"]
+        assert v_2["zip"]["guardado"] is False and v_2["zip"]["tamano"] == len(segundo)
+        assert len(v_2["imagenes"]) == 1 and det["resumen"]["momento"] == "revision"
+        r = await lider.get(f"/calendario/versiones/{v2}/zip")
+        assert r.status_code == 404 and "no se guardó porque no había lugar en la base" in r.json()["detail"]
+        # Lo de antes, entero.
+        assert v_1["zip"]["guardado"] is True
+        assert (await lider.get(f"/calendario/versiones/{v1}/zip")).content == primero
+        assert await _zips_guardados(d) == ocupado
+
+        # Con lugar justo para él (el que no se guardó no cuenta), se guarda.
+        assert (await _decidir(lider, v2, "cambios", "Otra vuelta más")).status_code == 200
+        monkeypatch.setattr(settings, "ZIP_TOPE_MB", -(-(ocupado + len(segundo)) // mb))
+        assert (ocupado + len(segundo) + len(segundo)) > settings.ZIP_TOPE_MB * mb
+        r = await _entregar(a1, tarea_id, v3, imagenes=1, zip_=("r3.zip", segundo), ya_subidas="[0]")
+        assert r.status_code == 201 and r.json()["zip"]["guardado"] is True, r.text
+        assert (await lider.get(f"/calendario/versiones/{v3}/zip")).content == segundo
+        assert await _zips_guardados(d) == ocupado + len(segundo)
+    correr(prueba)
+
+
+def test_con_la_base_llena_el_zip_no_se_guarda_la_entrega_sigue_y_no_se_borra_nada(monkeypatch, caplog):
+    """Si la base no tiene lugar para el ZIP, aunque entre en el tope de los
+    ZIP, la entrega se hace igual: quedan la versión y sus imágenes, y del ZIP
+    el nombre y el peso, para que la ficha diga que no se guardó. NUNCA se
+    borra nada para hacerle lugar: el ZIP y las imágenes de la ronda anterior
+    siguen enteros."""
+    from sqlalchemy import text
+
+    from app.core.config import settings
+
+    _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        primero = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad()})
+        v1, v2 = f"ve-ll1-{d.sufijo}", f"ve-ll2-{d.sufijo}"
+        assert (await _entregar(a1, tarea_id, v1, imagenes=1, zip_=("r1.zip", primero), ya_subidas="[0]")).status_code == 201
+        assert (await _decidir(lider, v1, "cambios", "Otra vuelta")).status_code == 200
+        async with d.Sesion() as s:
+            antes = {
+                "zips": (await s.execute(select(func.count()).select_from(CalendarioVersionZip))).scalar_one(),
+                "imagenes": (await s.execute(select(func.count()).select_from(CalendarioVersionImagen))).scalar_one(),
+            }
+            tamano = (await s.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+        # La base, casi en el tope: entre 1 y 2 MB libres, que alcanzan para
+        # las imágenes y no para el ZIP. El tope de los ZIP, con lugar.
+        mb = 1024 * 1024
+        monkeypatch.setattr(settings, "BASE_TOPE_MB", -(-tamano // mb) + 1)
+        monkeypatch.setattr(settings, "ZIP_TOPE_MB", 1000)
+        segundo = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad(), "fuente.otf": os.urandom(3 * mb)})
+        caplog.clear()
+        r = await _entregar(a1, tarea_id, v2, imagenes=1, zip_=("r2.zip", segundo), ya_subidas="[0]")
+        assert r.status_code == 201, r.text
+        assert r.json()["zip"]["guardado"] is False
+        # Lo frenó la base (el tope de los ZIP tenía lugar).
+        assert "(BASE_TOPE_MB)" in caplog.text and "(ZIP_TOPE_MB)" not in caplog.text
+        det = await _detalle(lider, tarea_id)
+        v_1, v_2 = det["fases"][0]["versiones"]
+        assert v_2["zip"]["guardado"] is False and v_2["zip"]["tamano"] == len(segundo)
+        assert len(v_2["imagenes"]) == 1 and det["resumen"]["momento"] == "revision"
+        r = await lider.get(f"/calendario/versiones/{v2}/zip")
+        assert r.status_code == 404 and "no se guardó porque no había lugar en la base" in r.json()["detail"]
+        # Lo de antes, entero.
+        assert v_1["zip"]["guardado"] is True
+        assert (await lider.get(f"/calendario/versiones/{v1}/zip")).content == primero
+        assert (await lider.get(f"/calendario/entregas/imagenes/{v_1['imagenes'][0]['id']}")).status_code == 200
+        async with d.Sesion() as s:
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersionZip))).scalar_one() == antes["zips"] + 1
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersionImagen))).scalar_one() == antes["imagenes"] + 1
+            assert (await s.execute(
+                select(CalendarioVersionZip.datos).where(CalendarioVersionZip.version_id == v2)
+            )).scalar_one() is None
+    correr(prueba)
+
+
+def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_aprueba(monkeypatch):
+    """Ivan (19/11/2026), cuando se le contó que la IA no comparaba con la
+    ronda anterior: "debería de hacerlo (...) si ves que algo no anda, ¿por
+    qué no arreglarlo?". Con la base de verdad: lo que la IA recibe de la
+    ronda anterior (cada marca con su imagen por orden y su lugar, y el
+    comentario de quien pidió los cambios, no la nota interna) y que lo que
+    contestó lo ve quien aprueba, nunca la agencia. Lo que hace la IA con eso
+    está en test_revision_ia.py. Desde la revisión del 19/11/2026 recibe
+    además las miniaturas de esa ronda, para comparar."""
+    from app.services import revision_ia
+
+    # Entregar no dispara la revisión de verdad (acá no hay clave; por las dudas).
+    monkeypatch.setattr(revision_ia, "activa", lambda: False)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        # Las miniaturas, de verdad y de distinto tamaño: así se ve su orden.
+        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg")),
+               ("imagenes", ("b.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("n.jpg", _jpeg_de_verdad(48, 64), "image/jpeg"))]
+        v1, v2, v3 = (f"ve-r{i}-{d.sufijo}" for i in (1, 2, 3))
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=dos)
+        assert r.status_code == 201, r.text
+        det = await _detalle(lider, tarea_id)
+        im1, im2 = [i["id"] for i in det["fases"][0]["versiones"][0]["imagenes"]]
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "comentario": "Revisen también los legales.",
+            "notaInterna": "Ojo: comercial todavía no confirmó el precio",
+            "marcas": [{"imagenId": im2, "x": 0.5, "y": 0.9, "texto": "Falta la tilde en «Válido»"},
+                       {"imagenId": im1, "x": 0.12, "y": 0.08, "texto": "Agrandar el -40%"}]})
+        assert r.status_code == 200, r.text
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v2}, files=dos)
+        assert r.status_code == 201, r.text
+
+        async with d.Sesion() as s:
+            contexto, imagenes = await revision_ia.cargar_version(s, v2)
+            assert contexto.ronda == 2 and len(imagenes) == 2
+            antes = contexto.ronda_anterior
+            assert (antes.ronda, antes.imagenes, antes.comentarios) == (1, 2, ("Revisen también los legales.",))
+            assert [(m.numero, m.texto, m.imagen, m.x, m.y) for m in antes.marcas] == [
+                (1, "Falta la tilde en «Válido»", 2, 0.5, 0.9), (2, "Agrandar el -40%", 1, 0.12, 0.08)]
+            marcas = [m.marca_id for m in antes.marcas]
+            texto = revision_ia.texto_del_pedido(contexto)
+            assert "- Marca 1, en la imagen 2, abajo en el centro (50% del ancho, 90% del alto): Falta la tilde" in texto
+            # La nota interna no va: es del equipo, no algo que se le pidió a la agencia.
+            assert "comercial" not in texto
+            # La primera ronda no tiene nada antes.
+            assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+            # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
+            # Una que no está (la purga de antes del 19/11/2026 vació algunas)
+            # no va, y la otra conserva su número: el que dicen las marcas.
+            await s.execute(update(CalendarioVersionImagen).where(CalendarioVersionImagen.id == im1)
+                            .values(miniatura=None))
+            antes = (await revision_ia.cargar_version(s, v2))[0].ronda_anterior
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(2, 48, 64)]
+            assert [(m.numero, m.imagen) for m in antes.marcas] == [(1, 2), (2, 1)]
+            await s.rollback()  # la purga era solo para esta prueba
+
+        # Lo que contestó la IA (una revisión guardada) lo ve quien aprueba;
+        # la agencia, nunca.
+        async with d.Sesion() as s:
+            s.add(CalendarioRevisionIA(
+                version_id=v2, estado="lista", modelo="simulado", observaciones=[],
+                cambios_pedidos=[
+                    {"marcaId": marcas[0], "numero": 1, "veredicto": "falta", "nota": "Sigue sin tilde."},
+                    {"marcaId": marcas[1], "numero": 2, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
+                ],
+            ))
+            await s.commit()
+        r = await lider.get(f"/calendario/versiones/{v2}/revision-ia")
+        assert r.status_code == 200, r.text
+        assert r.json()["cambiosPedidos"] == [
+            {"marcaId": marcas[0], "numero": 1, "veredicto": "falta", "nota": "Sigue sin tilde."},
+            {"marcaId": marcas[1], "numero": 2, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
+        ]
+        assert (await a1.get(f"/calendario/versiones/{v2}/revision-ia")).status_code == 403
+        # Sin revisión guardada (la primera ronda), nada.
+        r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
+        assert r.status_code == 200 and r.json()["estado"] == "nada" and r.json()["cambiosPedidos"] == []
+
+        # Si vuelve solo con un comentario, sin marcas, no va nada: la IA
+        # contesta marca por marca, y al lado de cada marca es donde se ve.
+        assert (await _decidir(lider, v2, "cambios", "Otra vuelta: todo más grande")).status_code == 200
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v3}, files=dos)
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert (await revision_ia.cargar_version(s, v3))[0].ronda_anterior is None
+    correr(prueba)
+
+
+def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
+    """Revisión del 19/11/2026: lo que se pidió cuenta solo dentro de la misma
+    fase. El Boceto vuelve con cambios y una marca, su ronda 2 se aprueba y
+    arranca el Arte final: su ronda 1 no tiene nada que controlar (lo de antes
+    es de otra fase), y su ronda 2 recibe lo que se pidió en su ronda 1, con
+    sus miniaturas. Las marcas del Boceto no aparecen nunca."""
+    from app.models.entregas import CalendarioMarca
+    from app.services import revision_ia
+
+    monkeypatch.setattr(revision_ia, "activa", lambda: False)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id],
+            "fases": [{"nombre": "Boceto"}, {"nombre": "Arte final"}]})
+        assert r.status_code == 200, r.text
+        b1, b2, f1, f2 = (f"ve-{n}-{d.sufijo}" for n in ("bo1", "bo2", "af1", "af2"))
+
+        # Boceto: la ronda 1 vuelve con cambios y una marca; la 2 se aprueba.
+        assert (await _entregar(a1, tarea_id, b1, imagenes=1)).status_code == 201
+        imagen = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        r = await lider.post(f"/calendario/versiones/{b1}/decision", json={
+            "decision": "cambios", "comentario": "Boceto: probemos otra foto",
+            "marcas": [{"imagenId": imagen, "x": 0.5, "y": 0.5, "texto": "Boceto: otra foto de fondo"}]})
+        assert r.status_code == 200, r.text
+        assert (await _entregar(a1, tarea_id, b2, imagenes=1)).status_code == 201
+        assert (await _decidir(lider, b2, "aprobada")).status_code == 200
+
+        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que controlar.
+        assert (await _entregar(a1, tarea_id, f1, imagenes=1, color="black")).status_code == 201
+        async with d.Sesion() as s:
+            contexto, _ = await revision_ia.cargar_version(s, f1)
+        assert (contexto.fase, contexto.ronda, contexto.ronda_anterior) == ("Arte final", 1, None)
+        assert "Boceto:" not in revision_ia.texto_del_pedido(contexto)
+
+        # Arte final, ronda 2: lo que se pidió en su ronda 1, con sus miniaturas.
+        imagen = (await _detalle(lider, tarea_id))["fases"][1]["versiones"][0]["imagenes"][0]["id"]
+        r = await lider.post(f"/calendario/versiones/{f1}/decision", json={
+            "decision": "cambios", "comentario": "Arte final: falta el legal",
+            "marcas": [{"imagenId": imagen, "x": 0.5, "y": 0.9, "texto": "Arte final: agregar el legal"}]})
+        assert r.status_code == 200, r.text
+        assert (await _entregar(a1, tarea_id, f2, imagenes=1, color="black")).status_code == 201
+        async with d.Sesion() as s:
+            contexto, _ = await revision_ia.cargar_version(s, f2)
+            del_boceto = set((await s.execute(
+                select(CalendarioMarca.id).where(CalendarioMarca.version_id.in_([b1, b2]))
+            )).scalars())
+            miniaturas = dict((await s.execute(
+                select(CalendarioVersionImagen.version_id, CalendarioVersionImagen.miniatura)
+                .where(CalendarioVersionImagen.version_id.in_([b1, f1]))
+            )).all())
+        antes = contexto.ronda_anterior
+        assert (contexto.fase, contexto.ronda, antes.ronda) == ("Arte final", 2, 1)
+        assert [m.texto for m in antes.marcas] == ["Arte final: agregar el legal"]
+        assert antes.comentarios == ("Arte final: falta el legal",)
+        assert len(del_boceto) == 1 and not del_boceto & {m.marca_id for m in antes.marcas}
+        assert "Boceto:" not in revision_ia.texto_del_pedido(contexto)
+        # Las miniaturas son las de su ronda 1, no las del Boceto.
+        assert miniaturas[f1] != miniaturas[b1]
+        assert [m.datos for m in antes.miniaturas] == [miniaturas[f1]]
     correr(prueba)
 
 
@@ -1611,6 +2268,243 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-tab-x-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": "Otra Agencia SA"})
         assert r.status_code == 422
+    correr(prueba)
+
+
+def test_la_agencia_se_elige_y_se_compara_sin_tildes_ni_mayusculas():
+    """Ivan (19/11/2026): "¿no debería ser una selección?". La empresa de una
+    cuenta externa se escribía a mano, y una cuenta con «Disenadores» (sin ñ)
+    no veía las tarjetas de Diseñadores (una agencia externa, como Publicis).
+    Ahora se elige de una lista, lo que se guarda queda como ya está escrito,
+    y lo que ya estaba guardado se compara sin tildes ni mayúsculas, sin tocar
+    los datos."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        pieza = f"ta-dis-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": pieza, "tipo": "push", "para": "agencia", "agencia": "disenadores "})
+        assert r.status_code == 201, r.text
+        assert r.json()["agencia"] == "Diseñadores"
+
+        # Una cuenta guardada antes a mano, sin ñ y en mayúsculas: ve su
+        # tarjeta, la abre, ve su tablero y le llega lo nuevo.
+        vieja = await _persona(d, "Vieja Cuenta", externo=True, empresa="DISENADORES")
+        c = Cliente(d.http, vieja)
+        assert await _tarjeta(c, pieza) is not None
+        assert (await c.get(f"/calendario/tareas/{pieza}/entregas")).status_code == 200
+        assert (await c.get("/calendario/tableros", params={"mundo": MUNDO})).json() == [
+            {"nombre": "Diseñadores", "cuentas": 1}]
+        otra = f"ta-dis2-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": otra, "tipo": "push", "para": "agencia", "agencia": "Diseñadores"})
+        assert r.status_code == 201, r.text
+        assert len(await _avisos(d, vieja, otra)) == 1
+
+        # La lista del panel: cada agencia una vez, los tres tableros primero.
+        r = await promo.get("/admin/agencias")
+        assert r.status_code == 200, r.text
+        lista = r.json()
+        assert lista[:3] == ["Publicis", "Another Monday", "Diseñadores"] and "DISENADORES" not in lista
+        assert lista.count(f"Agencia Pampa {d.sufijo}") == 1
+        assert (await Cliente(d.http, d.lucia).get("/admin/agencias")).status_code == 403
+
+        # Al crear una cuenta, una agencia que ya existe queda como ya está; una nueva, como se escribió.
+        for escrita, guardada in (("  diseñadores", "Diseñadores"),
+                                  (f"AGENCIA  PAMPA {d.sufijo}", f"Agencia Pampa {d.sufijo}"),
+                                  (f"  Estudio   Nuevo {d.sufijo} ", f"Estudio Nuevo {d.sufijo}")):
+            r = await promo.post("/admin/users", json={
+                "email": f"n{uuid.uuid4().hex[:6]}.{d.sufijo}@agencia-prueba.uy", "full_name": "Cuenta Nueva",
+                "password": "Clave-segura-123", "es_externo": True, "empresa": escrita})
+            assert r.status_code == 201, r.text
+            assert r.json()["empresa"] == guardada
+        # Al editarla, igual: la vieja pasa a escribirse como el tablero y sigue viendo su tarjeta.
+        r = await promo.patch(f"/admin/users/{vieja.id}/externo", json={"es_externo": True, "empresa": "disenadores"})
+        assert r.status_code == 200, r.text
+        assert r.json()["empresa"] == "Diseñadores"
+        assert await _tarjeta(c, pieza) is not None
+        # A la única cuenta de una agencia se le puede corregir cómo se escribe.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"Estudio Súr {d.sufijo}"})
+        assert r.status_code == 200 and r.json()["empresa"] == f"Estudio Súr {d.sufijo}"
+    correr(prueba)
+
+
+def test_la_lista_de_agencias_para_editar_una_cuenta_no_la_cuenta_a_ella():
+    """Revisión del 19/11/2026: al corregir cómo se escribe la única cuenta de
+    una agencia que no es un tablero, el panel decía «Ya existe: se guarda
+    como «Estudio Sur»» y el servidor guardaba lo nuevo (no la cuenta a ella
+    misma). La lista para editarla, GET /admin/agencias?menos=<id>, tampoco:
+    da lo mismo que usa el servidor al guardar."""
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        sur, pampa = f"Estudio Sur {d.sufijo}", f"Agencia Pampa {d.sufijo}"
+        completa = (await promo.get("/admin/agencias")).json()
+        assert sur in completa and pampa in completa
+
+        # Bruno es la única cuenta de Estudio Sur: sin él, no existe.
+        r = await promo.get("/admin/agencias", params={"menos": d.b1.id})
+        assert r.status_code == 200, r.text
+        sin_bruno = r.json()
+        assert sur not in sin_bruno and pampa in sin_bruno
+        assert sin_bruno[:3] == ["Publicis", "Another Monday", "Diseñadores"]
+        # Y el servidor guarda lo que se escribe, como dice esa lista.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"estudio súr {d.sufijo}"})
+        assert r.status_code == 200 and r.json()["empresa"] == f"estudio súr {d.sufijo}"
+
+        # Pampa tiene dos: sin una de ellas, sigue estando (como la escribió
+        # la otra, «agencia  pampa», sin los espacios de más).
+        assert f"agencia pampa {d.sufijo}" in (await promo.get("/admin/agencias", params={"menos": d.a1.id})).json()
+        assert pampa in (await promo.get("/admin/agencias", params={"menos": d.a2.id})).json()
+        # La única cuenta de un tablero: el tablero está siempre.
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        assert "Diseñadores" in (await promo.get("/admin/agencias", params={"menos": fer.id})).json()
+        # Quien no administra, tampoco con `menos`; y un `menos` que no es un número no entra.
+        assert (await Cliente(d.http, d.lucia).get("/admin/agencias", params={"menos": d.b1.id})).status_code == 403
+        assert (await promo.get("/admin/agencias", params={"menos": "x"})).status_code == 422
+    correr(prueba)
+
+
+def test_la_empresa_se_compara_igual_en_la_base_que_en_python():
+    """La base (`empresa_en_sql`) y Python (`clave_de_empresa`) tienen que dar
+    exactamente lo mismo: si no, el tablero de una agencia y su campanita
+    (que buscan en la base) no coincidirían con lo que se decide en Python."""
+    from sqlalchemy import literal
+
+    from app.core import externos
+
+    async def prueba(d):
+        async with d.Sesion() as s:
+            for texto in ("Diseñadores", "  DISEÑADORES  ", "Another\tMonday", "Ñandú   Estudio", "Publicis",
+                          "ÁÉÍÓÚ áéíóú Üü Çç Ãã", "agencia  pampa"):
+                en_la_base = (await s.execute(select(externos.empresa_en_sql(literal(texto))))).scalar_one()
+                assert en_la_base == externos.clave_de_empresa(texto), texto
+    correr(prueba)
+
+
+def test_el_responsable_de_una_tarea_de_tienda_es_alguien_de_tienda():
+    """19/11/2026: en «Responsable de Tienda Inglesa» aparecían las cuentas de
+    las agencias («Fer (Diseñadores)»), y elegir una convertía la tarea
+    interna en una pieza de la agencia, con su tarjeta. Ahora el servidor lo
+    rechaza con un mensaje claro y la tarea queda como estaba."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        tarea_id = f"ta-r-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": tarea_id, "titulo": "Brief del Ciberlunes", "asignadoA": fer.id})
+        assert r.status_code == 422
+        assert r.json()["detail"].startswith("Fer Disenia es de Diseñadores, una agencia externa:")
+        async with d.Sesion() as s:
+            assert await s.get(CalendarioTarea, tarea_id) is None
+
+        # Con alguien de Tienda, sí; y después pasársela a la agencia, no.
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": tarea_id, "titulo": "Brief del Ciberlunes", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{tarea_id}", json={"asignadoA": fer.id})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, tarea_id)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("tienda", None, d.aprob2.id)
+            assert await s.get(CalendarioEntrega, tarea_id) is None
+        assert await _avisos(d, fer, tarea_id) == []
+
+        # Lo de una agencia de afuera lo carga alguien de Tienda: tampoco.
+        fuera = f"ta-rf-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": fuera, "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+            "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{fuera}", json={"asignadoA": fer.id})
+        assert r.status_code == 422
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, fuera)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("fuera", "Estudio Afuera", d.lucia.id)
+
+        # En una plantilla, lo mismo; y una vieja con alguien de la agencia
+        # fijo crea esa tarea sin asignar (no una pieza de la agencia).
+        r = await lider.put(f"/calendario/plantillas/pl-r-{d.sufijo}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Brief", "ancla": "inicio", "dias": -3, "asignadoA": fer.id}]})
+        assert r.status_code == 422 and "agencia externa" in r.json()["detail"]
+        async with d.Sesion() as s:
+            s.add(CalendarioPlantilla(id=f"pl-vieja-{d.sufijo}", mundo=MUNDO, nombre="Vieja", creado_por_id=d.lider.id,
+                                      tareas=[{"id": "t1", "titulo": "Brief viejo", "asignadoA": fer.id},
+                                              {"id": "t2", "titulo": "Push", "tipo": "push", "para": "agencia",
+                                               "agencia": "disenadores"}]))
+            await s.commit()
+        ids = {"t1": f"ta-pv1-{d.sufijo}", "t2": f"ta-pv2-{d.sufijo}"}
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/plantilla", json={
+            "plantillaId": f"pl-vieja-{d.sufijo}", "ids": ids})
+        assert r.status_code == 201, r.text
+        assert (r.json()["sinAsignar"], r.json()["tarjetas"]) == (1, 1)
+        async with d.Sesion() as s:
+            t1, t2 = await s.get(CalendarioTarea, ids["t1"]), await s.get(CalendarioTarea, ids["t2"])
+            assert (t1.para, t1.agencia, t1.asignado_a_id) == ("tienda", None, None)
+            # La pieza, con la agencia como ya está escrita.
+            assert (t2.para, t2.agencia) == ("agencia", "Diseñadores")
+
+        # Una pieza de su agencia sí puede quedar a nombre de alguien de ella.
+        pieza = f"ta-rp-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": pieza, "tipo": "push", "para": "agencia", "agencia": "Diseñadores"})
+        assert r.status_code == 201, r.text
+        r = await lider.patch(f"/calendario/tareas/{pieza}", json={"asignadoA": fer.id})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            t = await s.get(CalendarioTarea, pieza)
+            assert (t.para, t.agencia, t.asignado_a_id) == ("agencia", "Diseñadores", fer.id)
+    correr(prueba)
+
+
+def test_copiar_la_accion_no_le_deja_una_tarea_de_tienda_a_alguien_de_una_agencia():
+    """Revisión del 19/11/2026: la tarea de Tienda la llevaba alguien que
+    después pasó a ser de una agencia (Diseñadores, una agencia externa).
+    Copiar la acción la hacía nacer a su nombre, con su aviso y su tarjeta,
+    como si fuera una pieza de la agencia. Ahora la copia sale sin
+    responsable, como al aplicar una plantilla, y la respuesta lo cuenta. La
+    pieza de la agencia sí sigue a nombre de alguien de ella."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        ids = {"brief": f"ta-cb-{d.sufijo}", "pieza": f"ta-cp-{d.sufijo}", "fuera": f"ta-cf-{d.sufijo}",
+               "agencia": f"ta-ca-{d.sufijo}"}
+        for cuerpo in (
+            {"id": ids["brief"], "titulo": "Brief del Ciberlunes", "asignadoA": d.aprob2.id},
+            {"id": ids["pieza"], "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.aprob2.id},
+            {"id": ids["fuera"], "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+             "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.aprob2.id},
+            {"id": ids["agencia"], "tipo": "push", "para": "agencia", "agencia": "Diseñadores", "asignadoA": fer.id},
+        ):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json=cuerpo)
+            assert r.status_code == 201, r.text
+        # Quien las llevaba se pasa a Diseñadores.
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Diseñadores"})
+        assert r.status_code == 200, r.text
+
+        copia = f"br-cx-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        assert r.json()["sinResponsable"] == 3
+        async with d.Sesion() as s:
+            copiadas = (await s.execute(select(CalendarioTarea).where(CalendarioTarea.barra_id == copia))).scalars().all()
+        por_tipo = {(t.tipo, t.para): t for t in copiadas}
+        assert len(por_tipo) == 4
+        assert por_tipo[(None, "tienda")].asignado_a_id is None
+        assert por_tipo[("banners", "tienda")].asignado_a_id is None and por_tipo[("banners", "tienda")].agencia is None
+        assert por_tipo[("mailing", "fuera")].asignado_a_id is None
+        assert por_tipo[("mailing", "fuera")].agencia == "Estudio Afuera"
+        pieza_de_la_agencia = por_tipo[("push", "agencia")]
+        assert (pieza_de_la_agencia.agencia, pieza_de_la_agencia.asignado_a_id) == ("Diseñadores", fer.id)
+        # A la cuenta de la agencia no le llegó nada de lo de Tienda, ni lo ve en su tablero.
+        de_tienda = [t.id for t in copiadas if t.para != "agencia"]
+        for tarea_id in de_tienda:
+            assert await _avisos(d, d.aprob2, tarea_id) == []
+            assert await _tarjeta(Cliente(d.http, d.aprob2), tarea_id) is None
+        # La de la agencia, sí: es suya (de Diseñadores).
+        assert await _tarjeta(Cliente(d.http, d.aprob2), pieza_de_la_agencia.id) is not None
     correr(prueba)
 
 

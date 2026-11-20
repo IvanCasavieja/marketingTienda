@@ -182,7 +182,8 @@ def en_orden_de_alta(tareas: Iterable[Any]) -> list[Any]:
 class TareasCopiadas:
     # En orden de alta (madres primero), listas para guardar.
     filas: list[dict[str, Any]] = field(default_factory=list)
-    # Cuántas perdieron a su responsable porque ya no puede abrir el mundo.
+    # Cuántas perdieron a su responsable porque ya no puede abrir el mundo,
+    # o porque es de una agencia y la tarea es de Tienda (19/11/2026).
     sin_responsable: int = 0
 
 
@@ -190,20 +191,32 @@ def copiar_tareas(
     tareas: Iterable[Any], barra_id: str, corrimiento: timedelta,
     responsables_validos: set[int], creado_por: int | None,
     hacer_id: Callable[[str], str] = nuevo_id,
+    *, de_agencias: Iterable[int] = (),
 ) -> TareasCopiadas:
     """Las tareas, en pendiente y con el vencimiento corrido. La estructura
     de subtareas se mantiene con ids nuevos. El responsable sigue solo si
     todavía puede abrir el mundo (`responsables_validos`): asignarle una tarea
     a alguien que no la vería no sirve, igual que al crearla.
 
+    `de_agencias`: las cuentas externas (Publicis, Another Monday,
+    Diseñadores... agencias de afuera de Tienda). Una tarea que no es "para
+    la agencia" (de Tienda, o lo de una agencia de afuera, que carga alguien
+    del equipo) no sigue a nombre de una de ellas: se copia sin responsable,
+    como al aplicar una plantilla. Pasaba con alguien que llevaba la tarea y
+    después pasó a ser de una agencia: la copia le nacía a su nombre, con su
+    aviso y su tarjeta (revisión del 19/11/2026). La pieza de una agencia sí
+    sigue a nombre de alguien de ella.
+
     `creado_por` es quien copia: es quien las está cargando ahora, y a quien
     le llega el aviso cuando alguien termina una."""
+    externas = set(de_agencias)
     ordenadas = en_orden_de_alta(tareas)
     ids = {t.id: hacer_id("ta") for t in ordenadas}
     out = TareasCopiadas()
     for t in ordenadas:
         responsable = t.asignado_a_id
-        if responsable is not None and responsable not in responsables_validos:
+        de_tienda_a_una_agencia = responsable in externas and getattr(t, "para", "tienda") != "agencia"
+        if responsable is not None and (responsable not in responsables_validos or de_tienda_a_una_agencia):
             responsable = None
             out.sin_responsable += 1
         out.filas.append(valores_copiados(t, corrimiento, {

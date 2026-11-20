@@ -94,11 +94,60 @@ def limpiar_empresa(texto: str | None) -> str | None:
     return limpio[:120] or None
 
 
+# Las letras con tilde (y la ñ) y su versión sin. Es una tabla a mano, y no
+# unicodedata, porque la misma cuenta se hace en la base (`empresa_en_sql`,
+# con translate) y las dos tienen que dar exactamente lo mismo. Van también
+# las mayúsculas: si la base no sabe pasar «Ñ» a minúscula (una base con el
+# idioma C), la tabla la pasa igual.
+_CON_TILDE = "áàäâãåéèëêíìïîóòöôõúùüûñçýÁÀÄÂÃÅÉÈËÊÍÌÏÎÓÒÖÔÕÚÙÜÛÑÇÝ"
+_SIN_TILDE = "aaaaaaeeeeiiiiooooouuuuncy" * 2
+_SIN_TILDES = str.maketrans(_CON_TILDE, _SIN_TILDE)
+
+
+def clave_de_empresa(texto: str | None) -> str | None:
+    """Cómo se compara el nombre de una empresa: sin espacios de más, sin
+    mayúsculas, sin tildes y con la ñ como n. "Diseñadores", "Disenadores" y
+    "  DISEÑADORES " dan lo mismo (19/11/2026: la empresa se escribía a mano
+    y una letra de diferencia dejaba a la agencia sin ver sus tarjetas).
+    Vacío = sin empresa."""
+    limpio = limpiar_empresa(texto)
+    return limpio.lower().translate(_SIN_TILDES) if limpio else None
+
+
 def misma_empresa(a: str | None, b: str | None) -> bool:
-    """"Agencia Pampa" y "agencia  pampa" son la misma. Sin empresa no hay
-    con quién compartirla."""
-    a, b = limpiar_empresa(a), limpiar_empresa(b)
-    return bool(a) and bool(b) and a.casefold() == b.casefold()
+    """"Diseñadores", "disenadores" y "Diseñadores  " son la misma (ver
+    `clave_de_empresa`). Sin empresa no hay con quién compartirla."""
+    a, b = clave_de_empresa(a), clave_de_empresa(b)
+    return bool(a) and a == b
+
+
+def empresa_como_ya_esta(texto: str | None, existentes) -> str | None:
+    """El nombre con el que se guarda una empresa: si es una de `existentes`
+    (sin mirar tildes, la ñ, mayúsculas ni espacios), como ya está escrita
+    ahí; si no, como vino, sin espacios de más. Así «Disenadores» o
+    «diseñadores » terminan siendo «Diseñadores» (Ivan, 19/11/2026: "¿no
+    debería ser una selección?"). Pura: la lista la arma
+    app/services/agencias.py."""
+    clave = clave_de_empresa(texto)
+    if not clave:
+        return None
+    for nombre in existentes:
+        if clave_de_empresa(nombre) == clave:
+            return limpiar_empresa(nombre)
+    return limpiar_empresa(texto)
+
+
+def sin_repetir(nombres) -> list[str]:
+    """Los nombres de empresa, cada uno una sola vez (el primero que aparece
+    manda cómo se escribe) y sin espacios de más. Pura."""
+    vistas: set[str] = set()
+    out: list[str] = []
+    for nombre in nombres:
+        clave = clave_de_empresa(nombre)
+        if clave and clave not in vistas:
+            vistas.add(clave)
+            out.append(limpiar_empresa(nombre))
+    return out
 
 
 def es_tarea_propia(usuario, tarea) -> bool:
@@ -111,23 +160,28 @@ def es_tarea_propia(usuario, tarea) -> bool:
 
 
 def empresa_en_sql(columna):
-    """La empresa como la compara `misma_empresa`, para un WHERE: sin espacios
-    de más y en minúscula. El panel ya la guarda limpia; esto cubre una que
-    haya entrado de otro lado."""
-    return func.lower(func.regexp_replace(func.btrim(columna), r"\s+", " ", "g"))
+    """La empresa como la compara `misma_empresa`, para un WHERE: lo mismo
+    que `clave_de_empresa` (sin espacios de más, en minúscula, sin tildes y
+    con la ñ como n), así que se compara contra eso. El panel ya la guarda
+    limpia y como ya existía; esto cubre lo que quedó guardado de antes
+    (19/11/2026: una cuenta con «Disenadores» tiene que ver las tarjetas de
+    «Diseñadores» sin tocar los datos)."""
+    juntos = func.btrim(func.regexp_replace(columna, r"\s+", " ", "g"))
+    return func.translate(func.lower(juntos), _CON_TILDE, _SIN_TILDE)
 
 
 def condicion_tarea_propia(modelo, usuario):
     """La misma regla que `es_tarea_propia`, para el WHERE de una consulta
-    sobre las tareas. La empresa se compara sin mayúsculas ni espacios de
-    más, como `misma_empresa` (la de la tarea se guarda ya limpia)."""
-    empresa = limpiar_empresa(getattr(usuario, "empresa", None))
+    sobre las tareas. La empresa se compara como en `misma_empresa`: sin
+    tildes, mayúsculas ni espacios de más (una tarjeta guardada para
+    «Disenadores» es de «Diseñadores»)."""
+    clave = clave_de_empresa(getattr(usuario, "empresa", None))
     asignada = modelo.asignado_a_id == usuario.id
-    if not empresa:
+    if not clave:
         return asignada
     return or_(
         asignada,
-        and_(modelo.para == "agencia", func.lower(modelo.agencia) == empresa.lower()),
+        and_(modelo.para == "agencia", empresa_en_sql(modelo.agencia) == clave),
     )
 
 

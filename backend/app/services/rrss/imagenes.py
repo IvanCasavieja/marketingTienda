@@ -12,6 +12,8 @@ import io
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from app.services.de_a_uno import DE_A_UNO
+
 # Proporciones que usan las redes. Se compara ancho/alto con tolerancia: una
 # placa de 2250x2813 es "4:5" aunque 2250/2813 no dé exactamente 0.8.
 FORMATOS: list[tuple[str, float]] = [("1:1", 1.0), ("4:5", 0.8), ("9:16", 9 / 16)]
@@ -379,6 +381,17 @@ def _render(data: bytes, content_type: str, filename: str,
         partes = recortar_carillas(im, cajas) if cajas else carillas_de(im, cuantas)
         return [ajustar_ancho(p, ancho) if p.width > ancho else p for p in partes]
 
+    # Un PDF, con PyMuPDF tomado de a uno en todo el proceso (revisión del
+    # 19/11/2026): PyMuPDF no se puede usar desde dos hilos a la vez, y las
+    # entregas también abren PDF (app/services/materiales.py) desde su hilo.
+    # Hasta ese día esto no tomaba el candado. Ver app/services/de_a_uno.py.
+    with DE_A_UNO:
+        return _render_pdf(data, ancho, cortes, partir)
+
+
+def _render_pdf(data: bytes, ancho: int, cortes: list[list] | None, partir: bool) -> list[Image.Image]:
+    """Las páginas de un PDF para `_render`, con `DE_A_UNO` ya tomado: de
+    abrirlo a vaciar el depósito de MuPDF, todo adentro del candado."""
     import pymupdf  # import tardío: es una dependencia pesada que solo usa esta función
 
     try:

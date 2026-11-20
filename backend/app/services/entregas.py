@@ -101,6 +101,13 @@ MAX_IMAGENES = 4
 # pesa 6-20 KB.
 MAX_BYTES_IMAGEN = 2 * 1024 * 1024
 MAX_BYTES_MINIATURA = 256 * 1024
+# Cómo achica el navegador las imágenes de la ronda (frontend/lib/calendario/
+# entregas.ts: LADO_MAYOR, LADO_MINIATURA y CALIDAD, que es 0,75). Desde el
+# 19/11/2026 el servidor achica igual lo que saca de un ZIP para la ronda (las
+# páginas de un PDF, ver app/services/materiales.py): si cambia allá, cambia acá.
+LADO_MAYOR = 1600
+LADO_MINIATURA = 320
+CALIDAD_JPEG = 75
 MAX_MARCAS = 40
 # Las imágenes de las entregas NO se borran nunca (Ivan, 19/11/2026): son el
 # histórico de piezas, el mismo que hoy vive en carpetas por año en SharePoint
@@ -1079,12 +1086,14 @@ async def destinatarios_de_la_tarjeta(db: AsyncSession, tarea: CalendarioTarea, 
     ids: list[int] = []
     if tarea.asignado_a_id is not None:
         ids.append(tarea.asignado_a_id)
-    empresa = externos.limpiar_empresa(tarea.agencia) if tarea.para == "agencia" else None
-    if empresa:
+    # La agencia se compara sin tildes ni mayúsculas (19/11/2026): a una
+    # cuenta guardada con «Disenadores» le llega lo de Diseñadores.
+    clave = externos.clave_de_empresa(tarea.agencia) if tarea.para == "agencia" else None
+    if clave:
         for u in (await db.execute(
             select(User).where(
                 User.es_externo.is_(True), User.is_active.is_(True),
-                externos.empresa_en_sql(User.empresa) == empresa.lower(),
+                externos.empresa_en_sql(User.empresa) == clave,
             ).order_by(User.id)
         )).scalars():
             if u.id not in ids and puede_abrir(u, mundo) and externos.puede_tener(u, "calendario.view"):

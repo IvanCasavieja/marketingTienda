@@ -79,7 +79,10 @@ export type ResumenDeCopia = {
   tareas: number
   /** Las que NO se copian porque la persona no puede cargar tareas. */
   tareasSinPermiso: number
-  /** Tareas que se copian sin responsable: esa persona ya no ve el mundo. */
+  /**
+   * Tareas que se copian sin responsable: esa persona ya no ve el mundo, o
+   * ahora es de una agencia y la tarea es de Tienda (19/11/2026).
+   */
   sinResponsable: number
   avisos: number
   /** Personas que salen de algún aviso porque ya no ven el mundo. */
@@ -92,9 +95,13 @@ export type ResumenDeCopia = {
  * Lo que se va a llevar la copia, para decirlo antes de copiar. `queVen` son
  * los ids de quienes pueden abrir este calendario (la lista de personas del
  * mundo); sin ella (todavía no llegó) no se adivina a quién se saca, y el
- * servidor lo dice después.
+ * servidor lo dice después. `deAgencias`, los de esa lista que son de una
+ * agencia (cuentas externas): una tarea que no es para la agencia se copia
+ * sin ellos, como hace el servidor (19/11/2026).
  */
-export function queSeCopia(accion: BarraGuardada, queVen: Set<number> | null, cargaTareas: boolean): ResumenDeCopia {
+export function queSeCopia(
+  accion: BarraGuardada, queVen: Set<number> | null, cargaTareas: boolean, deAgencias: Set<number> = new Set(),
+): ResumenDeCopia {
   const tareas = accion.tareas ?? []
   const copiadas = cargaTareas ? tareas : []
   let destinatariosQuitados = 0
@@ -108,7 +115,10 @@ export function queSeCopia(accion: BarraGuardada, queVen: Set<number> | null, ca
     piezas: (accion.piezas ?? []).length,
     tareas: copiadas.length,
     tareasSinPermiso: cargaTareas ? 0 : tareas.length,
-    sinResponsable: queVen ? copiadas.filter(t => t.asignadoA != null && !queVen.has(t.asignadoA)).length : 0,
+    sinResponsable: queVen
+      ? copiadas.filter(t => t.asignadoA != null
+        && (!queVen.has(t.asignadoA) || (deAgencias.has(t.asignadoA) && t.para !== 'agencia'))).length
+      : 0,
     avisos: (accion.avisos ?? []).length - avisosSinNadie,
     destinatariosQuitados,
     avisosSinNadie,

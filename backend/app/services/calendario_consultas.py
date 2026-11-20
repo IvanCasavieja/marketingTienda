@@ -38,6 +38,14 @@ pruebas las cambien por datos en memoria sin una base.
    PERMISOS_DE_EXTERNOS en app/core/externos.py), pero si algún día se le
    habilita, además ve solo SUS tareas, ningún aviso y, de las personas, solo
    las de su empresa. La carga del equipo y los avisos no se le contestan.
+
+5. **Lo propio, siempre.** Ivan (19/11/2026): "Don Tino debe amoldarse a
+   cada usuario". A alguien del equipo sus tareas abiertas le llegan aunque
+   la acción quede fuera de lo que ve, y aunque no vea el calendario: la
+   misma regla que Mis tareas (alcance.le_llega_siempre). A una agencia, sus
+   tarjetas, como en su tablero (entregas.es_tarjeta_propia). De esa acción
+   se dice el nombre y las fechas, sin link (`AccionFueraDeAlcance`), como en
+   Mis tareas; lo de los demás y la ficha de la acción siguen cerrados.
 """
 from __future__ import annotations
 
@@ -53,7 +61,9 @@ from sqlalchemy import and_, func, or_, select
 from app.core import alcance, externos
 from app.core.mundos import MUNDOS, mundos_de, puede_abrir
 from app.models.calendario import CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioTarea
+from app.models.entregas import CalendarioEntrega
 from app.models.user import User
+from app.services import entregas as reglas_entregas
 from app.services.calendario_avisos import SIN_CATEGORIA, puede_ver_el_calendario
 
 URUGUAY = ZoneInfo("America/Montevideo")
@@ -238,9 +248,17 @@ def categoria(b) -> str | None:
 
 
 def ref_accion(b) -> dict:
-    """Cómo se nombra una acción dentro de otra cosa (una pieza, una tarea)."""
-    out = {"id": b.id, "nombre": corto(b.nombre, 120), "mundo": MUNDOS.get(b.mundo, b.mundo),
-           "link": link_de_accion(b.id)}
+    """Cómo se nombra una acción dentro de otra cosa (una pieza, una tarea).
+
+    Una que la persona no ve en el calendario, pero de la que cuelga algo
+    suyo (`AccionFueraDeAlcance`), va con sus fechas y sin id ni link, como
+    en Mis tareas: se nombra, pero la ficha no le abriría."""
+    if getattr(b, "fuera_de_alcance", False):
+        out = {"nombre": corto(b.nombre, 120), "mundo": MUNDOS.get(b.mundo, b.mundo),
+               "desde": _iso(b.desde), "hasta": _iso(b.hasta), "fuera_de_lo_que_ve": True}
+    else:
+        out = {"id": b.id, "nombre": corto(b.nombre, 120), "mundo": MUNDOS.get(b.mundo, b.mundo),
+               "link": link_de_accion(b.id)}
     cat = categoria(b)
     if cat:
         out["categoria"] = corto(cat, 60)
@@ -461,6 +479,13 @@ class FuenteCalendario:
         q = select(CalendarioTarea.id, CalendarioTarea.titulo).where(CalendarioTarea.id.in_(list(ids)))
         return {i: t for i, t in (await self.db.execute(q)).all()}
 
+    async def tareas_con_tarjeta(self, ids) -> set[str]:
+        """De esas tareas, las que tienen su tarjeta en el tablero (entregas)."""
+        if not ids:
+            return set()
+        q = select(CalendarioEntrega.tarea_id).where(CalendarioEntrega.tarea_id.in_(list(ids)))
+        return set((await self.db.execute(q)).scalars())
+
     async def avisos_con_accion(self, mundos, arranque_desde: date, arranque_hasta: date) -> list[tuple]:
         q = (
             select(CalendarioAviso, CalendarioBarra)
@@ -484,6 +509,21 @@ def _interseccion(rango, v):
     return (d, h) if d <= h else None
 
 
+class AccionFueraDeAlcance:
+    """Una acción que la persona no ve en el calendario (queda fuera de su
+    alcance) pero de la que cuelga algo suyo: una tarea suya o una tarjeta
+    de su agencia. Deja leer todo lo de la acción y avisa que está afuera:
+    `ref_accion` la nombra con sus fechas y sin link, como Mis tareas."""
+
+    fuera_de_alcance = True
+
+    def __init__(self, barra):
+        self._barra = barra
+
+    def __getattr__(self, nombre):
+        return getattr(self._barra, nombre)
+
+
 class FuenteRecortada:
     """La fuente de quien ve una parte del calendario: envuelve a otra y deja
     pasar solo lo que la persona ve en la pantalla.
@@ -493,6 +533,10 @@ class FuenteRecortada:
     - Además, una cuenta externa (`externo`, app/core/externos.py): de las
       tareas, solo las suyas; los avisos, ninguno (son internos); las
       personas, ella y las de su empresa.
+    - Lo propio pasa siempre (19/11/2026), aunque su acción quede afuera:
+      las tareas abiertas de alguien del equipo (como en Mis tareas) y las
+      tarjetas de una agencia (como en su tablero). Su acción viaja como
+      `AccionFueraDeAlcance`. Ver `_le_llega_siempre`.
 
     Cada método filtra lo que vuelve, no solo lo que pide: si una herramienta
     pide algo de más, igual no se escapa. Lo que se vio pasar queda anotado
@@ -544,12 +588,35 @@ class FuenteRecortada:
         return [(p, b) for p, b in await self.fuente.piezas_con_accion(mundos, desde, hasta) if self._toca(b)]
 
     async def tareas_con_accion(self, mundos, **kw) -> list[tuple]:
-        out = [
-            (t, b) for t, b in await self.fuente.tareas_con_accion(mundos, **kw)
-            if self._toca(b) and self._es_suya(t)
-        ]
+        filas = await self.fuente.tareas_con_accion(mundos, **kw)
+        tarjetas = await self._tarjetas([t for t, b in filas if not self._toca(b)])
+        out = []
+        for t, b in filas:
+            if self._toca(b):
+                if self._es_suya(t):
+                    out.append((t, b))
+            elif self._le_llega_siempre(t, tarjetas):
+                out.append((t, AccionFueraDeAlcance(b)))
         self._propias.update(t.id for t, _ in out)
         return out
+
+    def _le_llega_siempre(self, t, tarjetas: set[str]) -> bool:
+        """Lo propio, que pasa aunque su acción quede fuera de la ventana. Con
+        las reglas de la pantalla, no copiadas: a alguien del equipo, sus
+        tareas abiertas (las de Mis tareas, alcance.le_llega_siempre); a una
+        agencia, sus tarjetas (las de su tablero, entregas.es_tarjeta_propia)."""
+        if self.externo:
+            return t.id in tarjetas and reglas_entregas.es_tarjeta_propia(self.usuario, t, None)
+        return alcance.le_llega_siempre(self.usuario, t)
+
+    async def _tarjetas(self, tareas) -> set[str]:
+        """De esas tareas de una agencia, las que son tarjetas del tablero (las
+        que tienen entregas). Al equipo no le hace falta: lo suyo son sus
+        tareas, tengan tarjeta o no."""
+        if not self.externo:
+            return set()
+        ids = [t.id for t in tareas if externos.es_tarea_propia(self.usuario, t)]
+        return await self.fuente.tareas_con_tarjeta(ids) if ids else set()
 
     async def titulos_de_tareas(self, ids) -> dict[str, str]:
         # El título de una tarea madre que no salió (no es suya, o es de una
@@ -580,6 +647,19 @@ _NO_PARA_EXTERNOS = {
     "calendario_carga": "Es una cuenta externa (agencia): no ve la carga del equipo. Contale solo de sus tareas.",
     "calendario_avisos": "Es una cuenta externa (agencia): los avisos del calendario son internos y no los ve.",
 }
+
+# Quien no ve el calendario ("No lo ve", 0070) igual tiene lo suyo, como en
+# Mis tareas (19/11/2026): solo esto se le contesta.
+_LO_SUYO = {"calendario_tareas"}
+NO_VE_EL_CALENDARIO = (
+    "Esta persona no tiene acceso al calendario: no le cuentes nada de él. Lo único que sí le podés contar "
+    "son sus propias tareas (calendario_tareas con responsable 'yo')."
+)
+SOLO_LO_SUYO = (
+    "Esta persona no tiene acceso al calendario: de las tareas, solo le podés contar las suyas "
+    "(responsable 'yo'). De las de otras personas no sabés nada: no digas que no tienen."
+)
+SOLO_LAS_SUYAS = "Esta persona no ve el calendario: estas son solo sus propias tareas, no las de todo el equipo."
 
 
 # ---------------------------------------------------------------------------
@@ -681,12 +761,16 @@ async def accion(usuario, args: dict, fuente, hoy: date) -> str:
     mundos = mundos_a_mirar(usuario, args.get("mundo"))
     accion_id = (args.get("accion_id") or "").strip()
     texto = (args.get("texto") or "").strip()
+    # Con el calendario limitado, "no la encontré" no es "no existe": puede
+    # quedar fuera de sus fechas (y ahí puede estar una tarea suya).
+    limitado = alcance.es_limitado(usuario)
     if accion_id:
         encontradas = [b for b in await fuente.barras(mundos, ids=[accion_id]) if b.mundo in mundos]
         if not encontradas:
             raise ConsultaInvalida(
                 "No encontré esa acción entre las que esta persona puede ver: puede que la hayan "
-                "borrado o que sea de un mundo al que no entra."
+                "borrado o que sea de un mundo al que no entra"
+                + (", o que quede fuera de las fechas que ve del calendario." if limitado else ".")
             )
         elegida, otras = encontradas[0], []
     elif texto:
@@ -697,7 +781,8 @@ async def accion(usuario, args: dict, fuente, hoy: date) -> str:
         if not candidatas:
             raise ConsultaInvalida(
                 f"No encontré ninguna acción que se llame '{texto}' en "
-                f"{', '.join(MUNDOS[m] for m in mundos)}."
+                f"{', '.join(MUNDOS[m] for m in mundos)}"
+                + (" entre las fechas que esta persona ve del calendario (puede haber más afuera)." if limitado else ".")
             )
         candidatas.sort(key=lambda b: _cercania(b, hoy, texto))
         elegida, otras = candidatas[0], candidatas[1:]
@@ -846,12 +931,16 @@ async def piezas(usuario, args: dict, fuente, hoy: date) -> str:
     return a_json(datos, ("piezas",))
 
 
+_TODOS = ("", "todos", "todas", "todo el equipo")
+_YO = ("yo", "mi", "mias", "mis tareas", "vos")
+
+
 def _ids_de_responsable(responsable: str, usuario, personas: dict[str, dict[int, str]]):
     """None = todos; "sin" = sin asignar; si no, el conjunto de ids."""
     r = normalizar(responsable)
-    if r in ("", "todos", "todas", "todo el equipo"):
+    if r in _TODOS:
         return None
-    if r in ("yo", "mi", "mias", "mis tareas", "vos"):
+    if r in _YO:
         return {usuario.id}
     if r in ("sin_asignar", "sin asignar", "nadie"):
         return "sin"
@@ -882,8 +971,19 @@ async def tareas(usuario, args: dict, fuente, hoy: date) -> str:
     incluir_vencidas = bool(args.get("incluir_vencidas", True))
     incluir_sin_fecha = bool(args.get("incluir_sin_fecha", rango is None))
     texto = (args.get("texto") or "").strip()
+    responsable = str(args.get("responsable") or "todos")
+    # Quien no ve el calendario igual tiene lo suyo (como en Mis tareas): la
+    # fuente recortada deja pasar solo eso. De otra persona no se le dice nada,
+    # ni siquiera "no tiene tareas", que sería mentira (19/11/2026).
+    solo_lo_suyo = not alcance.ve_el_calendario(usuario)
+    if solo_lo_suyo and normalizar(responsable) not in _TODOS + _YO:
+        raise ConsultaInvalida(SOLO_LO_SUYO)
     personas = personas_por_mundo(await fuente.personas_activas(), mundos)
-    responsables = _ids_de_responsable(str(args.get("responsable") or "todos"), usuario, personas)
+    responsables = _ids_de_responsable(responsable, usuario, personas)
+    if externos.es_externo(usuario) and responsables == {usuario.id}:
+        # A una agencia, "lo mío" son las tarjetas de su agencia, no solo las
+        # que tiene a su nombre (como en su tablero); la fuente ya recorta a eso.
+        responsables = None
 
     filas = await fuente.tareas_con_accion(
         mundos, estados=estados, rango=rango, incluir_vencidas=incluir_vencidas,
@@ -925,6 +1025,8 @@ async def tareas(usuario, args: dict, fuente, hoy: date) -> str:
         "vencidas": sum(1 for t, _ in elegidas if _vencida(t, hoy)),
         "tareas": lista,
     }
+    if solo_lo_suyo:
+        datos["solo_las_suyas"] = SOLO_LAS_SUYAS
     if len(elegidas) > len(lista):
         datos["recortado"] = {"tareas": {"mostrados": len(lista), "total": len(elegidas)}}
     return a_json(datos, ("tareas",))
@@ -968,8 +1070,11 @@ async def carga(usuario, args: dict, fuente, hoy: date) -> str:
         elif rango[0] <= t.vence <= rango[1]:
             r["vencen_en_el_periodo"] += 1
             if len(r["del_periodo"]) < 5:
+                # Una tarea suya de una acción que no ve: sin link (ver ref_accion).
+                afuera = getattr(b, "fuera_de_alcance", False)
                 r["del_periodo"].append({"titulo": corto(t.titulo, 80), "vence": _iso(t.vence),
-                                         "accion": corto(b.nombre, 60), "link": link_de_accion(b.id)})
+                                         "accion": corto(b.nombre, 60),
+                                         **({"fuera_de_lo_que_ve": True} if afuera else {"link": link_de_accion(b.id)})})
         if _vencida(t, hoy):
             r["vencidas"] += 1
     lista = sorted(
@@ -1049,9 +1154,10 @@ async def ejecutar(nombre: str, args: dict, usuario, db, *, hoy: date | None = N
     hoy = hoy or hoy_en_uruguay()
     fuente = fuente or FuenteCalendario(db)
     # Lo mismo que la pantalla (0070): quien no ve el calendario no lo ve
-    # tampoco preguntándole a Don Tino, y quien lo ve limitado, solo eso.
-    if not alcance.ve_el_calendario(usuario):
-        return _dump({"error": "Esta persona no tiene acceso al calendario: no le cuentes nada de él."})
+    # tampoco preguntándole a Don Tino, y quien lo ve limitado, solo eso...
+    # salvo lo suyo, que le llega siempre (sus tareas: ver FuenteRecortada).
+    if not alcance.ve_el_calendario(usuario) and nombre not in _LO_SUYO:
+        return _dump({"error": NO_VE_EL_CALENDARIO})
     externo = externos.es_externo(usuario)
     if externo and nombre in _NO_PARA_EXTERNOS:
         return _dump({"error": _NO_PARA_EXTERNOS[nombre]})

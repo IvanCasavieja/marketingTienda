@@ -15,6 +15,13 @@ Uso:
 
 o, si se prefiere decidir a mano, `await hay_lugar(db, bytes_nuevos)`.
 
+El ZIP original de una ronda (19/11/2026) tiene además su propio tope,
+ZIP_TOPE_MB, que se cuenta con `entra` sobre lo que ya ocupan los ZIP
+guardados (ver `entregar` en app/api/routes/entregas.py): un ZIP de 40 MB no
+puede dejar sin lugar a las imágenes, que son las que hacen falta para ver la
+pieza. Si no entra, no se guarda y la entrega sigue (no es un 507). Nunca se
+borra nada para hacer lugar.
+
 Ojo quien reintenta solo ante un 5xx (como la cola del calendario): un 507
 no se arregla reintentando.
 """
@@ -37,8 +44,9 @@ MENSAJE_SIN_LUGAR = (
 
 
 def entra(tamano_actual: int, bytes_nuevos: int, tope_mb: int) -> bool:
-    """Si con `bytes_nuevos` la base sigue por debajo del tope. Pura, para
-    probarla sin base. Un tope de 0 (o menos) es "sin freno"."""
+    """Si con `bytes_nuevos` la base (o lo que se cuente, como los ZIP
+    guardados) sigue por debajo del tope. Pura, para probarla sin base. Un
+    tope de 0 (o menos) es "sin freno"."""
     if tope_mb <= 0:
         return True
     return tamano_actual + max(0, bytes_nuevos) <= tope_mb * MB
