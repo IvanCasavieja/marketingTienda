@@ -2333,6 +2333,11 @@ export const entregasApi = {
     api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
   detalle: (tareaId: string) =>
     api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
+  /** Lo mismo, pero si la tarjeta no cambió desde `huella` vuelve solo
+   *  `{ sinCambios: true }` (la tarjeta abierta pregunta cada tanto). */
+  detalleSiCambio: (tareaId: string, huella: string) =>
+    api.get<DetalleEntregas | { huella: string; sinCambios: true }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, { ...ESPERA, params: { huella } }),
   /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
    *  vino un ZIP, `zip.guardado` dice si se guardó (sin lugar, no) y
    *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor.

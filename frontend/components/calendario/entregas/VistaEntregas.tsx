@@ -51,6 +51,9 @@ export default function VistaEntregas() {
   return <Contenido key={tareaId} tareaId={tareaId} />
 }
 
+/** Cada cuánto pregunta la tarjeta abierta si cambió algo. */
+const SEGUNDOS_ENTRE_VISTAS = 10
+
 function Contenido({ tareaId }: { tareaId: string }) {
   const modo = useVistaEntregas(s => s.modo)
   const setModo = useVistaEntregas(s => s.setModo)
@@ -87,6 +90,35 @@ function Contenido({ tareaId }: { tareaId: string }) {
     || (modo === 'configurar' && detalle.puedo.configurar)
   )
   const sePuedeCerrar = !formulario
+
+  // Se pone al día sola (Ivan, 20/11/2026: "si se completa una tarea o una
+  // entrega y tengo abierta la tarjeta, su estado no se actualiza solo"):
+  // mientras se la mira, cada pocos segundos y al volver a la pestaña,
+  // pregunta con su huella si cambió (si no, la respuesta es una línea). En
+  // medio de entregar, revisar o configurar no: no se le cambia nada a quien
+  // está escribiendo.
+  const huella = detalle?.huella ?? null
+  useEffect(() => {
+    if (formulario || !huella) return
+    let vivo = true
+    const mirar = () => {
+      if (document.visibilityState !== 'visible') return
+      entregasApi.detalleSiCambio(tareaId, huella)
+        .then(({ data }) => {
+          if (!vivo || ('sinCambios' in data && data.sinCambios)) return
+          setDetalle(data as DetalleEntregas)
+          setError(null)
+        })
+        .catch(() => { /* la próxima vuelta lo vuelve a intentar */ })
+    }
+    const cada = window.setInterval(mirar, SEGUNDOS_ENTRE_VISTAS * 1000)
+    document.addEventListener('visibilitychange', mirar)
+    return () => {
+      vivo = false
+      window.clearInterval(cada)
+      document.removeEventListener('visibilitychange', mirar)
+    }
+  }, [tareaId, huella, formulario])
 
   // Escape cierra (solo mirando: entregando o revisando, se sale con Cancelar,
   // que avisa si hay algo sin mandar). Va en la captura para que no cierre

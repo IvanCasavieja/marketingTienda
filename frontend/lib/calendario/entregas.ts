@@ -122,6 +122,8 @@ export type AccionDeTarjeta = {
 }
 
 export type DetalleEntregas = {
+  /** Resumen de lo que se ve en la tarjeta: si cambia, cambió algo (20/11/2026). */
+  huella?: string
   tarea: {
     id: string; titulo: string; descripcion: string | null; estado: string
     asignadoA: number | null; vence: string | null; creadoPor: number | null

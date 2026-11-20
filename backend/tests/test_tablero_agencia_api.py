@@ -2087,13 +2087,17 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
         r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
         assert r.status_code == 200 and r.json()["estado"] == "nada" and r.json()["cambiosPedidos"] == []
 
-        # Si vuelve solo con un comentario, sin marcas, no va nada: la IA
-        # contesta marca por marca, y al lado de cada marca es donde se ve.
+        # Si vuelve solo con un comentario, sin marcas, el comentario es lo que
+        # se pidió (20/11/2026: antes no iba nada y la agencia no veía el
+        # control): cada renglón, un pedido sin lugar en la imagen.
         assert (await _decidir(lider, v2, "cambios", "Otra vuelta: todo más grande")).status_code == 200
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v3}, files=dos)
         assert r.status_code == 201, r.text
         async with d.Sesion() as s:
-            assert (await revision_ia.cargar_version(s, v3))[0].ronda_anterior is None
+            anterior = (await revision_ia.cargar_version(s, v3))[0].ronda_anterior
+            assert [(m.marca_id, m.texto, m.x) for m in anterior.marcas] == [
+                ("comentario-1", "Otra vuelta: todo más grande", None)]
+            assert anterior.comentarios == ()
     correr(prueba)
 
 
@@ -2240,6 +2244,56 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         r = await a1.post(control, files=solo_imagenes)
         assert r.status_code == 200 and r.json()["estado"] == "no-disponible", r.text
         assert len(api.pedidos) == 3
+    correr(prueba)
+
+
+def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
+    """Ivan (20/11/2026): "me comenta la agencia que al momento de subir la
+    entrega no les apareció la IA para las correcciones". Se habían pedido
+    los cambios solo con texto (sin marcas): ahora cada renglón del
+    comentario es un pedido que la IA controla antes de entregar."""
+    import json
+
+    import ia_simulada as sim
+
+    from app.core.config import settings
+    from app.services import ia_cliente, revision_ia
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+    monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+
+    async def espia(version_id, **kw):
+        return None
+
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    cuerpo = {"observaciones": [], "cambios_pedidos": [
+        {"numero": 1, "veredicto": "falta", "nota": "Sigue diciendo $249."},
+        {"numero": 2, "veredicto": "hecho", "nota": "El logo viejo ya no está."},
+    ]}
+    api = sim.ApiGrabada([sim.mensaje([sim.texto(json.dumps(cuerpo))], entrada=3_000, salida=300)])
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: api.cliente())
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        imagenes = [("imagenes", ("i.jpg", _jpeg_de_verdad(400, 300, "white"), "image/jpeg")),
+                    ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))]
+        v1 = f"ve-co1-{d.sufijo}"
+        assert (await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=imagenes)).status_code == 201
+        # Cambios pedidos solo con texto, como desde el tablero ("¿Qué hay que cambiar?").
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "comentario": "- Cambiar el precio a $199\n- Sacar el logo viejo"})
+        assert r.status_code == 200, r.text
+
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/control-previo", files=[imagenes[0]])
+        assert r.status_code == 200, r.text
+        assert r.json()["estado"] == "listo"
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in r.json()["cambios"]] == [
+            (1, "Cambiar el precio a $199", "falta"), (2, "Sacar el logo viejo", "hecho"),
+        ]
+        texto = api.pedidos[0]["messages"][0]["content"][-1]["text"]
+        assert "pedida en el comentario" in texto and "Cambiar el precio a $199" in texto
     correr(prueba)
 
 
@@ -2496,6 +2550,54 @@ def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-push-x-{d.sufijo}", "parentId": madre, "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
         assert r.status_code == 422
+    correr(prueba)
+
+
+def test_la_tarjeta_abierta_se_entera_de_los_cambios():
+    """Ivan (20/11/2026): "si se completa una tarea o una entrega y tengo
+    abierta la tarjeta, su estado no se actualiza solo". La tarjeta pregunta
+    con su huella: si no cambió nada, una línea; si cambió, todo de nuevo."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        pieza, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{pieza}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+
+        async def huella_y_cambio(h):
+            r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h})
+            assert r.status_code == 200, r.text
+            return r.json()["huella"], not r.json().get("sinCambios", False)
+
+        h0 = (await lider.get(f"/calendario/tareas/{pieza}/entregas")).json()["huella"]
+        assert await huella_y_cambio(h0) == (h0, False)
+        # Sin cambios, la respuesta es solo eso.
+        r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h0})
+        assert set(r.json()) == {"huella", "sinCambios"}
+
+        # Un comentario la cambia.
+        assert (await lider.post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-h-{d.sufijo}", "texto": "¿Va con precio?"})).status_code == 201
+        h1, cambio = await huella_y_cambio(h0)
+        assert cambio and h1 != h0
+
+        # Entrega la agencia: cambia; y la respuesta trae la tarjeta entera.
+        a1 = Cliente(d.http, d.a1)
+        assert (await _entregar_link(a1, pieza, f"ve-h1-{d.sufijo}")).status_code == 201
+        r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h1})
+        assert r.json()["huella"] != h1 and r.json()["columna"] == "esperando"
+        h2 = r.json()["huella"]
+
+        # Se aprueba: cambia otra vez.
+        r = await lider.post(f"/calendario/versiones/ve-h1-{d.sufijo}/decision", json={"decision": "aprobada"})
+        assert r.status_code == 200, r.text
+        h3, cambio = await huella_y_cambio(h2)
+        assert cambio and h3 != h2
+
+        # Completar la tarea a mano (quien lidera) también.
+        assert (await lider.patch(f"/calendario/tareas/{pieza}", json={"estado": "en-proceso"})).status_code == 200
+        _, cambio = await huella_y_cambio(h3)
+        assert cambio
     correr(prueba)
 
 
