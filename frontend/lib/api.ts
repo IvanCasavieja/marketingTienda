@@ -2332,7 +2332,7 @@ export const entregasApi = {
   detalle: (tareaId: string) =>
     api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
   /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
-   *  vino un ZIP, `zip.guardado` dice si se guardó (con la base llena, no) y
+   *  vino un ZIP, `zip.guardado` dice si se guardó (sin lugar, no) y
    *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor. */
   entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
     api.post<CalendarioEscrito & {

@@ -151,13 +151,13 @@ async function main() {
   igual('el peso, para leer', [12.34, 12, 1].map(n => pesoLegible(n * 1024 * 1024)).concat(pesoLegible(350 * 1024), pesoLegible(10)),
     ['12,3 MB', '12 MB', '1 MB', '350 KB', '1 KB'])
 
-  // Con la base llena el ZIP no se guarda (la entrega queda igual): qué hacer.
+  // Sin lugar (el tope de los ZIP o la base) el ZIP no se guarda (la entrega queda igual): qué hacer.
   igual('sin guardar, con el link', avisoZipSinGuardar(true, false),
-    'El ZIP no se guardó porque la base estaba llena: el original queda en el link.')
+    'El ZIP no se guardó porque no había lugar en la base: el original queda en el link.')
   igual('sin guardar, al equipo', avisoZipSinGuardar(false, false),
-    'El ZIP no se guardó porque la base estaba llena: pedile el link a quien la hace.')
+    'El ZIP no se guardó porque no había lugar en la base: pedile el link a quien la hace.')
   igual('sin guardar, a quien la hizo', avisoZipSinGuardar(false, true),
-    'El ZIP no se guardó porque la base estaba llena: pasá el link al original en los comentarios.')
+    'El ZIP no se guardó porque no había lugar en la base: pasá el link al original en los comentarios.')
 
   if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
   console.log('\nzip: todo bien')

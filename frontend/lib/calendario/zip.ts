@@ -248,10 +248,12 @@ export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean,
   return partes.join(' · ')
 }
 
-/** Lo que dice la ficha de una ronda cuyo ZIP no se guardó porque la base
- *  estaba llena (19/11/2026): qué hacer, según quién mira. */
+/** Lo que dice la ficha de una ronda cuyo ZIP no se guardó porque no había
+ *  lugar (19/11/2026): qué hacer, según quién mira. Desde la revisión de ese
+ *  día los ZIP tienen su propio tope en el servidor (ZIP_TOPE_MB), así que
+ *  no dice «la base estaba llena»: puede estar lleno solo el lugar de los ZIP. */
 export function avisoZipSinGuardar(hayLink: boolean, laHizoQuienMira: boolean): string {
-  const que = 'El ZIP no se guardó porque la base estaba llena'
+  const que = 'El ZIP no se guardó porque no había lugar en la base'
   if (hayLink) return `${que}: el original queda en el link.`
   return laHizoQuienMira ? `${que}: pasá el link al original en los comentarios.` : `${que}: pedile el link a quien la hace.`
 }

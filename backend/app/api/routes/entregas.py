@@ -91,7 +91,7 @@ from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
 from app.services import materiales, revision_ia, tipos_de_tarea
-from app.services.espacio import exigir_lugar, hay_lugar
+from app.services.espacio import MB, entra, exigir_lugar, hay_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
 )
@@ -540,7 +540,8 @@ async def ver_entregas(
                 for im in imagenes.get(v.id, [])
             ],
             # El ZIP que vino con la ronda, si vino: {nombre, tamano, guardado,
-            # fecha}. `guardado` en false: la base estaba llena y no se guardó.
+            # fecha}. `guardado` en false: no había lugar (el tope de los ZIP o
+            # la base) y no se guardó.
             "zip": zips.get(v.id),
             "decisiones": [decision_json(d) for d in decisiones.get(v.id, [])],
             "marcas": [
@@ -840,7 +841,7 @@ async def bajar_zip(
     if largo is None:
         raise HTTPException(
             status_code=404,
-            detail="El ZIP de esta ronda no se guardó porque la base estaba llena: pedile el link a quien la hace.",
+            detail="El ZIP de esta ronda no se guardó porque no había lugar en la base: pedile el link a quien la hace.",
         )
     # La sesión del pedido ya no hace falta: se suelta su conexión antes de
     # mandar (FastAPI la cierra recién cuando termina la bajada).
@@ -862,6 +863,28 @@ async def bajar_zip(
 # ---------------------------------------------------------------------------
 # Entregar
 # ---------------------------------------------------------------------------
+
+async def _hay_lugar_para_el_zip(db: AsyncSession, peso: int, bytes_imagenes: int) -> bool:
+    """Si el ZIP original de una ronda (`peso` bytes) se puede guardar: entra
+    en el tope propio de los ZIP (ZIP_TOPE_MB, contando lo que ya ocupan los
+    guardados con sus bytes) y además en la base, junto con las imágenes de
+    la ronda (`hay_lugar` de siempre). Revisión del 19/11/2026: antes era
+    una reserva debajo del tope de la base, que dejaba a los ZIP llegar a
+    350 de los 400 MB; ver ZIP_TOPE_MB en app/core/config.py. Si no hay
+    lugar, deja un error en el log para quien administra: no se borra nada."""
+    guardados = (await db.execute(
+        select(func.coalesce(func.sum(CalendarioVersionZip.tamano), 0))
+        .where(CalendarioVersionZip.datos.isnot(None))
+    )).scalar_one()
+    if not entra(guardados, peso, settings.ZIP_TOPE_MB):
+        logger.error(
+            "entregas: los ZIP guardados ocupan %.1f MB y su tope es %d MB (ZIP_TOPE_MB): el de %.1f MB "
+            "no se guardó (la entrega sí). Para guardar más ZIP hay que subir el tope; no se borra nada.",
+            guardados / MB, settings.ZIP_TOPE_MB, peso / MB,
+        )
+        return False
+    return await hay_lugar(db, bytes_imagenes + peso)
+
 
 # Guardar el ZIP de una entrega, de a uno en todo el proceso (revisión del
 # 19/11/2026): mandarle a la base un ZIP de 40 MB arma copias del pedido en
@@ -908,10 +931,10 @@ async def entregar(
     las piezas adentro. Se mira acá que sea un ZIP sano y:
 
     - Se guarda tal cual, como el original de la ronda (calendario_version_
-      zips), en la misma transacción. Si no hay lugar (espacio.py, con la
-      reserva ZIP_RESERVA_MB para las imágenes), la entrega se hace igual sin
-      guardarlo y queda anotado (la fila sin los bytes): la ficha lo dice.
-      Nunca se borra nada para hacerle lugar.
+      zips), en la misma transacción. Si no hay lugar (el tope propio de los
+      ZIP, ZIP_TOPE_MB, o la base: `_hay_lugar_para_el_zip`), la entrega se
+      hace igual sin guardarlo y queda anotado (la fila sin los bytes): la
+      ficha lo dice. Nunca se borra nada para hacerle lugar.
     - Las imágenes de adentro las saca el navegador y las sube como imágenes
       de la ronda. `zipYaSubidas` dice cuáles (su lugar en el índice del
       ZIP), junto con las que la persona sacó de la ronda a propósito: esas
@@ -1027,12 +1050,10 @@ async def entregar(
     bytes_imagenes = sum(len(g) + len(m) for g, _, m, _ in leidas)
     if leidas:
         await exigir_lugar(db, bytes_imagenes)
-    # El ZIP original, solo si entra dejando la reserva para las imágenes. Si
+    # El ZIP original, solo si entra en el tope de los ZIP y en la base. Si
     # no, la entrega sigue igual sin él (no es un 507): queda la fila sin los
     # bytes, para que la ficha diga que no se guardó. Nada se borra.
-    zip_guardado = zip_datos is not None and await hay_lugar(
-        db, bytes_imagenes + len(zip_datos), reserva_mb=settings.ZIP_RESERVA_MB,
-    )
+    zip_guardado = zip_datos is not None and await _hay_lugar_para_el_zip(db, len(zip_datos), bytes_imagenes)
 
     ronda = (ultima.ronda if ultima else 0) + 1
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo

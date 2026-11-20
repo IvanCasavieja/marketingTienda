@@ -40,9 +40,11 @@ y no se va a pagar más (15/11/2026). Por eso:
 - Antes de guardar, el freno general (app/services/espacio.py): si la base
   pasa de BASE_TOPE_MB (400), la subida se rechaza.
 - El ZIP original (19/11/2026) pesa mucho más que las imágenes (hasta 40 MB):
-  se guarda solo si después siguen libres ZIP_RESERVA_MB debajo del tope,
-  para que nunca le quite el lugar a las imágenes. Si no entra, la entrega se
-  hace igual sin el ZIP y la ficha lo dice. No se borra nada para hacer lugar.
+  tiene su propio tope, ZIP_TOPE_MB (100), entre todos los guardados, y
+  además tiene que entrar en el de la base. Así los ZIP no pasan nunca de
+  esos 100 MB y el resto de la base queda para las imágenes y lo demás. Si no
+  entra, la entrega se hace igual sin el ZIP y la ficha lo dice. No se borra
+  nada para hacer lugar.
 
 Con un uso razonable de Tienda Inglesa —25 tareas con entregas por mes, 2
 fases, 1,5 rondas por fase y 1,5 imágenes por versión— son unas 110 imágenes
@@ -230,8 +232,9 @@ class CalendarioVersionZip(Base):
     encontrarlo y subirlo: el nombre del archivo, lo que pesa y la fecha. Los
     bytes van `deferred`: listar no los trae.
 
-    Si al entregar no había lugar (app/services/espacio.py, ZIP_RESERVA_MB),
-    la entrega se hace igual y la fila queda SIN los bytes (`datos` en NULL):
+    Si al entregar no había lugar (el tope de los ZIP, ZIP_TOPE_MB, o el de
+    la base: app/services/espacio.py), la entrega se hace igual y la fila
+    queda SIN los bytes (`datos` en NULL):
     así la ficha dice que el ZIP no se guardó y por qué. Nunca se borra nada
     para hacerle lugar. Como el resto de la versión, se va solo si alguien
     borra la tarea (o la acción) entera."""
@@ -245,7 +248,7 @@ class CalendarioVersionZip(Base):
     nombre: Mapped[str] = mapped_column(String(255), nullable=False)
     # Lo que pesa, en bytes (aunque no se haya guardado: es lo que se mandó).
     tamano: Mapped[int] = mapped_column(Integer, nullable=False)
-    # El ZIP entero. NULL si no se guardó porque la base estaba llena.
+    # El ZIP entero. NULL si no se guardó porque no había lugar.
     datos: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

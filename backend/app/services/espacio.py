@@ -15,11 +15,12 @@ Uso:
 
 o, si se prefiere decidir a mano, `await hay_lugar(db, bytes_nuevos)`.
 
-El ZIP original de una ronda (19/11/2026) se pregunta con una reserva:
-`await hay_lugar(db, bytes_nuevos, reserva_mb=settings.ZIP_RESERVA_MB)`. Si no
-entra, no se guarda y la entrega sigue (no es un 507): un ZIP de 40 MB no
+El ZIP original de una ronda (19/11/2026) tiene además su propio tope,
+ZIP_TOPE_MB, que se cuenta con `entra` sobre lo que ya ocupan los ZIP
+guardados (ver `entregar` en app/api/routes/entregas.py): un ZIP de 40 MB no
 puede dejar sin lugar a las imágenes, que son las que hacen falta para ver la
-pieza. Nunca se borra nada para hacer lugar.
+pieza. Si no entra, no se guarda y la entrega sigue (no es un 507). Nunca se
+borra nada para hacer lugar.
 
 Ojo quien reintenta solo ante un 5xx (como la cola del calendario): un 507
 no se arregla reintentando.
@@ -42,14 +43,13 @@ MENSAJE_SIN_LUGAR = (
 )
 
 
-def entra(tamano_actual: int, bytes_nuevos: int, tope_mb: int, reserva_mb: int = 0) -> bool:
-    """Si con `bytes_nuevos` la base sigue por debajo del tope. Pura, para
-    probarla sin base. Un tope de 0 (o menos) es "sin freno". `reserva_mb`:
-    lo que tiene que seguir libre debajo del tope después de guardar (el ZIP
-    original deja lugar para las imágenes)."""
+def entra(tamano_actual: int, bytes_nuevos: int, tope_mb: int) -> bool:
+    """Si con `bytes_nuevos` la base (o lo que se cuente, como los ZIP
+    guardados) sigue por debajo del tope. Pura, para probarla sin base. Un
+    tope de 0 (o menos) es "sin freno"."""
     if tope_mb <= 0:
         return True
-    return tamano_actual + max(0, bytes_nuevos) <= (tope_mb - max(0, reserva_mb)) * MB
+    return tamano_actual + max(0, bytes_nuevos) <= tope_mb * MB
 
 
 async def tamano_de_la_base(db: AsyncSession) -> int:
@@ -58,20 +58,19 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
     return int((await db.execute(text("SELECT pg_database_size(current_database())"))).scalar_one())
 
 
-async def hay_lugar(db: AsyncSession, bytes_nuevos: int, *, reserva_mb: int = 0) -> bool:
-    """Si se pueden guardar `bytes_nuevos` sin pasar el tope (menos
-    `reserva_mb`, ver `entra`). Si no, deja un error en el log (con cuánto
-    ocupa) y devuelve False."""
+async def hay_lugar(db: AsyncSession, bytes_nuevos: int) -> bool:
+    """Si se pueden guardar `bytes_nuevos` sin pasar el tope. Si no, deja un
+    error en el log (con cuánto ocupa) y devuelve False."""
     tope = settings.BASE_TOPE_MB
     if tope <= 0:
         return True
     tamano = await tamano_de_la_base(db)
-    if entra(tamano, bytes_nuevos, tope, reserva_mb):
+    if entra(tamano, bytes_nuevos, tope):
         return True
     logger.error(
-        "espacio: la base ocupa %.1f MB y el tope es %d MB (BASE_TOPE_MB)%s: se rechazó guardar %.0f KB. "
+        "espacio: la base ocupa %.1f MB y el tope es %d MB (BASE_TOPE_MB): se rechazó guardar %.0f KB. "
         "Hay que liberar lugar o subir el tope.",
-        tamano / MB, tope, f", con {reserva_mb} MB de reserva" if reserva_mb > 0 else "", bytes_nuevos / 1024,
+        tamano / MB, tope, bytes_nuevos / 1024,
     )
     return False
 

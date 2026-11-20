@@ -675,7 +675,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
   const { user } = useCurrentUser()
   // A quien la hizo (o a la agencia) no se le dice que se la pida a sí misma.
   const laHizoQuienMira = esExterno(user) || (user?.id != null && user.id === version.subidaPor)
-  // El ZIP de la ronda, si vino; `guardado` en false si la base estaba llena.
+  // El ZIP de la ronda, si vino; `guardado` en false si no había lugar.
   const zip = version.zip ?? null
   // Lo que va bajando el ZIP (0 a 1), o null si no se está bajando.
   const [bajandoZip, setBajandoZip] = useState<number | null>(null)
@@ -811,8 +811,8 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
             </button>
           )}
           {zip && !zip.guardado ? (
-            // La base estaba llena al entregar: la ronda quedó, el ZIP no (y
-            // no se borra nada para hacerle lugar).
+            // No había lugar al entregar (el tope de los ZIP o la base): la
+            // ronda quedó, el ZIP no (y no se borra nada para hacerle lugar).
             <span className="px-2 font-medium text-amber-800 dark:text-amber-200">
               {avisoZipSinGuardar(!!version.link, laHizoQuienMira)}
             </span>
