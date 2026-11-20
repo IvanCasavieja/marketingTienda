@@ -9,7 +9,8 @@ tablero de tarjetas estilo Trello (0070).
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
   GET    /calendario/versiones/{id}/zip       — el ZIP original de la ronda, tal cual lo mandó la agencia
   GET    /calendario/entregas/imagenes/{id}   — una imagen (?tam=mini|grande)
-  GET    /calendario/entregas?mundo=&rev=     — el tablero del mundo (5 columnas) y el retrabajo
+  GET    /calendario/entregas?mundo=&rev=     — el tablero del mundo (5 columnas)
+  GET    /calendario/entregas/metricas        — el análisis de entregas (rondas, tiempos y fechas por agencia)
   GET    /calendario/entregas/archivadas      — más de Archivado ("Ver más")
   GET    /calendario/entregas/buscar?q=       — el buscador, también en lo archivado de verdad
   GET    /calendario/mis-entregas             — lo que espera MI decisión y lo que me devolvieron
@@ -1611,8 +1612,8 @@ async def _mover_a_mano(
 #   el id de la miniatura (la pantalla la pide cuando la tarjeta se ve);
 # - todo en unas pocas consultas, sin una por tarjeta (ver _tarjetas).
 #
-# Las métricas de retrabajo van aparte (GET /entregas/metricas): no cambian
-# con cada movimiento y no tienen por qué viajar en cada pregunta.
+# El análisis de entregas va aparte (GET /entregas/metricas): no cambia
+# con cada movimiento y no tiene por qué viajar en cada pregunta.
 
 POR_PAGINA = 20
 _ACTIVOS = ("produccion", "revision", "cambios")
@@ -1932,9 +1933,14 @@ async def buscar(
 
 
 async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> dict:
-    """El retrabajo de las fases aprobadas en los últimos `dias` días: del
-    mundo que se mira (total, por tipo de pieza y por responsable) y la
-    comparación entre los mundos que la persona puede abrir."""
+    """El análisis de entregas de los últimos `dias` días (ex «Retrabajo»,
+    Ivan 20/11/2026):
+
+    - las rondas de las fases aprobadas: del mundo que se mira (total, por
+      tipo de pieza y por responsable) y la comparación entre los mundos que
+      la persona puede abrir;
+    - cuánto tarda cada agencia y cuántas piezas se pasan de fecha, en el
+      mundo que se mira (ver `_tiempos` y reglas.analisis_por_agencia)."""
     mundos = mundos_de(usuario)
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     consulta = (
@@ -1985,7 +1991,61 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
     for g in del_mundo["porTipo"]:
         g["nombre"] = reglas.TIPOS_DE_PIEZA.get(g["clave"], g["clave"])
     por_mundo = [{**g, "nombre": MUNDOS.get(g["clave"], g["clave"])} for g in todos["porMundo"]]
-    return {**del_mundo, "porMundo": por_mundo, "dias": dias}
+    tiempos = await _tiempos(db, usuario, mundo, desde)
+    return {
+        **del_mundo, "porMundo": por_mundo, "dias": dias,
+        "tiempos": tiempos["total"], "porAgencia": tiempos["porAgencia"],
+    }
+
+
+async def _tiempos(db: AsyncSession, usuario: User, mundo: str, desde: datetime) -> dict:
+    """Las piezas del mundo que entran en el análisis por agencia: las que
+    se entregaron por primera vez o se aprobaron desde `desde`, y las que hoy
+    están vencidas esperando a quien las hace. Una cuenta externa (la
+    agencia) solo las suyas, como en su tablero. Son números, sin nombres de
+    acciones: no se recorta al alcance del calendario (igual que las rondas)."""
+    hoy = alcance.hoy_en_uruguay()
+    primera = (
+        select(CalendarioVersion.tarea_id.label("tarea_id"), func.min(CalendarioVersion.created_at).label("at"))
+        .group_by(CalendarioVersion.tarea_id)
+        .subquery()
+    )
+    le_toca = and_(
+        CalendarioEntrega.momento.in_(("produccion", "cambios")),
+        CalendarioEntrega.archivada_at.is_(None),
+        CalendarioTarea.estado != "hecha",
+    )
+    consulta = (
+        select(
+            CalendarioEntrega.tarea_id, CalendarioTarea.para, CalendarioTarea.agencia, CalendarioEntrega.created_at,
+            primera.c.at, CalendarioEntrega.finalizada_at, CalendarioTarea.vence,
+            CalendarioEntrega.momento, CalendarioEntrega.archivada_at, CalendarioTarea.estado,
+        )
+        .select_from(CalendarioEntrega)
+        .join(CalendarioTarea, CalendarioTarea.id == CalendarioEntrega.tarea_id)
+        .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
+        .outerjoin(primera, primera.c.tarea_id == CalendarioEntrega.tarea_id)
+        .where(
+            CalendarioBarra.mundo == mundo,
+            or_(
+                primera.c.at >= desde,
+                CalendarioEntrega.finalizada_at >= desde,
+                and_(le_toca, CalendarioTarea.vence < hoy),
+            ),
+        )
+    )
+    if externos.es_externo(usuario):
+        consulta = consulta.where(externos.condicion_tarea_propia(CalendarioTarea, usuario))
+    piezas = [
+        reglas.PiezaDelAnalisis(
+            tarea_id=tarea_id, para=para, agencia=agencia, pedida_at=pedida, primera_entrega_at=primera_at,
+            aprobada_at=finalizada, vence=vence,
+            le_toca_a_quien_la_hace=momento in ("produccion", "cambios") and archivada is None and estado != "hecha",
+        )
+        for tarea_id, para, agencia, pedida, primera_at, finalizada, vence, momento, archivada, estado
+        in (await db.execute(consulta)).all()
+    ]
+    return reglas.analisis_por_agencia(piezas, desde, hoy)
 
 
 @router.get("/entregas/metricas")
@@ -1995,8 +2055,11 @@ async def metricas(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """El retrabajo (cuántas rondas llevó aprobar cada fase). Aparte del
-    tablero: se pide al abrirlo y al cambiar el período, no en cada pregunta."""
+    """El análisis de entregas (ex «Retrabajo»): cuántas rondas llevó aprobar
+    cada fase, cuánto tarda cada agencia y cuántas piezas se pasan de fecha.
+    Aparte del tablero: se pide al abrirlo y al cambiar el período, no en
+    cada pregunta. Se sigue llamando /metricas para no romper una pantalla
+    que todavía no se actualizó (Vercel y Render despliegan por separado)."""
     exigir_mundo(current_user, mundo)
     if not (7 <= dias <= 730):
         raise HTTPException(status_code=422, detail="El período va de 7 a 730 días")

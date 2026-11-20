@@ -2399,7 +2399,7 @@ export const entregasApi = {
   buscar: (mundo: string, q: string) =>
     api.get<{ enTablero: Tarjeta[]; archivadas: Tarjeta[]; palabras: string[] }>(
       "/calendario/entregas/buscar", { ...ESPERA, params: { mundo, q } }),
-  /** El retrabajo: aparte del tablero, que no cambia con cada movimiento. */
+  /** El análisis de entregas (ex «Retrabajo»): aparte del tablero, que no cambia con cada movimiento. */
   metricas: (mundo: string, dias = 90) =>
     api.get<Metricas>("/calendario/entregas/metricas", { ...ESPERA, params: { mundo, dias } }),
   /** Arrastrar la tarjeta a otra columna. `desde` es donde la veía la pantalla. */
