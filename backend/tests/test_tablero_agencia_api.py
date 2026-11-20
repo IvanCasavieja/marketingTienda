@@ -3189,6 +3189,35 @@ def test_eliminar_un_usuario():
     correr(prueba)
 
 
+def test_eliminar_varias_cuentas_de_una_vez():
+    """Ivan (20/11/2026): "seleccionar y seleccionar todo en usuarios, para
+    poder agarrar a más de uno y volarlos". Cada una con sus reglas: las que
+    no se pueden quedan, con su motivo, y las demás se van igual."""
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        una = await _persona(d, "Una Para Borrar")
+        otra = await _persona(d, "Otra Para Borrar")
+        aprueba = await _persona(d, "Aprueba Algo", permisos=("calendario.view", "calendario.edit"))
+        suya, _ = await _pedir_banners(d, d.lider)
+        r = await Cliente(d.http, d.lider).put(f"/calendario/tareas/{suya}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [aprueba.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+
+        ids = [una.id, otra.id, aprueba.id, d.promo.id, 999_999_999]
+        r = await Cliente(d.http, d.lucia).post("/admin/users/eliminar", json={"ids": ids})
+        assert r.status_code == 403
+        r = await promo.post("/admin/users/eliminar", json={"ids": ids})
+        assert r.status_code == 200, r.text
+        assert sorted(r.json()["eliminados"]) == sorted([una.id, otra.id])
+        motivos = {n["id"]: n["motivo"] for n in r.json()["noSePudieron"]}
+        assert set(motivos) == {aprueba.id, d.promo.id}
+        assert "aprueba 1 entrega" in motivos[aprueba.id] and "propia" in motivos[d.promo.id]
+        async with d.Sesion() as s:
+            assert await s.get(User, una.id) is None and await s.get(User, otra.id) is None
+            assert await s.get(User, aprueba.id) is not None
+    correr(prueba)
+
+
 def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
     """Ivan (18/11/2026): los avisos de la campanita también por mail, al
     momento, y cada uno los apaga en su perfil. Menos los del tablero, que
