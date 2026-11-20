@@ -16,6 +16,7 @@ import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
 import { categoriasParaElegir } from '@/lib/calendario/categorias'
 import { textoSobre } from '@/lib/calendario/colores'
 import { diasEntre, fechaCorta, hoyIso, rangoLargo, sumarDias } from '@/lib/calendario/fechas'
+import { desdeQue, enviosDe, fechaBase, nombreDeEnvio } from '@/lib/calendario/avisos'
 import { useCalendario, useCategoriasDelMundo, useHeaderDerivado } from '@/lib/calendario/store'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { CLASE_SEMAFORO, semaforoDe } from '@/lib/calendario/semaforo'
@@ -565,6 +566,17 @@ function BloqueAvisos({
 
   const [dias, setDias] = useState<number>(10)
   const [elegidos, setElegidos] = useState<number[]>([])
+  // Desde dónde se cuentan los días (20/11/2026): '' = desde que arranca la
+  // acción; o uno de sus envíos (email, WhatsApp, push), desde que sale.
+  const [desdeEnvio, setDesdeEnvio] = useState('')
+  const envios = esEnvio ? [] : enviosDe(accion)
+  const enviosQueFaltan = envios.filter(p => (p.desde ?? accion.desde) >= hoy)
+  // Lo elegido, si sigue valiendo. Con la acción ya arrancada solo quedan sus
+  // envíos que todavía no salieron.
+  const desde = enviosQueFaltan.some(p => p.id === desdeEnvio) ? desdeEnvio
+    : yaArranco ? enviosQueFaltan[0]?.id ?? '' : ''
+  const base = fechaBase(accion, desde || null)
+  const puedeAgregar = editable && (!yaArranco || enviosQueFaltan.length > 0)
 
   // Al abrir otra acción, arranca elegido quien la está mirando.
   useEffect(() => {
@@ -575,8 +587,9 @@ function BloqueAvisos({
     ?? (personasEstado === 'ok' ? 'alguien que ya no ve el calendario' : 'una persona')
 
   function estadoDe(a: Aviso): string {
-    if (yaArranco) return esEnvio ? 'el envío ya salió' : 'la acción ya arrancó'
-    const fecha = sumarDias(accion.desde, -a.diasAntes)
+    const desdeAviso = fechaBase(accion, a.piezaId)
+    if (hoy > desdeAviso) return a.piezaId || esEnvio ? 'el envío ya salió' : 'la acción ya arrancó'
+    const fecha = sumarDias(desdeAviso, -a.diasAntes)
     return hoy >= fecha ? 'ya salió' : `sale el ${fechaCorta(fecha)}`
   }
 
@@ -593,7 +606,8 @@ function BloqueAvisos({
       </div>
       <p className="mb-3 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
-        los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
+        los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan
+        {envios.length > 0 && ', o antes de uno de sus envíos'}.
         {avisos.some(a => a.control) && ' Los de Lanzar los trae sola la acción y le llegan a todo el equipo.'}
       </p>
 
@@ -601,7 +615,7 @@ function BloqueAvisos({
         <p className="flex items-center gap-2.5 rounded-xl border border-dashed border-slate-300 px-4 py-3.5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
           <Bell className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
           {esEnvio ? 'Este envío no tiene avisos.' : 'Esta acción no tiene avisos.'}
-          {!editable || yaArranco ? null : ' Configurá el primero acá abajo.'}
+          {puedeAgregar ? ' Configurá el primero acá abajo.' : null}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -619,7 +633,7 @@ function BloqueAvisos({
                       {NOMBRE_DEL_CONTROL[a.control] ?? a.control}
                     </span>
                   )}
-                  <span className="font-semibold text-slate-800 dark:text-slate-100">{a.diasAntes} días antes</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-100">{a.diasAntes} días {desdeQue(accion, a, esEnvio)}</span>
                   <span className="text-slate-500 dark:text-slate-400"> · {estadoDe(a)}</span>
                 </p>
                 <p className="truncate text-xs text-slate-500 dark:text-slate-400">
@@ -644,7 +658,7 @@ function BloqueAvisos({
         </ul>
       )}
 
-      {editable && !yaArranco && (
+      {puedeAgregar && (
         <div className="mt-4 space-y-3.5 rounded-2xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40">
           <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
             <BellPlus className="h-4 w-4 text-brand-600 dark:text-brand-300" /> Nuevo aviso
@@ -658,8 +672,24 @@ function BloqueAvisos({
             >
               {ANTICIPACIONES_DE_AVISO.map(n => <option key={n} value={n}>{n} días antes</option>)}
             </select>
+            {envios.length > 0 && (
+              <>
+                de
+                <select
+                  value={desde}
+                  onChange={e => setDesdeEnvio(e.target.value)}
+                  aria-label="Desde cuándo se cuentan los días"
+                  className="campo !w-auto max-w-full font-semibold"
+                >
+                  {!yaArranco && <option value="">que arranque la acción ({fechaCorta(accion.desde)})</option>}
+                  {enviosQueFaltan.map(p => (
+                    <option key={p.id} value={p.id}>el envío {nombreDeEnvio(p)} ({fechaCorta(p.desde ?? accion.desde)})</option>
+                  ))}
+                </select>
+              </>
+            )}
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              ({hoy >= sumarDias(accion.desde, -dias) ? 'sale ahora' : `el ${fechaCorta(sumarDias(accion.desde, -dias))}`})
+              ({hoy >= sumarDias(base, -dias) ? 'sale ahora' : `el ${fechaCorta(sumarDias(base, -dias))}`})
             </span>
           </label>
 
@@ -702,7 +732,7 @@ function BloqueAvisos({
           <button
             type="button"
             disabled={elegidos.length === 0}
-            onClick={() => agregarAviso(dias, elegidos)}
+            onClick={() => agregarAviso(dias, elegidos, desde || null)}
             className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[40px] sm:w-auto"
           >
             <Plus className="h-4 w-4" /> Agregar aviso

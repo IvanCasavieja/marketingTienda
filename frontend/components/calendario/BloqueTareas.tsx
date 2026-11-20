@@ -1,9 +1,10 @@
 'use client'
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useId, useRef, useState, type ReactNode } from 'react'
 import {
-  CalendarClock, Check, ChevronDown, CornerDownRight, FileText, Layers, LayoutTemplate, Link2, ListChecks, Mic, Plus, Sparkles, Trash2, UserRound, X,
+  CalendarClock, Check, ChevronDown, CornerDownRight, FileText, GripVertical, Layers, LayoutTemplate, Link2, ListChecks, Mic, Pencil, Plus, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
+import { correrUnLugar, moverEntreHermanas } from '@/lib/calendario/orden'
 import { toast } from 'sonner'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
 import { CampoFecha, esFechaGuardable } from './CampoFecha'
@@ -219,14 +220,14 @@ export function BloqueTareas({ accion, personas, usuarioId, gestiona, conTitulo 
         </div>
       )}
 
-      <ul className="space-y-2">
+      <ListaOrdenable barraId={accion.id} tareas={raices} puede={gestiona}>
         {raices.map(t => (
           <ItemTarea
             key={t.id} tarea={t} todas={tareas} accionId={accion.id}
             personas={personas} usuarioId={usuarioId} gestiona={gestiona}
           />
         ))}
-      </ul>
+      </ListaOrdenable>
 
       {/* El inicio es uno solo: Crear tarea. Los materiales se piden debajo de
           cada tarea creada (17/11/2026). La plantilla sigue para quien lidera. */}
@@ -325,6 +326,131 @@ const FormularioAbierto = createContext<{
   abrir: (a: Abierto) => void
 }>({ accion: null, pidePiezas: false, abierto: null, abrir: () => {} })
 
+/**
+ * Ordenar las tareas arrastrándolas (Ivan, 20/11/2026). Se agarra la manija
+ * (⋮⋮) y se suelta arriba o abajo de otra del mismo nivel; con el teclado, la
+ * manija y las flechas ↑ ↓. Va con eventos de puntero y no con el "arrastrar"
+ * del navegador: así anda igual con el mouse que con el dedo. Lo puede hacer
+ * quien gestiona las tareas (lo mismo exige el servidor).
+ */
+type Orden = {
+  lista: string
+  puede: boolean
+  arrastrando: string | null
+  sobre: { id: string; antes: boolean } | null
+  empezar: (id: string) => void
+  moverA: (x: number, y: number) => void
+  soltar: () => void
+  cancelar: () => void
+  correr: (id: string, paso: -1 | 1) => void
+}
+const OrdenDeLaLista = createContext<Orden | null>(null)
+
+function ListaOrdenable({ barraId, tareas, puede, children }: {
+  barraId: string
+  tareas: Tarea[]
+  puede: boolean
+  children: ReactNode
+}) {
+  const ordenar = useCalendario(s => s.ordenarTareas)
+  const lista = useId()
+  const [arrastrando, setArrastrando] = useState<string | null>(null)
+  const [sobre, setSobre] = useState<Orden['sobre']>(null)
+  const ids = tareas.map(t => t.id)
+  const guardar = (nuevo: string[]) => {
+    if (nuevo.join('|') !== ids.join('|')) ordenar(barraId, nuevo)
+  }
+  const terminar = () => { setArrastrando(null); setSobre(null) }
+  const valor: Orden = {
+    lista, puede: puede && ids.length > 1, arrastrando, sobre,
+    empezar: id => { setArrastrando(id); setSobre(null) },
+    moverA: (x, y) => {
+      if (!arrastrando) return
+      // La hermana que está debajo del dedo (o del mouse), de ESTA lista.
+      const item = document.elementFromPoint(x, y)?.closest<HTMLElement>(`[data-orden-lista="${lista}"]`)
+      const fila = item?.querySelector<HTMLElement>(':scope > [data-orden-fila]')
+      const id = item?.dataset.ordenId
+      if (!item || !fila || !id || id === arrastrando) { setSobre(null); return }
+      const r = fila.getBoundingClientRect()
+      setSobre({ id, antes: y < r.top + r.height / 2 })
+    },
+    soltar: () => {
+      if (arrastrando && sobre) guardar(moverEntreHermanas(ids, arrastrando, sobre.id, sobre.antes))
+      terminar()
+    },
+    cancelar: terminar,
+    correr: (id, paso) => guardar(correrUnLugar(ids, id, paso)),
+  }
+  return (
+    <OrdenDeLaLista.Provider value={valor}>
+      <ul className="space-y-2">{children}</ul>
+    </OrdenDeLaLista.Provider>
+  )
+}
+
+function Manija({ tarea }: { tarea: Tarea }) {
+  const orden = useContext(OrdenDeLaLista)
+  if (!orden?.puede) return null
+  const mia = orden.arrastrando === tarea.id
+  return (
+    <button
+      type="button"
+      data-manija
+      onPointerDown={e => {
+        if (e.button !== 0) return
+        e.preventDefault()
+        e.currentTarget.setPointerCapture(e.pointerId)
+        orden.empezar(tarea.id)
+      }}
+      onPointerMove={e => { if (mia) orden.moverA(e.clientX, e.clientY) }}
+      onPointerUp={() => { if (mia) orden.soltar() }}
+      onPointerCancel={orden.cancelar}
+      onKeyDown={e => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+        e.preventDefault()
+        orden.correr(tarea.id, e.key === 'ArrowUp' ? -1 : 1)
+      }}
+      aria-label={`Mover ${tarea.titulo}: arrastrala, o usá las flechas arriba y abajo`}
+      title="Arrastrá para ordenar"
+      className={`-my-1 -ml-2 -mr-1 flex h-9 w-6 shrink-0 touch-none items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 ${mia ? 'cursor-grabbing' : 'cursor-grab'}`}
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  )
+}
+
+/** El nombre de la tarea, editable: Enter guarda, Esc deja como estaba. */
+function TituloEditable({ tarea, onListo }: { tarea: Tarea; onListo: () => void }) {
+  const cambiar = useCalendario(s => s.cambiarTarea)
+  const [valor, setValor] = useState(tarea.titulo)
+  // Al cerrar con Enter o Esc el campo desaparece y el navegador puede
+  // mandar igual el "salí del campo": que no guarde dos veces ni guarde un Esc.
+  const listo = useRef(false)
+  const cerrar = (guardar: boolean) => {
+    if (listo.current) return
+    listo.current = true
+    const titulo = valor.trim()
+    if (guardar && titulo && titulo !== tarea.titulo) cambiar(tarea.id, { titulo })
+    onListo()
+  }
+  return (
+    <input
+      autoFocus
+      value={valor}
+      maxLength={500}
+      onChange={e => setValor(e.target.value)}
+      onFocus={e => e.currentTarget.select()}
+      onBlur={() => cerrar(true)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); cerrar(true) }
+        if (e.key === 'Escape') { e.preventDefault(); cerrar(false) }
+      }}
+      aria-label={`Nuevo nombre de ${tarea.titulo}`}
+      className="w-full min-w-0 rounded-lg border border-brand-300 bg-white px-2 py-1 text-[15px] font-semibold text-slate-900 outline-none ring-brand-500/30 focus:ring-4 dark:border-brand-500/50 dark:bg-slate-900 dark:text-slate-100"
+    />
+  )
+}
+
 function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   tarea: Tarea
   todas: Tarea[]
@@ -341,12 +467,14 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   const pidiendoMaterial = abierto === `material:${tarea.id}`
   const [confirmando, setConfirmando] = useState(false)
   const [editandoDetalle, setEditandoDetalle] = useState(false)
+  const [renombrando, setRenombrando] = useState(false)
+  const orden = useContext(OrdenDeLaLista)
   // Minimizada: solo el título (Ivan, 18/11/2026: "que las tareas queden como
   // minimizadas y se muestre solo su título, porque imaginate tener varias
   // tareas con toda esa vista"). Se despliega tocándola; si se está
   // agregando algo adentro, queda abierta.
   const [abiertaAMano, setAbierta] = useState(false)
-  const abierta = abiertaAMano || agregando || pidiendoMaterial || editandoDetalle
+  const abierta = abiertaAMano || agregando || pidiendoMaterial || editandoDetalle || renombrando
 
   const hijas = todas.filter(t => t.parentId === tarea.id)
   const piezasHijas = hijas.filter(h => Boolean(h.entrega) || !!h.tipo || (!!h.para && h.para !== 'tienda')).length
@@ -394,14 +522,25 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
   }
 
   return (
-    <li>
+    <li
+      data-orden-lista={orden?.lista} data-orden-id={tarea.id}
+      className={`relative transition-opacity ${orden?.arrastrando === tarea.id ? 'opacity-50' : ''}`}
+    >
+      {/* Dónde cae la que se está arrastrando: una raya arriba o abajo. */}
+      {orden?.sobre?.id === tarea.id && (
+        <span
+          aria-hidden
+          className={`pointer-events-none absolute inset-x-1 z-10 h-1 rounded-full bg-brand-500 ${orden.sobre.antes ? '-top-[6px]' : '-bottom-[6px]'}`}
+        />
+      )}
       {/* Minimizada, se abre tocando cualquier parte del renglón (Ivan,
           18/11/2026: "debería ser todo clickeable, no solo la flechita"),
-          menos el tilde, que sigue tildando. Con el teclado, el título y la
-          flecha son botones. */}
+          menos el tilde, que sigue tildando, y la manija, que arrastra. Con
+          el teclado, el título y la flecha son botones. */}
       <div
+        data-orden-fila
         onClick={e => {
-          if (!abierta && !(e.target as HTMLElement).closest('[data-tilde]')) setAbierta(true)
+          if (!abierta && !(e.target as HTMLElement).closest('[data-tilde],[data-manija]')) setAbierta(true)
         }}
         className={`rounded-2xl border px-3.5 ${abierta ? 'py-3' : 'cursor-pointer py-2 hover:border-brand-300 hover:shadow-sm dark:hover:border-brand-500/40'} transition duration-300 ${
         hecha
@@ -413,6 +552,7 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               : 'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900'
       }`}>
         <div className={`flex gap-3 ${abierta ? 'items-start' : 'items-center'}`}>
+          <Manija tarea={tarea} />
           {/* El tilde: un área de 40px para el dedo, con el cuadrado de 24 adentro */}
           <button
             type="button"
@@ -441,15 +581,19 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
             <p className={`flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold leading-snug transition-colors duration-300 ${
               hecha ? 'text-slate-500 line-through decoration-slate-300 dark:text-slate-400 dark:decoration-slate-600' : 'text-slate-900 dark:text-slate-100'
             }`}>
-              <button
-                type="button"
-                onClick={() => setAbierta(!abierta)}
-                aria-expanded={abierta}
-                title={abierta ? 'Minimizar' : 'Ver la tarea entera'}
-                className="min-w-0 break-words text-left transition hover:text-brand-700 dark:hover:text-brand-200"
-              >
-                {tarea.titulo}
-              </button>
+              {renombrando ? (
+                <TituloEditable tarea={tarea} onListo={() => setRenombrando(false)} />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAbierta(!abierta)}
+                  aria-expanded={abierta}
+                  title={abierta ? 'Minimizar' : 'Ver la tarea entera'}
+                  className="min-w-0 break-words text-left transition hover:text-brand-700 dark:hover:text-brand-200"
+                >
+                  {tarea.titulo}
+                </button>
+              )}
               {vencida && (
                 <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-rose-700 no-underline dark:bg-rose-500/15 dark:text-rose-300">
                   Vencida
@@ -542,6 +686,18 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
 
               {gestiona && (
                 <span className="ml-auto flex items-center gap-0.5">
+                  {/* Cambiarle el nombre a una tarea ya creada (Ivan, 20/11/2026). */}
+                  {!renombrando && (
+                    <button
+                      type="button"
+                      onClick={() => setRenombrando(true)}
+                      aria-label={`Cambiarle el nombre a ${tarea.titulo}`}
+                      title="Cambiarle el nombre"
+                      className="flex h-9 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-8"
+                    >
+                      <Pencil className="h-4 w-4" /> Nombre
+                    </button>
+                  )}
                   {!editandoDetalle && (
                     <button
                       type="button"
@@ -609,14 +765,14 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
       {abierta && (hijas.length > 0 || agregando || puedeMaterial) && (
         <div className="ml-4 mt-2 border-l-2 border-slate-300 pl-3 dark:border-slate-700">
           {hijas.length > 0 && (
-            <ul className="space-y-2">
+            <ListaOrdenable barraId={accionId} tareas={hijas} puede={gestiona}>
               {hijas.map(h => (
                 <ItemTarea
                   key={h.id} tarea={h} todas={todas} accionId={accionId}
                   personas={personas} usuarioId={usuarioId} gestiona={gestiona}
                 />
               ))}
-            </ul>
+            </ListaOrdenable>
           )}
           {agregando && (
             <NuevaTarea

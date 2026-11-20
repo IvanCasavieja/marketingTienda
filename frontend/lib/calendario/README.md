@@ -20,9 +20,10 @@ a ese mundo va a ver todo hecho para ese mundo".
 - Quien tiene **un solo mundo** entra derecho. Quien tiene **varios** pasa por
   `/mundos` a elegir antes de ver nada, y cambia cuando quiere desde el menú.
 - **El menú es el del mundo**: cada herramienta aparece solo donde tiene sentido
-  (`RUTAS_DE_MUNDO` en `lib/mundos.ts`). La planilla de pedidos es de Redexpres;
-  los medios, los precios, finanzas, la validación de redes y el diccionario
-  son de Tienda Inglesa; las cenefas están en los dos. Abrir una herramienta de
+  (`RUTAS_DE_MUNDO` en `lib/mundos.ts`). La planilla de pedidos es solo de
+  Redexpres; los precios, la validación de redes y el diccionario son de Tienda
+  Inglesa; las cenefas están en los dos; los medios y finanzas, en todos (Ivan,
+  20/11/2026: son los mismos datos, no se separan). Abrir una herramienta de
   otro mundo (un link guardado, un aviso) muestra dónde está y ofrece pasar.
 - **Lo que se guarda por mundo**, y que el servidor no deja leer ni escribir
   desde otro (`app/core/mundos.py`, `exigir_mundo`): el calendario con sus
@@ -253,6 +254,16 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   de hacer: su fila se ve hasta noviembre de 2026 (`bandasRetiradas` en
   `lib/mundos.ts`) y ya no se ofrece para acciones nuevas; Lanzar FDS y Cierre
   FDS (0078) se sacaron.
+- **Un aviso contado desde un envío (0084, 20/11/2026).** Al configurar un
+  aviso se elige si los días se cuentan desde que arranca la acción o desde
+  uno de sus envíos (email, WhatsApp, push): `calendario_avisos.pieza_id`. Se
+  mueve con el envío, sale aunque la acción ya haya arrancado, se va si se
+  saca el envío y, al copiar la acción, pasa al envío de la copia
+  (`lib/calendario/avisos.ts` y `fecha_base` en el servidor).
+- **Las tareas se renombran y se ordenan arrastrando (20/11/2026).** Quien
+  gestiona las tareas les cambia el nombre ("Nombre") y las ordena con la
+  manija ⋮⋮, con el mouse, el dedo o las flechas; entre hermanas
+  (`lib/calendario/orden.ts`, `PUT /barras/{id}/tareas/orden`).
 - **Piezas de Redexpres:** Imprenta, Video monitores, Bases escribana y
   Afiche bombas se ofrecen solo en sus acciones (`mundos` en el catálogo).
 - **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),
@@ -595,7 +606,6 @@ Mi agenda: `mi-agenda.test.ts` y, en el backend, `tests/test_mi_agenda.py`
   incluye Tienda Viajes) siguen en sus planillas.
 - **Ligar una tarea a una pieza.** Las tareas cuelgan de la acción; todavía no
   se puede decir "esta tarea es el arte de este header".
-- **Editar el título de una tarea ya creada** y arrastrarlas para ordenarlas.
 - **Los avisos configurados no miran el mundo**: se le puede avisar solo a
   quien abre ese mundo, pero si después se lo sacan, el aviso le llega igual.
 - **Permisos por calendario.** Hoy hay tres permisos que valen para los cuatro

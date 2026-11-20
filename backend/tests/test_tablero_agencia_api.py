@@ -2140,6 +2140,109 @@ def test_subtareas_asignaciones_y_estado_de_las_tareas_comunes():
     correr(prueba)
 
 
+def test_cambiarle_el_nombre_y_ordenar_las_tareas_arrastrando():
+    """Ivan (20/11/2026): "editar el título de una tarea ya creada y ordenar
+    las tareas arrastrando". Lo hace quien gestiona las tareas; se ordenan
+    entre hermanas y las demás no se mueven."""
+    async def prueba(d):
+        lider, lucia = Cliente(d.http, d.lider), Cliente(d.http, d.lucia)
+        ids = [f"ta-ord{i}-{d.sufijo}" for i in range(3)]
+        for i, tid in enumerate(ids):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": tid, "titulo": f"Tarea {i}"})
+            assert r.status_code == 201, r.text
+        hija = f"ta-ordh-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": hija, "parentId": ids[0], "titulo": "Hija"})
+        assert r.status_code == 201, r.text
+
+        async def ordenes():
+            async with d.Sesion() as s:
+                filas = (await s.execute(
+                    select(CalendarioTarea).where(CalendarioTarea.barra_id == d.ciber.id)
+                    .order_by(CalendarioTarea.orden, CalendarioTarea.created_at, CalendarioTarea.id)
+                )).scalars().all()
+                return [t.id for t in filas if t.id in ids], {t.id: t.orden for t in filas}
+
+        # Cambiarle el nombre.
+        r = await lider.patch(f"/calendario/tareas/{ids[1]}", json={"titulo": "  Mailing final  "})
+        assert r.status_code == 200, r.text
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, ids[1])).titulo == "Mailing final"
+        assert (await lider.patch(f"/calendario/tareas/{ids[1]}", json={"titulo": "   "})).status_code == 422
+
+        # Ordenar: la última pasa primera. La hija no se mueve.
+        _, antes = await ordenes()
+        nuevo = [ids[2], ids[0], ids[1]]
+        r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": nuevo})
+        assert r.status_code == 200, r.text
+        en_orden, despues = await ordenes()
+        assert en_orden == nuevo
+        assert despues[hija] == antes[hija]
+        assert sorted(despues[i] for i in ids) == sorted(antes[i] for i in ids)
+
+        # Quien no gestiona las tareas, no; ni mezclar niveles, ni una tarea de otra acción.
+        assert (await lucia.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": ids})).status_code == 403
+        r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], hija]})
+        assert r.status_code == 422
+        r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], "ta-no-existe"]})
+        assert r.status_code == 404
+        r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], ids[0]]})
+        assert r.status_code == 422
+        assert (await ordenes())[0] == nuevo
+    correr(prueba)
+
+
+def test_un_aviso_contado_desde_la_fecha_de_un_envio():
+    """Ivan (20/11/2026): "que un aviso se pueda programar según la fecha de
+    un envío, no solo según el arranque de la acción" (0084). Sale aunque la
+    acción ya haya arrancado, se mueve con el envío y se va si se saca."""
+    async def prueba(d):
+        from app.services import calendario_avisos
+        lucia = Cliente(d.http, d.lucia)
+        hoy, accion = d.hoy, d.ahora  # arranca hoy
+        mail = f"pz-mail-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{accion.id}/piezas", json={
+            "id": mail, "area": "email", "formato": "Mailing digital", "desde": (hoy + timedelta(days=3)).isoformat()})
+        assert r.status_code == 201, r.text
+        web = f"pz-web-{d.sufijo}"
+        assert (await lucia.post(f"/calendario/barras/{accion.id}/piezas", json={
+            "id": web, "area": "web-home", "formato": "Banner"})).status_code == 201
+
+        # Solo desde un envío de la misma acción.
+        base = {"diasAntes": 2, "destinatarios": [d.lucia.id]}
+        r = await lucia.post(f"/calendario/barras/{accion.id}/avisos", json={**base, "id": f"av-w-{d.sufijo}", "piezaId": web})
+        assert r.status_code == 422
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/avisos", json={**base, "id": f"av-o-{d.sufijo}", "piezaId": mail})
+        assert r.status_code == 404
+
+        aviso = f"av-mail-{d.sufijo}"
+        r = await lucia.post(f"/calendario/barras/{accion.id}/avisos", json={**base, "id": aviso, "piezaId": mail})
+        assert r.status_code == 201, r.text
+        assert r.json()["enviadosAhora"] == 0  # el envío sale en 3 días: todavía no
+        datos = (await lucia.get("/calendario/datos", params={"mundo": MUNDO})).json()
+        ficha = next(b for b in datos["barras"] if b["id"] == accion.id)
+        assert next(a for a in ficha["avisos"] if a["id"] == aviso)["piezaId"] == mail
+
+        async def mensajes():
+            async with d.Sesion() as s:
+                return [n.mensaje for n in (await s.execute(select(Notificacion).where(
+                    Notificacion.user_id == d.lucia.id, Notificacion.origen_ref == f"{accion.id}:{aviso}",
+                ))).scalars()]
+
+        # Mañana la acción ya arrancó, pero faltan 2 días para el mailing: sale.
+        async with d.Sesion() as s:
+            await calendario_avisos.revisar_avisos(s, hoy=hoy + timedelta(days=1), barra_id=accion.id)
+        assert await mensajes() == [
+            f"{accion.nombre} · Mailing digital (Email) sale en 2 días, el {(hoy + timedelta(days=3)).strftime('%d/%m')}."
+            " Aviso configurado por Lucia Equipo."
+        ]
+
+        # Sacar el envío se lleva el aviso.
+        assert (await d.http.delete(f"{API}/calendario/piezas/{mail}", headers=lucia.headers)).status_code == 200
+        async with d.Sesion() as s:
+            assert await s.get(CalendarioAviso, aviso) is None
+    correr(prueba)
+
+
 def test_se_pide_un_material_de_redes_sociales_debajo_de_una_tarea():
     async def prueba(d):
         lucia = Cliente(d.http, d.lucia)

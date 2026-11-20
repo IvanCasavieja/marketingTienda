@@ -258,11 +258,17 @@ def copiar_avisos(
     avisos: Iterable[Any], barra_id: str, corrimiento: timedelta,
     destinatarios_validos: set[int], creado_por: int | None,
     hacer_id: Callable[[str], str] = nuevo_id,
+    piezas_copiadas: dict[str, str] | None = None,
 ) -> AvisosCopiados:
     """Los avisos, con los mismos días antes (el aviso guarda la anticipación,
     no la fecha: se corre solo con la acción). Quien ya no puede ver el mundo
     sale de la lista; un aviso que se queda sin nadie no se copia, porque no
-    le llegaría a nadie (y al configurarlo a mano tampoco se puede)."""
+    le llegaría a nadie (y al configurarlo a mano tampoco se puede).
+
+    Un aviso contado desde un envío (0084) pasa a contarse desde el envío de
+    la copia: `piezas_copiadas` dice qué pieza nueva es cada vieja. Sin ella
+    (o si el envío no se copió), se cuenta desde que arranca la acción."""
+    piezas_copiadas = piezas_copiadas or {}
     out = AvisosCopiados()
     for a in avisos:
         pedidos = ids_de_personas(a.destinatarios)
@@ -274,6 +280,7 @@ def copiar_avisos(
         out.filas.append(valores_copiados(a, corrimiento, {
             "id": hacer_id("av"), "barra_id": barra_id,
             "destinatarios": quedan, "creado_por_id": creado_por,
+            "pieza_id": piezas_copiadas.get(getattr(a, "pieza_id", None) or ""),
         }))
     return out
 

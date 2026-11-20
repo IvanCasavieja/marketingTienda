@@ -27,12 +27,12 @@ import asyncio
 import logging
 from datetime import date, datetime, time, timedelta, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.mundos import puede_abrir
-from app.models.calendario import CalendarioAviso, CalendarioBarra
+from app.models.calendario import CalendarioAviso, CalendarioBarra, CalendarioPieza
 from app.models.notificacion import Notificacion
 from app.models.user import User
 
@@ -63,6 +63,22 @@ def hoy_en_uruguay() -> date:
 def toca_avisar(inicio: date, dias_antes: int, hoy: date) -> bool:
     """Si hoy cae entre el día del aviso y el día en que arranca la acción."""
     return inicio - timedelta(days=dias_antes) <= hoy <= inicio
+
+
+def fecha_base(barra, pieza) -> date:
+    """Desde qué fecha se cuentan los días de un aviso (0084). Con un envío,
+    desde que sale; si al envío le sacaron la fecha, sale con la acción (es lo
+    que significa una pieza sin fecha propia). Sin envío, desde que arranca la
+    acción. Pura."""
+    if pieza is not None and pieza.desde is not None:
+        return pieza.desde
+    return barra.desde
+
+
+def mensaje_de_envio(pieza, barra, inicio: date, hoy: date, quien: str | None) -> str:
+    """"Ciberlunes · Mailing digital (Email) sale en 3 días, el 25/11." Pura."""
+    nombre = f"{barra.nombre or 'Sin nombre'} · {pieza.formato}" if pieza.formato else barra.nombre
+    return mensaje(nombre, pieza.area, inicio, hoy, quien, es_envio=True)
 
 
 def inicio_de_ventana(inicio: date, dias_antes: int) -> datetime:
@@ -185,18 +201,23 @@ async def revisar_avisos(
 
 async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
     """Lo de adentro del candado: qué avisos tocan y a quién le faltan."""
+    # Un aviso de un envío (0084) se cuenta desde la fecha del envío, que
+    # puede caer después de que arrancó la acción.
     consulta = (
-        select(CalendarioAviso, CalendarioBarra)
+        select(CalendarioAviso, CalendarioBarra, CalendarioPieza)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioAviso.barra_id)
-        .where(CalendarioBarra.desde >= hoy)
+        .outerjoin(CalendarioPieza, CalendarioPieza.id == CalendarioAviso.pieza_id)
+        .where(or_(CalendarioBarra.desde >= hoy, CalendarioPieza.desde >= hoy))
     )
     if barra_id is not None:
         consulta = consulta.where(CalendarioBarra.id == barra_id)
+    filas = (await db.execute(consulta)).all()
+    piezas = {aviso.id: pieza for aviso, _, pieza in filas}
     # El de más días primero: si Lanzar a 60 y a 30 tocan a la vez (la acción
     # se cargó tarde), sale el de 60 y el de 30 ya lo encuentra salido.
     pares = sorted((
-        (aviso, barra) for aviso, barra in (await db.execute(consulta)).all()
-        if toca_avisar(barra.desde, aviso.dias_antes, hoy)
+        (aviso, barra) for aviso, barra, pieza in filas
+        if toca_avisar(fecha_base(barra, pieza), aviso.dias_antes, hoy)
     ), key=lambda p: (p[1].id, -p[0].dias_antes))
     if not pares:
         return 0
@@ -248,14 +269,17 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
     ahora = datetime.now(timezone.utc)
     for aviso, barra in pares:
         ref = referencia(barra.id, aviso.id)
-        desde_cuando = inicio_de_ventana(barra.desde, aviso.dias_antes)
+        pieza = piezas.get(aviso.id)
+        base = fecha_base(barra, pieza)
+        desde_cuando = inicio_de_ventana(base, aviso.dias_antes)
         if aviso.control:
             texto = mensaje_de_control(aviso.control, barra.nombre, barra.banda, barra.desde, hoy)
         else:
             creador = usuarios.get(aviso.creado_por_id) if aviso.creado_por_id else None
-            texto = mensaje(
-                barra.nombre, barra.banda, barra.desde, hoy, creador.full_name if creador else None,
-                es_envio=barra.seccion == "envio",
+            quien = creador.full_name if creador else None
+            texto = (
+                mensaje_de_envio(pieza, barra, base, hoy, quien) if pieza is not None
+                else mensaje(barra.nombre, barra.banda, barra.desde, hoy, quien, es_envio=barra.seccion == "envio")
             )
         destinatarios = _ids(aviso.destinatarios)
         if aviso.control:

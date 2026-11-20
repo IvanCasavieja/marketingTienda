@@ -136,3 +136,26 @@ def test_no_queda_el_aviso_automatico_de_diez_dias():
         "el aviso automático escribía con origen 'calendario_accion': si vuelve a "
         "aparecer, vuelven a llegar avisos que nadie configuró"
     )
+
+
+# ---------------------------------------------------------------------------
+# Desde la fecha de un envío (0084, Ivan 20/11/2026)
+# ---------------------------------------------------------------------------
+
+def test_un_aviso_de_un_envio_se_cuenta_desde_que_sale():
+    from types import SimpleNamespace
+    from app.services.calendario_avisos import fecha_base
+    barra = SimpleNamespace(desde=date(2026, 11, 22))
+    assert fecha_base(barra, None) == date(2026, 11, 22)
+    assert fecha_base(barra, SimpleNamespace(desde=date(2026, 11, 25))) == date(2026, 11, 25)
+    # Al envío le sacaron la fecha: sale con la acción.
+    assert fecha_base(barra, SimpleNamespace(desde=None)) == date(2026, 11, 22)
+
+
+def test_el_aviso_de_un_envio_dice_que_envio_sale():
+    from types import SimpleNamespace
+    from app.services.calendario_avisos import mensaje_de_envio
+    barra = SimpleNamespace(nombre="Ciberlunes", desde=date(2026, 11, 22))
+    pieza = SimpleNamespace(area="email", formato="Mailing digital", desde=date(2026, 11, 25))
+    texto = mensaje_de_envio(pieza, barra, date(2026, 11, 25), date(2026, 11, 22), "Valentina")
+    assert texto == "Ciberlunes · Mailing digital (Email) sale en 3 días, el 25/11. Aviso configurado por Valentina."
