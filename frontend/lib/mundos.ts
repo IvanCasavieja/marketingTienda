@@ -45,6 +45,9 @@ export type Mundo = {
    *  Inglesa (lib/calendario/catalogo.ts). Un tipo que no está acá igual se
    *  muestra si tiene alguna acción cargada. */
   bandas: string[] | null
+  /** Filas que dejaron de usarse: hasta qué mes ('YYYY-MM') se siguen viendo.
+   *  Después no aparecen, y no se ofrecen para acciones nuevas. */
+  bandasRetiradas?: Record<string, string>
 }
 
 const BANDAS_GENERICAS = ['Campañas', 'Promociones', 'Cartelería', 'Redes sociales', 'Otras acciones']
@@ -73,6 +76,9 @@ export const MUNDOS: Mundo[] = [
     clave: 'redexpres', nombre: 'Redexpres', color: '#dc2626',
     bajada: 'El calendario, las tareas, las cenefas y los pedidos de la red de locales',
     secciones: ['comercial', 'envios'], bandas: BANDAS_REDEXPRES,
+    // Ivan (20/11/2026): "FDS no va a existir más (...) la línea de FDS no
+    // debería existir más a partir de diciembre".
+    bandasRetiradas: { 'Super FDS': '2026-11' },
   },
   {
     clave: 'tienda_viajes', nombre: 'Tienda Viajes', color: '#0891b2',

@@ -1,7 +1,8 @@
-"""Lanzar y Cierre de Redexpres (app/services/controles_redexpres.py): puras.
+"""Lanzar, el control de Redexpres (app/services/controles_redexpres.py): puras.
 
 Lo que pasa con la base (crear la acción, a quién le llega cada aviso) está
-en test_tablero_agencia_api.py.
+en test_tablero_agencia_api.py. Desde el 20/11/2026 el Cierre es manual y los
+Super FDS no llevan nada.
 """
 from datetime import date
 from types import SimpleNamespace
@@ -27,44 +28,44 @@ def test_solo_las_acciones_de_redexpres_y_no_las_semanales():
     assert not cr.aplica(barra(banda="  super   FDS "))
 
 
-def test_cargada_con_tiempo_las_tareas_van_ancladas_a_la_accion():
-    lanzar, cierre = cr.tareas_nuevas(barra(), set(), 7, HOY)
+def test_solo_lanzar_anclada_a_la_accion():
+    (lanzar,) = cr.tareas_nuevas(barra(), set(), 7, HOY)
     assert (lanzar["titulo"], lanzar["vence"], lanzar["ancla"], lanzar["ancla_dias"]) == ("Lanzar", date(2026, 12, 31), "inicio", -60)
-    assert (cierre["titulo"], cierre["vence"], cierre["ancla"], cierre["ancla_dias"]) == ("Cierre", date(2027, 2, 1), "inicio", -28)
-    assert lanzar["creado_por_id"] == 7 and lanzar["estado"] == "pendiente" and lanzar["orden"] < cierre["orden"]
+    assert lanzar["creado_por_id"] == 7 and lanzar["estado"] == "pendiente"
 
 
-def test_cargada_tarde_vencen_hoy_y_no_nacen_vencidas():
-    lanzar, cierre = cr.tareas_nuevas(barra(desde=date(2026, 12, 8)), set(), None, HOY)
+def test_el_cierre_ya_no_es_automatico():
+    # Ivan (20/11/2026): "se creará manual y solo manual".
+    assert [t["titulo"] for t in cr.tareas_nuevas(barra(), set(), None, HOY)] == ["Lanzar"]
+    assert all(a["control"] == "lanzar" for a in cr.avisos_nuevos(barra(), set(), None))
+    assert set(cr.NOMBRE_DEL_CONTROL) == {"lanzar"}
+
+
+def test_cargada_tarde_vence_hoy_y_no_nace_vencida():
+    (lanzar,) = cr.tareas_nuevas(barra(desde=date(2026, 12, 8)), set(), None, HOY)
     assert lanzar["vence"] == HOY and lanzar["ancla"] is None
-    assert cierre["vence"] == HOY and cierre["ancla"] is None
-    # Con 40 días: Lanzar ya pasó, Cierre todavía no.
-    lanzar, cierre = cr.tareas_nuevas(barra(desde=date(2026, 12, 28)), set(), None, HOY)
-    assert lanzar["vence"] == HOY and cierre["vence"] == date(2026, 11, 30) and cierre["ancla"] == "inicio"
 
 
 def test_una_tarea_que_ya_se_llama_asi_no_se_repite():
-    assert [t["titulo"] for t in cr.tareas_nuevas(barra(), {"lanzar"}, None, HOY)] == ["Cierre"]
-    assert cr.tareas_nuevas(barra(), {"lanzar", "cierre"}, None, HOY) == []
+    assert cr.tareas_nuevas(barra(), {"lanzar"}, None, HOY) == []
 
 
-def test_los_tres_avisos_y_sin_repetir():
+def test_los_dos_avisos_y_sin_repetir():
     avisos = cr.avisos_nuevos(barra(), set(), 7)
-    assert [(a["control"], a["dias_antes"]) for a in avisos] == [("lanzar", 60), ("lanzar", 30), ("cierre", 28)]
+    assert [(a["control"], a["dias_antes"]) for a in avisos] == [("lanzar", 60), ("lanzar", 30)]
     assert all(a["destinatarios"] == [] for a in avisos)
-    assert [a["dias_antes"] for a in cr.avisos_nuevos(barra(), {("lanzar", 60)}, 7)] == [30, 28]
+    assert [a["dias_antes"] for a in cr.avisos_nuevos(barra(), {("lanzar", 60)}, 7)] == [30]
 
 
 def test_los_ids_son_siempre_los_mismos():
     assert cr.id_de_tarea("br-1", "lanzar") == cr.id_de_tarea("br-1", "lanzar") != cr.id_de_tarea("br-2", "lanzar")
     assert cr.id_de_aviso("br-1", "lanzar", 60) != cr.id_de_aviso("br-1", "lanzar", 30)
-    assert len(cr.id_de_tarea("x" * 64, "cierre")) <= 64
+    assert len(cr.id_de_tarea("x" * 64, "lanzar")) <= 64
 
 
 def test_el_mensaje_dice_que_control_es():
     texto = mensaje_de_control("lanzar", "Mailing marzo", "MAILING - 16 PAG EL PAIS", date(2027, 3, 1), date(2026, 12, 31))
     assert texto == "Lanzar: Mailing marzo (MAILING - 16 PAG EL PAIS) arranca en 60 días, el 01/03."
-    assert mensaje_de_control("cierre", "X", "ESPECIAL - CM", date(2027, 3, 1), date(2027, 3, 1)).startswith("Cierre: X")
 
 
 def test_las_piezas_de_valentina_solo_en_redexpres():
@@ -75,39 +76,3 @@ def test_las_piezas_de_valentina_solo_en_redexpres():
     assert not tipos_de_tarea.vale_en("no-existe", "redexpres")
     por_clave = {t["clave"]: t for t in tipos_de_tarea.para_la_pantalla()}
     assert por_clave["imprenta"]["mundos"] == ["redexpres"] and por_clave["banners"]["mundos"] is None
-
-
-# ---------------------------------------------------------------------------
-# Los Super FDS: Cierre FDS en cada uno, Lanzar FDS en el primero del mes
-# ---------------------------------------------------------------------------
-
-def test_un_super_fds_lleva_los_suyos():
-    assert cr.es_fds(barra(banda="Super FDS")) and cr.es_fds(barra(banda=" super  fds"))
-    assert not cr.es_fds(barra()) and not cr.es_fds(barra(banda="Super FDS", mundo="tienda_inglesa"))
-    assert not cr.aplica(barra(banda="Super FDS"))
-
-
-def test_cierre_fds_dos_semanas_antes_y_lanzar_fds_solo_el_primero():
-    fds = barra(banda="Super FDS", desde=date(2027, 3, 4))
-    tareas, avisos = cr.controles_fds(fds, set(), set(), 7, HOY, primero_del_mes=False)
-    assert [(t["titulo"], t["vence"], t["ancla_dias"]) for t in tareas] == [("Cierre FDS", date(2027, 2, 18), -14)]
-    assert [(a["control"], a["dias_antes"]) for a in avisos] == [("cierre_fds", 14)]
-    tareas, avisos = cr.controles_fds(fds, set(), set(), 7, HOY, primero_del_mes=True)
-    assert sorted((t["titulo"], t["vence"]) for t in tareas) == [("Cierre FDS", date(2027, 2, 18)), ("Lanzar FDS", date(2027, 2, 22))]
-    assert sorted((a["control"], a["dias_antes"]) for a in avisos) == [("cierre_fds", 14), ("lanzar_fds", 10)]
-    # Lo que ya tiene no se repite.
-    tareas, avisos = cr.controles_fds(fds, {"cierre fds"}, {("cierre_fds", 14)}, 7, HOY, primero_del_mes=False)
-    assert tareas == [] and avisos == []
-
-
-def test_los_ids_de_fds_no_chocan_con_los_otros():
-    assert cr.id_de_tarea("br-1", "lanzar_fds") != cr.id_de_tarea("br-1", "lanzar")
-    assert cr.id_de_aviso("br-1", "cierre_fds", 14).startswith("av-cf14-")
-
-
-def test_el_mensaje_de_lanzar_fds_es_del_mes():
-    texto = mensaje_de_control("lanzar_fds", "Super FDS", "Super FDS", date(2027, 3, 4), date(2027, 2, 22))
-    assert texto == "Lanzar FDS de marzo: el primer Super FDS del mes arranca en 10 días, el 04/03."
-    assert mensaje_de_control("cierre_fds", "Super FDS", "Super FDS", date(2027, 3, 4), date(2027, 2, 18)) == (
-        "Cierre FDS: Super FDS (Super FDS) arranca en 14 días, el 04/03."
-    )

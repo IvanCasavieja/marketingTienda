@@ -242,5 +242,20 @@ const pos = {}
 ok('mismas barras, mismo objeto', vistaDelMes('2026-09', registro, pos) === vistaDelMes('2026-09', registro, pos))
 ok('barras nuevas, mes nuevo', vistaDelMes('2026-09', registro, pos) !== vistaDelMes('2026-09', { ...registro }, pos))
 
+// Una fila que dejó de usarse (20/11/2026: los Super FDS de Redexpres terminan
+// en noviembre) se ve hasta su último mes y después no.
+console.log('\nuna fila que dejó de usarse')
+const conFds = {
+  comercial: [{ nombre: 'ESPECIAL - CM' }, { nombre: 'Super FDS', hasta: '2026-11' }, { nombre: 'BOMBAS' }],
+  retail: [],
+}
+const fdsNov = accion({ id: 'fds-nov', banda: 'Super FDS', desde: '2026-11-19', hasta: '2026-11-22' })
+igual('en noviembre está, en su lugar', construirMes('2026-11', [fdsNov], {}, undefined, conFds).comercial.map(b => b.nombre),
+  ['ESPECIAL - CM', 'Super FDS', 'BOMBAS'])
+igual('en diciembre ya no', construirMes('2026-12', [], {}, undefined, conFds).comercial.map(b => b.nombre),
+  ['ESPECIAL - CM', 'BOMBAS'])
+igual('ni en los meses que siguen', construirMes('2027-03', [], {}, undefined, conFds).comercial.map(b => b.nombre),
+  ['ESPECIAL - CM', 'BOMBAS'])
+
 console.log(`\n${fallos === 0 ? 'TODO OK' : fallos + ' FALLAS'}\n`)
 process.exit(fallos === 0 ? 0 : 1)

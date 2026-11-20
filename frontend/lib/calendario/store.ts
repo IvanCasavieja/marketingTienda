@@ -361,7 +361,7 @@ export const useCalendario = create<Estado>()(
           // no existe. Se trae todo.
           set({ rev: null })
         } else if (data?.recargar) {
-          // Le sumó a la acción cosas que acá no están (Lanzar y Cierre): se trae todo.
+          // Le sumó a la acción cosas que acá no están (Lanzar): se trae todo.
           if (data.rev != null) revMinima = Math.max(revMinima, data.rev)
           set({ rev: null })
           void get().sincronizar()
@@ -1057,11 +1057,12 @@ const catalogosPorMundo = new Map<string, { comercial: BandaCatalogo[]; retail: 
 
 /** Las categorías con las que arranca cada mundo (ver lib/mundos.ts). */
 export function catalogosDe(mundo: string) {
-  const bandas = mundoDe(mundo)?.bandas
+  const m = mundoDe(mundo)
+  const bandas = m?.bandas
   if (!bandas) return CATALOGOS_TI
   let hecho = catalogosPorMundo.get(mundo)
   if (!hecho) {
-    hecho = { comercial: bandas.map(nombre => ({ nombre })), retail: [] }
+    hecho = { comercial: bandas.map(nombre => ({ nombre, hasta: m?.bandasRetiradas?.[nombre] })), retail: [] }
     catalogosPorMundo.set(mundo, hecho)
   }
   return hecho
@@ -1070,7 +1071,9 @@ export function catalogosDe(mundo: string) {
 /** Las categorías del mundo que se mira, en el orden del calendario. */
 export function useCategoriasDelMundo(): string[] {
   const mundo = useCalendario(s => s.mundo)
-  return catalogosDe(mundo).comercial.map(c => c.nombre)
+  // Una fila que dejó de usarse no se ofrece para acciones nuevas (la de una
+  // acción vieja igual se ve al editarla: ver categoriasParaElegir).
+  return catalogosDe(mundo).comercial.filter(c => !c.hasta).map(c => c.nombre)
 }
 
 /** El mes que se esta mirando. Todas las secciones reciben el mismo objeto. */

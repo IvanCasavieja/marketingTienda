@@ -594,7 +594,7 @@ function BloqueAvisos({
       <p className="mb-3 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400">
         Solo salen los avisos que se configuran acá. Le llegan a la campanita de cada persona elegida,
         los días antes de que {esEnvio ? 'salga el envío' : 'arranque la acción'} que se elijan.
-        {avisos.some(a => a.control) && ' Los de Lanzar y Cierre los trae sola la acción y le llegan a todo el equipo.'}
+        {avisos.some(a => a.control) && ' Los de Lanzar los trae sola la acción y le llegan a todo el equipo.'}
       </p>
 
       {avisos.length === 0 ? (
@@ -613,7 +613,7 @@ function BloqueAvisos({
               </span>
               <div className="min-w-0 flex-1 text-sm">
                 <p>
-                  {/* Lanzar y Cierre (18/11/2026): los trae cada acción de Redexpres. */}
+                  {/* Lanzar (18/11/2026): lo trae cada acción de Redexpres. */}
                   {a.control && (
                     <span className="mr-1.5 rounded-md bg-brand-100 px-1.5 py-0.5 text-xs font-bold text-brand-800 dark:bg-brand-500/20 dark:text-brand-100">
                       {NOMBRE_DEL_CONTROL[a.control] ?? a.control}

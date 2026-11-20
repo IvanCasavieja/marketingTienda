@@ -164,7 +164,7 @@ TIPOS_DE_TAREA: list[dict] = [
     },
     # Las de Redexpres (18/11/2026): las tareas de Valentina en cada acción
     # (hoja "Valen" del Excel), como piezas que se suman si hacen falta.
-    # Lanzar y Cierre no van acá: los trae cada acción sola (0077).
+    # Lanzar no va acá: lo trae cada acción sola (0077). Cierre lo crea Valentina a mano.
     {
         "clave": "imprenta", "nombre": "Imprenta", "pieza": "otro", "otras": False, "mundos": ["redexpres"],
         "opciones": [],

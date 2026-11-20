@@ -12,7 +12,14 @@ import { esBandaRetirada } from './categorias'
 import { SEED } from './seed'
 import type { SeedBanda } from './tipos'
 
-export type BandaCatalogo = { nombre: string; grupo?: string }
+export type BandaCatalogo = {
+  nombre: string
+  grupo?: string
+  /** Fila que dejó de usarse: se muestra hasta ese mes ('YYYY-MM') inclusive, con
+   *  lo que ya tenía, y no se ofrece para acciones nuevas (los Super FDS de
+   *  Redexpres terminan en noviembre de 2026). */
+  hasta?: string
+}
 
 /**
  * Junta las bandas de todos los meses sin repetir y respetando el orden: una

@@ -247,12 +247,14 @@ function bandasDe(clave: string, catalogo: BandaCatalogo[], barras: BarraGuardad
   }
   // Una barra de una banda que no está en el catálogo igual se muestra: nunca
   // se esconde un dato porque el catálogo quedó corto.
-  const fuera = [...porBanda.keys()].filter(n => !catalogo.some(c => c.nombre === n))
+  // Una fila que dejó de usarse (`hasta`) no aparece después de su último mes.
+  const vigentes = catalogo.filter(c => !c.hasta || clave <= c.hasta)
+  const fuera = [...porBanda.keys()].filter(n => !vigentes.some(c => c.nombre === n))
   const nombres: BandaCatalogo[] = [
     // Lo que todavía no tiene categoría va arriba de todo: es lo primero que
     // hay que mirar. La fila existe solo el mes en que hay alguna.
     ...fuera.filter(esSinCategoria).map(nombre => ({ nombre })),
-    ...catalogo,
+    ...vigentes,
     ...fuera.filter(n => !esSinCategoria(n)).map(nombre => ({ nombre })),
   ]
   return nombres.map(c => ({
