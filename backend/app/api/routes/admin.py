@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.schemas.auth import _validate_password_strength
-from sqlalchemy import select, desc, func, update
+from sqlalchemy import delete, select, desc, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -964,6 +964,92 @@ async def toggle_active(
         resource="user", resource_id=str(user.id), ip_address=_client_ip(request),
     ))
     return {"is_active": user.is_active}
+
+
+def aprueba_en_curso(aprobadores_por_entrega: list[list], user_id: int) -> int:
+    """En cuántas entregas sin terminar está esta persona en la cadena de
+    aprobación. Pura."""
+    return sum(1 for cadena in aprobadores_por_entrega if user_id in _ids_de(cadena))
+
+
+def _ids_de(valores) -> set[int]:
+    out: set[int] = set()
+    for v in valores or []:
+        try:
+            out.add(int(v))
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+@router.delete("/users/{user_id}", status_code=204)
+@limiter.limit("20/minute")
+async def eliminar_usuario(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Eliminar una cuenta (Ivan, 20/11/2026: "necesito que podamos eliminar
+    un usuario creado"). No se puede deshacer.
+
+    - Lo suyo se va con la cuenta: sus avisos de la campanita, su agenda, sus
+      listas de precios, sus locales asignados. Lo que hizo queda (tareas,
+      entregas, comentarios, el historial), sin su nombre: la base ya lo
+      resuelve así (las claves que apuntan a `users` son CASCADE o SET NULL).
+    - Se la saca de los avisos del calendario que la tenían como destinataria;
+      un aviso que se queda sin nadie se borra (no le llegaría a nadie).
+    - No se puede si está en la cadena de aprobación de una entrega sin
+      terminar: esa entrega quedaría esperando a alguien que no existe.
+    - Ni a uno mismo ni a un Super Admin, y las mismas protecciones que para
+      editar (un Admin no borra a otro Admin)."""
+    from app.models.calendario import CalendarioAviso
+    from app.models.entregas import CalendarioEntrega
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=403, detail="No podés eliminar tu propia cuenta")
+    if user.is_superuser:
+        raise HTTPException(status_code=403, detail="Una cuenta de Super Admin no se elimina desde acá")
+    await _check_not_protected_admin(current_user, user, db)
+
+    cadenas = (await db.execute(
+        select(CalendarioEntrega.aprobadores).where(
+            CalendarioEntrega.momento != "aprobada", CalendarioEntrega.archivada_at.is_(None),
+        )
+    )).scalars().all()
+    n = aprueba_en_curso(list(cadenas), user.id)
+    if n:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{user.full_name or 'Esta persona'} aprueba {n} "
+                f"{'entrega' if n == 1 else 'entregas'} en curso: si se elimina, "
+                f"{'quedaría trabada' if n == 1 else 'quedarían trabadas'}. Cambiá quién aprueba "
+                "o, si solo querés que no entre más, desactivala."
+            ),
+        )
+
+    for aviso in (await db.execute(
+        select(CalendarioAviso).where(CalendarioAviso.destinatarios.contains([user.id]))
+    )).scalars().all():
+        quedan = [u for u in (aviso.destinatarios or []) if _ids_de([u]) != {user.id}]
+        if not quedan and not aviso.control:
+            await db.delete(aviso)
+        else:
+            aviso.destinatarios = quedan
+
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.delete", resource="user", resource_id=str(user.id),
+        details={"email": user.email, "nombre": user.full_name, "empresa": user.empresa},
+        ip_address=_client_ip(request),
+    ))
+    # Un DELETE directo: lo que cuelga lo resuelve la base (CASCADE o SET
+    # NULL). Con db.delete(user) el ORM intentaría vaciar él las relaciones.
+    await db.execute(delete(User).where(User.id == user.id))
+    await db.commit()
 
 
 @router.get("/users/{user_id}/stats")

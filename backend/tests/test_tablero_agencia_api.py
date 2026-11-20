@@ -2884,6 +2884,55 @@ def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
     correr(prueba)
 
 
+def test_eliminar_un_usuario():
+    """Ivan (20/11/2026): "necesito que podamos eliminar un usuario creado".
+    Se va la cuenta; lo que hizo queda sin su nombre; sale de los avisos; y
+    no se puede si aprueba una entrega en curso."""
+    async def prueba(d):
+        from app.models.audit_log import AuditLog
+        promo = Cliente(d.http, d.promo)
+        valeria = await _persona(d, "Valeria Borrable", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"))
+        otra = await _persona(d, "Otra Que Queda", permisos=("calendario.view",))
+
+        # Tiene historia: creó una tarea y es destinataria de dos avisos.
+        tarea = f"ta-val-{d.sufijo}"
+        r = await Cliente(d.http, valeria).post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": tarea, "titulo": "Suya"})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            s.add(CalendarioAviso(id=f"av-sola-{d.sufijo}", barra_id=d.ciber.id, dias_antes=10, destinatarios=[valeria.id]))
+            s.add(CalendarioAviso(id=f"av-dos-{d.sufijo}", barra_id=d.ciber.id, dias_antes=10, destinatarios=[valeria.id, otra.id]))
+            await s.commit()
+
+        # Aprueba una entrega en curso: no se puede.
+        suya, _ = await _pedir_banners(d, d.lider)
+        r = await Cliente(d.http, d.lider).put(f"/calendario/tareas/{suya}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [valeria.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        r = await d.http.delete(f"{API}/admin/users/{valeria.id}", headers=promo.headers)
+        assert r.status_code == 409 and "aprueba 1 entrega" in r.json()["detail"], r.text
+        r = await Cliente(d.http, d.lider).put(f"/calendario/tareas/{suya}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+
+        # Ni a uno mismo, ni quien no administra usuarios.
+        assert (await d.http.delete(f"{API}/admin/users/{d.promo.id}", headers=promo.headers)).status_code == 403
+        assert (await d.http.delete(f"{API}/admin/users/{valeria.id}", headers=Cliente(d.http, d.lucia).headers)).status_code == 403
+
+        r = await d.http.delete(f"{API}/admin/users/{valeria.id}", headers=promo.headers)
+        assert r.status_code == 204, r.text
+        assert (await d.http.delete(f"{API}/admin/users/{valeria.id}", headers=promo.headers)).status_code == 404
+        async with d.Sesion() as s:
+            assert await s.get(User, valeria.id) is None
+            t = await s.get(CalendarioTarea, tarea)
+            assert t is not None and t.creado_por_id is None  # la tarea queda, sin su nombre
+            assert await s.get(CalendarioAviso, f"av-sola-{d.sufijo}") is None  # se quedó sin nadie
+            assert (await s.get(CalendarioAviso, f"av-dos-{d.sufijo}")).destinatarios == [otra.id]
+            log = (await s.execute(select(AuditLog).where(
+                AuditLog.action == "admin.user.delete", AuditLog.resource_id == str(valeria.id)))).scalar_one()
+            assert log.user_id == d.promo.id and log.details["nombre"] == "Valeria Borrable"
+    correr(prueba)
+
+
 def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
     """Ivan (18/11/2026): los avisos de la campanita también por mail, al
     momento, y cada uno los apaga en su perfil. Menos los del tablero, que
