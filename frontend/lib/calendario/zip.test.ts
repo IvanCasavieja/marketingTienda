@@ -6,8 +6,9 @@
  */
 import * as zlib from 'zlib'
 import {
-  abrirEntrada, avisoZipSinGuardar, detalleDelZip, esBasura, leerIndiceZip, nombreCorto, pendientesDelZip, pesoLegible,
-  tipoDeImagen, zipSumaImagenes, zipYaResueltas, ZipRaro, MAX_ARCHIVOS_ZIP, type EstadoDelZip,
+  abrirEntrada, avisoZipSinGuardar, detalleDelZip, esBasura, esperaDeEntrega, leerIndiceZip, nombreCorto, pendientesDelZip,
+  pesoDelFormulario, pesoLegible, tipoDeImagen, zipSumaImagenes, zipYaResueltas, ZipRaro, MAX_ARCHIVOS_ZIP,
+  type EstadoDelZip,
 } from './zip'
 
 let fallos = 0
@@ -156,6 +157,18 @@ async function main() {
 
   igual('el peso, para leer', [12.34, 12, 1].map(n => pesoLegible(n * 1024 * 1024)).concat(pesoLegible(350 * 1024), pesoLegible(10)),
     ['12,3 MB', '12 MB', '1 MB', '350 KB', '1 KB'])
+
+  // Con el ZIP siempre en la subida, el tiempo de entregar crece con lo que se
+  // sube: 180 s más 1 s por cada 100 KB (revisión del 19/11/2026).
+  igual('sin nada, los 180 s de siempre', esperaDeEntrega(0), 180_000)
+  igual('100 KB, un segundo más; un byte más, otro', [100 * 1024, 100 * 1024 + 1].map(esperaDeEntrega), [181_000, 182_000])
+  igual('un ZIP de 40 MB: 590 s', esperaDeEntrega(40 * 1024 * 1024), 590_000)
+  const form = new FormData()
+  form.append('versionId', 'v-1')
+  form.append('zip', new Blob([new Uint8Array(300 * 1024)]), 'piezas.zip')
+  form.append('imagenes', new Blob([new Uint8Array(1000)]), 'a.jpg')
+  igual('lo que pesa el formulario: los archivos y el texto', pesoDelFormulario(form), 300 * 1024 + 1000 + 3)
+  igual('...y lo que se espera por él', esperaDeEntrega(pesoDelFormulario(form)), 184_000)
 
   // Sin lugar (el tope de los ZIP o la base) el ZIP no se guarda (la entrega queda igual): qué hacer.
   igual('sin guardar, con el link', avisoZipSinGuardar(true, false),

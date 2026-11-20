@@ -226,6 +226,23 @@ export function pesoLegible(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+/** Cuánto se espera, como mucho, a que termine una entrega (en ms): 180 s
+ *  más 1 s por cada 100 KB de lo que se sube (revisión del 19/11/2026). Con
+ *  el ZIP siempre en la subida, una conexión lenta no llegaba a mandar 40 MB
+ *  en los 180 s fijos de antes y la entrega se cortaba a mitad de camino. Un
+ *  ZIP de 40 MB da 590 s (unos 70 KB por segundo); fotos sueltas, poco más
+ *  que antes. */
+export function esperaDeEntrega(bytes: number): number {
+  return 180_000 + Math.ceil(Math.max(0, bytes) / (100 * 1024)) * 1000
+}
+
+/** Lo que pesa lo que va en un formulario: los archivos y el texto. */
+export function pesoDelFormulario(form: FormData): number {
+  let total = 0
+  form.forEach(v => { total += typeof v === 'string' ? v.length : v.size })
+  return total
+}
+
 /** La línea debajo del nombre del ZIP en el formulario: lo que pesa, qué se
  *  tomó de adentro y qué pasa con lo demás al entregar. `lugar`: los lugares
  *  de imagen que quedan libres en la ronda.
