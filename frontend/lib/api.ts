@@ -5,6 +5,7 @@ import type { Columna, ComentarioDeTarjeta, DetalleEntregas, Metricas, ResumenEn
 import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
 import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 import type { MiAgenda } from "@/lib/calendario/mi-agenda";
+import type { ControlPrevio } from "@/lib/calendario/control-previo";
 import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -2348,6 +2349,15 @@ export const entregasApi = {
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
       }),
+  /** Antes de entregar (20/11/2026): la IA mira si con estas imágenes se ven
+   *  hechos los cambios pedidos. Tarda hasta un minuto (el servidor corta a
+   *  los 100 s y contesta "no-disponible"); `signal` es "Mandar sin esperar". */
+  controlPrevio: (tareaId: string, form: FormData, signal?: AbortSignal) =>
+    api.post<ControlPrevio>(`/calendario/tareas/${encodeURIComponent(tareaId)}/control-previo`, form, {
+      timeout: 130_000 + Math.round(pesoDelFormulario(form) / 100_000) * 1_000,
+      signal,
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   decidir: (versionId: string, datos: {
     decision: TipoDecision; comentario?: string | null;
     /** `observacionIA`: si la marca salió de una observación de la IA ("Hacer marca"). */

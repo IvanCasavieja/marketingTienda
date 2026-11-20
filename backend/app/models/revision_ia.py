@@ -59,3 +59,56 @@ class CalendarioRevisionIA(Base):
     costo_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     terminada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CalendarioControlPrevio(Base):
+    """El control de la IA ANTES de entregar (0086, Ivan 20/11/2026: "que a
+    la agencia, cuando va a subir los archivos, la IA le diga 'che, pará, acá
+    faltan estas cositas de los cambios'"). Ver
+    app/services/revision_ia.py (controlar_antes_de_entregar).
+
+    Es la misma revisión que se haría al entregar, pero sobre las imágenes
+    que la agencia todavía no mandó: se guarda entera (observaciones y
+    cambios pedidos), con la huella de esas imágenes. Si después entrega
+    exactamente esas, la revisión de la versión sale de acá y no se le paga
+    dos veces a la IA (`usado_en_version_id`). A la agencia se le muestra
+    solo el veredicto de los cambios pedidos."""
+    __tablename__ = "calendario_controles_previos"
+    __table_args__ = (
+        Index("ix_calendario_controles_previos_tarea", "tarea_id", "created_at"),
+        Index("ix_calendario_controles_previos_created", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tarea_id: Mapped[str] = mapped_column(
+        ForeignKey("calendario_tareas.id", ondelete="CASCADE"), nullable=False
+    )
+    # La fase en curso y la ronda que se iba a entregar: si al entregar ya no
+    # son esas (alguien decidió algo en el medio), no se reusa.
+    fase_id: Mapped[str] = mapped_column(
+        ForeignKey("calendario_fases.id", ondelete="CASCADE"), nullable=False
+    )
+    ronda: Mapped[int] = mapped_column(Integer, nullable=False)
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # sha256 de las imágenes, en orden (revision_ia.huella_de).
+    huella: Mapped[str] = mapped_column(String(64), nullable=False)
+    # 'pendiente' | 'lista' | 'error' | 'tope', como en CalendarioRevisionIA.
+    estado: Mapped[str] = mapped_column(String(20), nullable=False, default="pendiente")
+    motivo: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    modelo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Como en CalendarioRevisionIA, pero `imagenId` va como "previa:N" (la
+    # imagen N de las que se iban a entregar): al reusarlo pasa a ser el id de
+    # la imagen guardada (revision_ia.observaciones_de_la_version).
+    observaciones: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    cambios_pedidos: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    costo_usd: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False, default=0)
+    # La versión cuya revisión salió de este control (no se pagó dos veces).
+    usado_en_version_id: Mapped[str | None] = mapped_column(
+        ForeignKey("calendario_versiones.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    terminado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

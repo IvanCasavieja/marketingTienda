@@ -1,9 +1,12 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
+import { AlertTriangle, Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
+import {
+  ETIQUETA_DEL_VEREDICTO, hayQueControlar, mismasImagenes, paraAvisar, type CambioControlado, type ControlPrevio,
+} from '@/lib/calendario/control-previo'
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
@@ -48,6 +51,14 @@ type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: numbe
  * imagen que queden pasa a la ronda lo que acá no se pudo mostrar, como las
  * páginas de un PDF. Por eso un ZIP con solo el folleto en PDF alcanza para
  * entregar (lib/calendario/zip.ts).
+ *
+ * Antes de mandar, la IA (20/11/2026, Ivan: "que a la agencia, cuando va a
+ * subir los archivos, la IA le diga 'che, pará, acá faltan estas cositas de
+ * los cambios'"): en una ronda que volvió con cambios, "Entregar" manda
+ * primero las imágenes al control previo. Mientras mira (hasta un minuto) se
+ * puede "Mandar sin esperar". Si ve algo que falta o que no se ve claro, lo
+ * muestra con "Corregir" o "Mandar igual"; si no, manda solo. Si la IA no
+ * está o falla, manda igual: nunca traba (lib/calendario/control-previo.ts).
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -70,6 +81,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const [subiendo, setSubiendo] = useState<number | null>(null)
   const [zip, setZip] = useState<ZipElegido | null>(null)
   const [leyendoZip, setLeyendoZip] = useState(false)
+  // El control de la IA antes de mandar: mientras mira, y lo que encontró.
+  const [controlando, setControlando] = useState<AbortController | null>(null)
+  const [avisos, setAvisos] = useState<CambioControlado[] | null>(null)
+  // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
+  const yaControladas = useRef<Blob[] | null>(null)
+  const ocupado = subiendo !== null || controlando !== null
   const camaraRef = useRef<HTMLInputElement>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
@@ -180,7 +197,47 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     }
   }
 
+  /** "Entregar": en una ronda que volvió con cambios, primero la IA. */
   async function entregar() {
+    if (!hayMateriales || linkMalo || ocupado) return
+    const grandes = imagenes.map(im => im.grande)
+    if (!hayQueControlar(volvio, grandes.length)
+      || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
+      await enviar()
+      return
+    }
+    const form = new FormData()
+    form.append('comentario', comentario.trim())
+    imagenes.forEach((im, i) => form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`))
+    const ac = new AbortController()
+    setControlando(ac)
+    let control: ControlPrevio | null = null
+    try {
+      control = (await entregasApi.controlPrevio(detalle.tarea.id, form, ac.signal)).data
+    } catch {
+      // Falló o tardó demasiado: se manda igual (nunca traba). Si fue
+      // "Mandar sin esperar", ya se está mandando.
+      control = null
+    } finally {
+      setControlando(c => (c === ac ? null : c))
+    }
+    if (ac.signal.aborted) return
+    yaControladas.current = grandes
+    const lista = paraAvisar(control)
+    if (lista.length > 0) {
+      setAvisos(lista)
+      return
+    }
+    await enviar()
+  }
+
+  function mandarSinEsperar() {
+    controlando?.abort()
+    setControlando(null)
+    void enviar()
+  }
+
+  async function enviar() {
     if (!hayMateriales || linkMalo || subiendo !== null) return
     const form = new FormData()
     form.append('versionId', versionId)
@@ -259,7 +316,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
                 <button
                   type="button"
                   onClick={() => sacar(i)}
-                  disabled={subiendo !== null}
+                  disabled={ocupado}
                   aria-label={`Sacar la imagen ${i + 1}`}
                   className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white transition hover:bg-black/80"
                 >
@@ -278,7 +335,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
               <button
                 type="button"
                 onClick={() => camaraRef.current?.click()}
-                disabled={subiendo !== null}
+                disabled={ocupado}
                 className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-600 dark:text-slate-200 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10 sm:hidden"
               >
                 <Camera className="h-5 w-5" /> Sacar foto
@@ -286,7 +343,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
               <button
                 type="button"
                 onClick={() => galeriaRef.current?.click()}
-                disabled={subiendo !== null}
+                disabled={ocupado}
                 className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-600 dark:text-slate-200 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10"
               >
                 <ImagePlus className="h-5 w-5" /> {imagenes.length === 0 ? 'Elegir imágenes' : 'Agregar más'}
@@ -313,7 +370,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
                 <button
                   type="button"
                   onClick={sacarZip}
-                  disabled={subiendo !== null || leyendoZip}
+                  disabled={ocupado || leyendoZip}
                   aria-label={`Sacar «${zip.archivo.name}» y sus imágenes`}
                   title="Sacar el ZIP"
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
@@ -325,7 +382,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
               <button
                 type="button"
                 onClick={() => zipRef.current?.click()}
-                disabled={subiendo !== null || leyendoZip}
+                disabled={ocupado || leyendoZip}
                 className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:border-brand-500/60 dark:hover:bg-brand-500/10"
               >
                 {leyendoZip ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileArchive className="h-4 w-4" />}
@@ -386,11 +443,71 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       </div>
 
       <div className="shrink-0 border-t border-slate-300 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:px-6">
+      {controlando ? (
+        // La IA está mirando las imágenes (hasta un minuto).
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 sm:flex-row sm:items-center" role="status" aria-live="polite">
+          <p className="flex flex-1 items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600 dark:text-brand-300" />
+            <span>
+              La IA está mirando si se hicieron los cambios que se pidieron…{' '}
+              <span className="text-slate-500 dark:text-slate-400">Puede tardar un minuto.</span>
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={mandarSinEsperar}
+            className="min-h-[48px] rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[44px]"
+          >
+            Mandar sin esperar
+          </button>
+        </div>
+      ) : avisos ? (
+        // Lo que la IA ve que falta (o que no se ve claro) de lo que se pidió.
+        <section aria-labelledby="ojo-falta" className="mx-auto w-full max-w-3xl">
+          <h4 id="ojo-falta" className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> Ojo: parece que falta algo de lo que se pidió
+          </h4>
+          <ul className="mt-2 max-h-[40vh] space-y-1.5 overflow-y-auto overscroll-contain">
+            {avisos.map(c => (
+              <li key={c.numero} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/40">
+                <p className="flex items-start gap-2 text-sm text-slate-900 dark:text-slate-100">
+                  <span className="mt-px inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white">
+                    {c.numero}
+                  </span>
+                  <span className="min-w-0 break-words">{c.texto}</span>
+                </p>
+                <p className="mt-0.5 pl-7 text-xs text-amber-900 dark:text-amber-100">
+                  <strong>{ETIQUETA_DEL_VEREDICTO[c.veredicto]}</strong>{c.nota ? ` · ${c.nota}` : ''}
+                </p>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+            Lo dice la IA mirando las imágenes, y puede equivocarse: si ya está, mandalo igual.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAvisos(null)}
+              className="min-h-[48px] rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[44px]"
+            >
+              Corregir
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAvisos(null); void enviar() }}
+              className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none"
+            >
+              <Send className="h-4 w-4" /> Mandar igual
+            </button>
+          </div>
+        </section>
+      ) : (
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         <button
           type="button"
           onClick={onCancelar}
-          disabled={subiendo !== null}
+          disabled={ocupado}
           className="min-h-[48px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[44px]"
         >
           Cancelar
@@ -398,7 +515,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
         <button
           type="button"
           onClick={() => void entregar()}
-          disabled={!hayMateriales || preparando > 0 || leyendoZip || linkMalo || subiendo !== null}
+          disabled={!hayMateriales || preparando > 0 || leyendoZip || linkMalo || ocupado}
           className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[44px] sm:flex-none"
         >
           {subiendo !== null ? (
@@ -411,6 +528,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           )}
         </button>
       </div>
+      )}
       </div>
     </div>
   )

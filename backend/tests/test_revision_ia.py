@@ -1195,3 +1195,106 @@ def test_la_marca_puede_venir_de_una_observacion_de_la_ia():
     with pytest.raises(ValidationError):
         MarcaNueva(imagenId="im-1", x=0.3, y=0.1, texto="x", observacionIA="ob/../../algo")
     DecisionNueva(decision="cambios", marcas=[m])
+
+
+# ---------------------------------------------------------------------------
+# El control antes de entregar (Ivan, 20/11/2026: "que a la agencia, cuando va
+# a subir los archivos, la IA le diga 'che, pará, acá faltan estas cositas de
+# los cambios'"). Con la base: test_tablero_agencia_api.py.
+# ---------------------------------------------------------------------------
+
+AHORA = datetime(2026, 11, 20, 15, tzinfo=timezone.utc)
+
+
+def _control(**kw):
+    base = {"estado": "lista", "usado_en_version_id": None, "usuario_id": 7, "fase_id": "fa-1", "ronda": 2,
+            "huella": "h1", "created_at": AHORA - timedelta(minutes=5)}
+    return SimpleNamespace(**{**base, **kw})
+
+
+def _reusa(control, **kw):
+    base = {"usuario_id": 7, "fase_id": "fa-1", "ronda": 2, "huella": "h1", "con_link": False, "con_zip": False,
+            "ahora": AHORA}
+    return rv.se_puede_reusar(control, **{**base, **kw})
+
+
+def test_la_huella_depende_de_las_imagenes_y_su_orden():
+    a, b = b"imagen a", b"imagen b"
+    assert rv.huella_de([a, b]) == rv.huella_de([a, b])
+    assert rv.huella_de([a, b]) != rv.huella_de([b, a])
+    assert rv.huella_de([a, b]) != rv.huella_de([a])
+    # Con el largo adelante, dos listas distintas no se pegan igual.
+    assert rv.huella_de([b"ab", b"c"]) != rv.huella_de([b"a", b"bc"])
+    assert len(rv.huella_de([a])) == 64
+
+
+def test_cuando_se_reusa_el_control_para_el_aprobador():
+    assert _reusa(_control())
+    # No: si no terminó bien, si ya se usó, si es de otra persona, fase,
+    # ronda o imágenes, si la entrega trae link o ZIP, o si es viejo.
+    assert not _reusa(None)
+    assert not _reusa(_control(estado="error"))
+    assert not _reusa(_control(usado_en_version_id="ve-1"))
+    assert not _reusa(_control(usuario_id=8))
+    assert not _reusa(_control(fase_id="fa-2"))
+    assert not _reusa(_control(ronda=3))
+    assert not _reusa(_control(huella="h2"))
+    assert not _reusa(_control(), con_link=True)
+    assert not _reusa(_control(), con_zip=True)
+    assert not _reusa(_control(created_at=AHORA - rv.VIGENCIA_DEL_CONTROL - timedelta(seconds=1)))
+    assert _reusa(_control(created_at=AHORA - rv.VIGENCIA_DEL_CONTROL))
+
+
+def test_las_observaciones_del_control_pasan_a_las_imagenes_guardadas():
+    obs = [
+        {"id": "ob-1", "imagenId": "previa:2", "x": 0.4, "y": 0.6, "texto": "a"},
+        {"id": "ob-2", "imagenId": "previa:9", "x": 0.1, "y": 0.1, "texto": "b"},  # no hay imagen 9
+        {"id": "ob-3", "imagenId": None, "x": None, "y": None, "texto": "c"},
+        "basura",
+    ]
+    salida = rv.observaciones_de_la_version(obs, ["im-a", "im-b"])
+    assert [(o["id"], o["imagenId"], o["x"]) for o in salida] == [
+        ("ob-1", "im-b", 0.4), ("ob-2", None, None), ("ob-3", None, None)]
+    assert obs[0]["imagenId"] == "previa:2"  # no toca la lista de entrada
+
+
+def test_a_la_agencia_vuelve_solo_lo_de_los_cambios_pedidos():
+    cambios = [
+        {"marcaId": "mk-2", "numero": 2, "veredicto": "falta", "nota": "Sigue sin tilde."},
+        {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": ""},
+        {"marcaId": "mk-9", "numero": 9, "veredicto": "falta", "nota": "De otra marca"},
+        {"numero": 1, "veredicto": "quizas"},
+    ]
+    assert rv.cambios_para_la_agencia(cambios, RONDA_1) == [
+        {"numero": 2, "texto": "Falta la tilde: «Valido» → «Válido»", "veredicto": "falta", "nota": "Sigue sin tilde."},
+        {"numero": 1, "texto": "Agrandar el -40%", "veredicto": "hecho", "nota": ""},
+    ]
+    assert rv.cambios_para_la_agencia(cambios, None) == []
+    assert rv.cambios_para_la_agencia(None, RONDA_1) == []
+
+
+def test_el_control_previo_nunca_levanta(monkeypatch):
+    # Una base que falla en el medio: 'no-disponible', nunca un 500.
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+
+    class BaseRota:
+        async def execute(self, *a, **kw):
+            raise RuntimeError("se cayó la base")
+
+        async def rollback(self):
+            raise RuntimeError("tampoco")
+
+    fase = SimpleNamespace(id="fa-1", nombre="Arte final")
+    r = asyncio.run(rv.controlar_antes_de_entregar(
+        BaseRota(), tarea=SimpleNamespace(id="ta-1"), entrega=None, barra=None, fase=fase, ronda=2, usuario_id=7,
+        imagenes=[(b"x", "image/jpeg")], comentario=None,
+    ))
+    assert r.para_la_agencia() == {"estado": "no-disponible", "cambios": [], "controlId": None}
+    # Apagada: ni se mira la base.
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", False)
+    r = asyncio.run(rv.controlar_antes_de_entregar(
+        BaseRota(), tarea=None, entrega=None, barra=None, fase=fase, ronda=2, usuario_id=7,
+        imagenes=[(b"x", "image/jpeg")], comentario=None,
+    ))
+    assert r.estado == "no-disponible"
