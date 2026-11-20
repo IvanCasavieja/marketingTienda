@@ -28,6 +28,7 @@ if URL:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
+    from app.api.routes import entregas as rutas_de_entregas
     from app.core import alcance
     from app.core.database import get_db
     from app.core.rate_limit import limiter
@@ -150,6 +151,10 @@ async def _correr(prueba):
                 raise
 
     app.dependency_overrides[get_db] = get_db_de_prueba
+    # El ZIP de una ronda se baja de a partes con su propia sesión
+    # (_partes_del_zip, 19/11/2026): que lea de esta misma base de prueba.
+    sesiones_antes = rutas_de_entregas.AsyncSessionLocal
+    rutas_de_entregas.AsyncSessionLocal = Sesion
     limite_antes = limiter.enabled
     limiter.enabled = False
     try:
@@ -161,6 +166,7 @@ async def _correr(prueba):
             await prueba(d)
     finally:
         limiter.enabled = limite_antes
+        rutas_de_entregas.AsyncSessionLocal = sesiones_antes
         app.dependency_overrides.pop(get_db, None)
         await trans.rollback()
         await conn.close()
@@ -1532,19 +1538,28 @@ async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_
     return await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data=data, files=files or None)
 
 
-def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch):
+def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch, caplog):
     """Ivan (19/11/2026): "no es más fácil guardar el zip en vez de guardar las
     imágenes? (…) cuando lo subís deberías de subir la carpeta comprimida, no
     los archivos sueltos". El ZIP queda guardado como el original de la ronda
     y se baja con las mismas reglas que las imágenes de esa versión: el
     equipo y la agencia de la tarjeta sí; otra agencia, o alguien a quien la
-    acción le queda fuera de su alcance, no (el mismo 404 que lo que no existe)."""
+    acción le queda fuera de su alcance, no (el mismo 404 que lo que no existe).
+
+    Se baja de a partes de 1 MB (revisión del 19/11/2026: entero eran unos 80
+    MB de memoria por un ZIP de 40): este mide justo 3 partes, y llega igual."""
     _espiar_la_ia(monkeypatch)
 
     async def prueba(d):
         lider, a1, a2, b1 = (Cliente(d.http, u) for u in (d.lider, d.a1, d.a2, d.b1))
         tarea_id, _ = await _pedir_banners(d, d.lider)
-        zip_ = _zip_de_prueba({"Banners/header.jpg": _jpeg_de_verdad(), "fuentes/Gotham.otf": b"\x00" * 300})
+        # Sin comprimir, lo que el ZIP suma alrededor de los archivos no
+        # cambia con lo que pesan: se ajusta la fuente para que mida 3 MB justos.
+        header = _jpeg_de_verdad()
+        alrededor = len(_zip_de_prueba({"Banners/header.jpg": header, "fuentes/Gotham.otf": b""}))
+        zip_ = _zip_de_prueba({"Banners/header.jpg": header,
+                               "fuentes/Gotham.otf": os.urandom(3 * 1024 * 1024 - alrededor)})
+        assert len(zip_) == 3 * rutas_de_entregas._PARTE_DEL_ZIP
         version = f"ve-zo-{d.sufijo}"
         r = await _entregar(a1, tarea_id, version, imagenes=1, zip_=("piezas niño.zip", zip_), ya_subidas="[0]")
         assert r.status_code == 201, r.text
@@ -1564,13 +1579,22 @@ def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch
                 "nombre": "piezas niño.zip", "tamano": len(zip_), "guardado": True}
             assert v["zip"]["fecha"]
 
-        # Lo bajan el equipo y las cuentas de la agencia de la tarjeta.
+        # Lo bajan el equipo y las cuentas de la agencia de la tarjeta: tal
+        # cual, con su nombre y con lo que pesa (el avance de la bajada).
         for c in (lider, a1, a2):
             r = await c.get(f"/calendario/versiones/{version}/zip")
             assert r.status_code == 200, r.text
             assert r.content == zip_ and r.headers["content-type"] == "application/zip"
+            assert r.headers["content-length"] == str(len(zip_))
             assert r.headers["content-disposition"] == (
                 "attachment; filename=\"piezas ni_o.zip\"; filename*=UTF-8''piezas%20ni%C3%B1o.zip")
+        # Con partes que no lo dividen justo, también; y midiendo justo partes
+        # enteras termina sin otra vuelta a la base (no avisa nada).
+        for parte in (len(zip_) - 1, 100_000):
+            monkeypatch.setattr(rutas_de_entregas, "_PARTE_DEL_ZIP", parte)
+            r = await lider.get(f"/calendario/versiones/{version}/zip")
+            assert r.content == zip_ and r.headers["content-length"] == str(len(zip_)), parte
+        assert "se borró mientras se bajaba" not in caplog.text
         # Las mismas reglas que las imágenes de la versión: otra agencia, y
         # alguien del equipo a quien la acción le queda fuera de su alcance,
         # ni la imagen ni el ZIP (el 404 de lo que no existe).
@@ -1588,6 +1612,55 @@ def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch
         assert (await lider.get(f"/calendario/versiones/ve-zl-{d.sufijo}/zip")).status_code == 404
         assert (await lider.get("/calendario/versiones/ve-no-existe/zip")).status_code == 404
     correr(prueba)
+
+
+def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
+    """Revisión del 19/11/2026: mandarle a la base un ZIP de 40 MB arma copias
+    en memoria (unos 120 MB más), y dos entregas grandes a la vez no entran en
+    los 512 MB del servidor. El INSERT del ZIP sale con el semáforo tomado, y
+    adentro no pasa nada más (no espera candados de la base: no se traba)."""
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    semaforo = rutas_de_entregas._UN_ZIP_POR_VEZ
+    assert isinstance(semaforo, asyncio.Semaphore)
+
+    async def de_a_uno():
+        async with semaforo:
+            return semaforo.locked()
+    assert asyncio.run(de_a_uno())  # con un ZIP adentro, el siguiente espera
+
+    class Espia:
+        tomado = False
+
+        async def __aenter__(self):
+            Espia.tomado = True
+
+        async def __aexit__(self, *error):
+            Espia.tomado = False
+
+    adentro = []
+
+    def anotar(conn, cursor, sentencia, parametros, contexto, varios):
+        if Espia.tomado:
+            adentro.append(" ".join(sentencia.split()[:3]))
+
+    _espiar_la_ia(monkeypatch)
+    monkeypatch.setattr(rutas_de_entregas, "_UN_ZIP_POR_VEZ", Espia())
+
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        zip_ = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad()})
+        r = await _entregar(Cliente(d.http, d.a1), tarea_id, f"ve-uno-{d.sufijo}", imagenes=1,
+                            zip_=("pieza.zip", zip_), ya_subidas="[0]")
+        assert r.status_code == 201 and r.json()["zip"]["guardado"] is True, r.text
+
+    event.listen(Engine, "before_cursor_execute", anotar)
+    try:
+        correr(prueba)
+    finally:
+        event.remove(Engine, "before_cursor_execute", anotar)
+    assert adentro == ["INSERT INTO calendario_version_zips"]
 
 
 def test_un_zip_con_solo_un_pdf_alcanza_y_sus_paginas_se_ven_y_se_marcan(monkeypatch):

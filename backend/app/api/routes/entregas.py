@@ -54,10 +54,10 @@ que venga en un ZIP (campo `zip` del multipart) y detrás del link
 (app/services/materiales.py).
 
 El ZIP, desde el 19/11/2026, se guarda tal cual como el original de la ronda
-(calendario_version_zips): se baja con las mismas reglas que las imágenes de
-la versión (`_exigir_ver_archivos`). Y lo que el navegador no pudo mostrar de
-adentro (las páginas de un PDF) el servidor lo pasa a imágenes de la ronda al
-entregar: ver `entregar`.
+(calendario_version_zips): se baja de a partes, con las mismas reglas que las
+imágenes de la versión (`_exigir_ver_archivos`). Y lo que el navegador no
+pudo mostrar de adentro (las páginas de un PDF) el servidor lo pasa a
+imágenes de la ronda al entregar: ver `entregar`.
 """
 import asyncio
 import json
@@ -67,8 +67,9 @@ from typing import Literal
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import String, and_, delete, func, or_, select, true
+from sqlalchemy import LargeBinary, String, and_, delete, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.calendario import (
@@ -77,7 +78,7 @@ from app.api.routes.calendario import (
 )
 from app.core.config import settings
 from app.core import alcance, externos
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.deps import require_permission
 from app.core.mundos import MUNDOS, exigir_mundo, mundos_de
 from app.core.rate_limit import limiter
@@ -772,6 +773,40 @@ def _adjunto(nombre: str) -> str:
     return f"attachment; filename=\"{plano}\"; filename*=UTF-8''{quote(nombre, safe='')}"
 
 
+# El ZIP se manda de a partes de 1 MB (revisión del 19/11/2026): leerlo entero
+# para bajarlo eran unos 80 MB de memoria por un ZIP de 40, retenidos mientras
+# viajaba, y nada frenaba varias bajadas a la vez en los 512 MB del servidor.
+_PARTE_DEL_ZIP = 1024 * 1024
+
+
+async def _partes_del_zip(version_id: str, largo: int):
+    """Los `largo` bytes del ZIP de una ronda, de a `_PARTE_DEL_ZIP`, cada
+    parte con un `substring` en la base: en memoria hay una parte por vez.
+
+    Corre mientras se manda la respuesta, así que lee con su propia sesión y
+    la cierra al terminar: la del pedido (get_db) no se usa acá, y los
+    permisos ya los miró `bajar_zip` con ella. Después de cada parte termina
+    la transacción (solo leyó) y la conexión vuelve al pool: una bajada lenta
+    no deja una conexión de la base tomada mientras el navegador recibe."""
+    async with AsyncSessionLocal() as db:
+        enviados = 0
+        while enviados < largo:
+            parte = (await db.execute(
+                select(func.substring(CalendarioVersionZip.datos, enviados + 1, _PARTE_DEL_ZIP, type_=LargeBinary))
+                .where(CalendarioVersionZip.version_id == version_id)
+            )).scalar_one_or_none()
+            await db.commit()
+            if not parte:
+                # Se borró mientras bajaba (alguien borró la tarea): se corta
+                # acá, y el navegador da la bajada por fallida porque no llegó
+                # todo lo que anunció el Content-Length.
+                logger.warning("entregas: el ZIP de la versión %s se borró mientras se bajaba (%d de %d bytes)",
+                               version_id, enviados, largo)
+                return
+            enviados += len(parte)
+            yield parte
+
+
 @router.get("/versiones/{version_id}/zip")
 @limiter.limit("10/minute")
 async def bajar_zip(
@@ -788,29 +823,34 @@ async def bajar_zip(
 
     Con un tope por persona y por minuto: un ZIP pesa hasta 40 MB y cada
     bajada sale de la base (el plan gratis tiene un tope de transferencia por
-    mes); una pantalla que reintentara sola no tiene que poder gastarlo."""
+    mes); una pantalla que reintentara sola no tiene que poder gastarlo.
+
+    Se manda de a partes (`_partes_del_zip`), con lo que pesa en el
+    Content-Length: el navegador muestra el avance y sabe si llegó entero."""
+    # Lo que pesa lo guardado (NULL si no se guardó): es lo que se manda.
     fila = (await db.execute(_de_la_version(
-        (CalendarioVersionZip.nombre, CalendarioVersionZip.datos.isnot(None)),
+        (CalendarioVersionZip.nombre, func.octet_length(CalendarioVersionZip.datos)),
         CalendarioVersionZip, por=CalendarioVersionZip.version_id, valor=version_id,
     ))).first()
     if fila is None:
         raise HTTPException(status_code=404, detail="Esa ronda no tiene un ZIP")
-    nombre, guardado, tarea, barra, entrega = fila
+    nombre, largo, tarea, barra, entrega = fila
     _exigir_ver_archivos(current_user, tarea, barra, entrega,
                          no_existe="Esa ronda no tiene un ZIP", no_podes="No podés ver esta ronda")
-    if not guardado:
+    if largo is None:
         raise HTTPException(
             status_code=404,
             detail="El ZIP de esta ronda no se guardó porque la base estaba llena: pedile el link a quien la hace.",
         )
-    datos = (await db.execute(
-        select(CalendarioVersionZip.datos).where(CalendarioVersionZip.version_id == version_id)
-    )).scalar_one()
-    return Response(
-        content=datos,
+    # La sesión del pedido ya no hace falta: se suelta su conexión antes de
+    # mandar (FastAPI la cierra recién cuando termina la bajada).
+    await db.close()
+    return StreamingResponse(
+        _partes_del_zip(version_id, largo),
         media_type="application/zip",
         headers={
             "Content-Disposition": _adjunto(nombre),
+            "Content-Length": str(largo),
             # El ZIP de una ronda no cambia nunca (cada ronda es nueva).
             "Cache-Control": "private, max-age=31536000, immutable",
             # Ya viene comprimido: que el GZip de la app no lo vuelva a comprimir.
@@ -822,6 +862,14 @@ async def bajar_zip(
 # ---------------------------------------------------------------------------
 # Entregar
 # ---------------------------------------------------------------------------
+
+# Guardar el ZIP de una entrega, de a uno en todo el proceso (revisión del
+# 19/11/2026): mandarle a la base un ZIP de 40 MB arma copias del pedido en
+# memoria (el pico sube unos 120 MB además del ZIP), y dos entregas grandes a
+# la vez no entran en los 512 MB del servidor. Adentro solo se manda el ZIP:
+# no se espera ningún candado de la base, así que no se traba con otra entrega.
+_UN_ZIP_POR_VEZ = asyncio.Semaphore(1)
+
 
 async def _leer(archivo: UploadFile, maximo: int, que: str) -> tuple[bytes, str]:
     # Se lee uno más que el máximo: alcanza para saber que se pasó sin leer
@@ -1008,16 +1056,19 @@ async def entregar(
             id=reglas.nuevo_id("im"), version_id=versionId, orden=orden, tipo_mime=tipo, datos=datos,
             tipo_mime_miniatura=tipo_mini, miniatura=datos_mini, tamano=len(datos),
         ))
-    if zip_datos is not None:
-        db.add(CalendarioVersionZip(
-            version_id=versionId, nombre=zip_nombre, tamano=len(zip_datos),
-            datos=zip_datos if zip_guardado else None,
-        ))
     for m in marcas:
         m.corregida = True
         m.corregida_en_version_id = versionId
         m.corregida_at = ahora
     await db.flush()
+    if zip_datos is not None:
+        db.add(CalendarioVersionZip(
+            version_id=versionId, nombre=zip_nombre, tamano=len(zip_datos),
+            datos=zip_datos if zip_guardado else None,
+        ))
+        # El ZIP va solo a la base, y de a uno en todo el proceso (ver _UN_ZIP_POR_VEZ).
+        async with _UN_ZIP_POR_VEZ:
+            await db.flush()
     await reglas.recalcular(db, entrega, tarea)
 
     # Al aprobador que le toca; sin cadena, a quien creó la tarea (que la
