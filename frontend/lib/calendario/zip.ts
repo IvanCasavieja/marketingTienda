@@ -228,7 +228,12 @@ export function pesoLegible(bytes: number): string {
 
 /** La línea debajo del nombre del ZIP en el formulario: lo que pesa, qué se
  *  tomó de adentro y qué pasa con lo demás al entregar. `lugar`: los lugares
- *  de imagen que quedan libres en la ronda. */
+ *  de imagen que quedan libres en la ronda.
+ *
+ *  Lo que se agrega al entregar se dice con su máximo (revisión del
+ *  19/11/2026): «las páginas del PDF se agregan» prometía el folleto entero,
+ *  y entran solo las que caben en los lugares libres. Es `lugar`, o menos si
+ *  no hay PDF (cada imagen suelta da una sola); sin lugar no se promete nada. */
 export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean, lugar: number): string {
   const partes = [pesoLegible(tamano)]
   if (leyendo) return [...partes, 'abriéndolo…'].join(' · ')
@@ -236,11 +241,9 @@ export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean,
   if (n) partes.push(n === 1 ? 'se tomó 1 imagen de adentro' : `se tomaron ${n} imágenes de adentro`)
   const p = pendientesDelZip(z)
   if (zipSumaImagenes(z, lugar)) {
-    partes.push(
-      p == null ? 'se abre al entregar'
-        : p.pdfs > 0 ? `las páginas ${p.pdfs === 1 ? 'del PDF' : 'de los PDF'} se agregan al entregar`
-          : `las ${n ? 'otras ' : ''}imágenes se agregan al entregar`,
-    )
+    const hasta = p && p.pdfs === 0 ? Math.min(lugar, p.imagenes) : lugar
+    partes.push(hasta === 1 ? 'se agrega 1 página o imagen del ZIP al entregar'
+      : `se agregan hasta ${hasta} páginas o imágenes del ZIP al entregar`)
   } else if (p && p.imagenes + p.pdfs > 0) {
     const resto = p.imagenes + p.pdfs
     partes.push(resto === 1 ? '1 archivo más para revisar' : `${resto} archivos más para revisar`)

@@ -122,23 +122,29 @@ async function main() {
   igual('un ZIP con solo un PDF: el servidor saca sus páginas', pendientesDelZip(estado(soloPdf)), { imagenes: 0, pdfs: 1 })
   ok('y alcanza para entregar si queda lugar en la ronda', zipSumaImagenes(estado(soloPdf), 4))
   ok('sin lugar en la ronda, no suma nada', !zipSumaImagenes(estado(soloPdf), 0))
+  // Con su máximo: entran las páginas que caben en los lugares libres, no el folleto entero.
   igual('lo que se dice debajo del nombre', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, false, 4),
-    '5 MB · las páginas del PDF se agregan al entregar')
+    '5 MB · se agregan hasta 4 páginas o imágenes del ZIP al entregar')
+  igual('con dos lugares, hasta dos', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, false, 2),
+    '5 MB · se agregan hasta 2 páginas o imágenes del ZIP al entregar')
+  igual('sin lugar no se promete nada: queda para revisar', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, false, 0),
+    '5 MB · 1 archivo más para revisar')
   igual('mientras se abre', detalleDelZip(estado(soloPdf), 5 * 1024 * 1024, true, 4), '5 MB · abriéndolo…')
 
   // piezas/feed.jpg (1), piezas/story.png (2), folleto.pdf (4), fuente.psd (5), ñandú.webp (6), Caña.jpg (7).
   igual('se tomaron tres, Caña.jpg no se pudo sacar acá: con un lugar, el servidor pone la página del PDF (va antes en el ZIP)',
     detalleDelZip(estado(entradas, [1, 2, 6]), 12.34 * 1024 * 1024, false, 1),
-    '12,3 MB · se tomaron 3 imágenes de adentro · las páginas del PDF se agregan al entregar')
+    '12,3 MB · se tomaron 3 imágenes de adentro · se agrega 1 página o imagen del ZIP al entregar')
   igual('lo que queda: la que no se pudo sacar y el PDF', pendientesDelZip(estado(entradas, [1, 2, 6])), { imagenes: 1, pdfs: 1 })
   igual('sin lugar, lo demás queda para revisar', detalleDelZip(estado(entradas, [1, 2, 6, 7]), 300 * 1024, false, 0),
     '300 KB · se tomaron 4 imágenes de adentro · 1 archivo más para revisar')
   const soloImagenes = leerIndiceZip(armarZip([{ nombre: 'a.jpg', datos: bytes(1) }, { nombre: 'b.jpg', datos: bytes(1) }]))
-  igual('imágenes que el navegador no pudo abrir: las agrega el servidor',
-    detalleDelZip(estado(soloImagenes), 2048, false, 4), '2 KB · las imágenes se agregan al entregar')
-  igual('...y si ya se tomó alguna, «las otras»',
-    detalleDelZip(estado(soloImagenes, [0]), 2048, false, 3), '2 KB · se tomó 1 imagen de adentro · las otras imágenes se agregan al entregar')
-  igual('un ZIP que acá no se lee lo abre el servidor', detalleDelZip(estado(null), 1024 * 1024, false, 4), '1 MB · se abre al entregar')
+  igual('imágenes que el navegador no pudo abrir: las agrega el servidor (sin PDF, como mucho las que quedan)',
+    detalleDelZip(estado(soloImagenes), 2048, false, 4), '2 KB · se agregan hasta 2 páginas o imágenes del ZIP al entregar')
+  igual('...y si ya se tomó alguna, la que queda',
+    detalleDelZip(estado(soloImagenes, [0]), 2048, false, 3), '2 KB · se tomó 1 imagen de adentro · se agrega 1 página o imagen del ZIP al entregar')
+  igual('un ZIP que acá no se lee lo abre el servidor: hasta los lugares libres',
+    detalleDelZip(estado(null), 1024 * 1024, false, 4), '1 MB · se agregan hasta 4 páginas o imágenes del ZIP al entregar')
   ok('...y puede alcanzar para entregar (si no sale nada, avisa el servidor)', zipSumaImagenes(estado(null), 4))
 
   // Lo que la persona saca de la ronda no vuelve, y no se mira dos veces.
