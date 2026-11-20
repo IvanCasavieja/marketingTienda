@@ -370,6 +370,153 @@ def test_solo_http_y_https(monkeypatch):
     assert red.pedidos == [] and "http o https" in j.no_se_pudo_abrir[0]
 
 
+# ---------------------------------------------------------------------------
+# Revisión de seguridad del 19/11/2026: la bomba comprimida y el DNS
+# ---------------------------------------------------------------------------
+
+class _Crudo(httpx.AsyncByteStream):
+    """Un cuerpo que llega de a pedazos y sin leer, como de la red: así httpx
+    no lo abre solo al armar la respuesta (con content= sí lo haría)."""
+
+    def __init__(self, datos: bytes, pedazo: int = 65536):
+        self.datos, self.pedazo = datos, pedazo
+
+    async def __aiter__(self):
+        for i in range(0, len(self.datos), self.pedazo):
+            yield self.datos[i:i + self.pedazo]
+
+
+def _gzip(datos: bytes) -> bytes:
+    c = zlib.compressobj(9, zlib.DEFLATED, 31)
+    return c.compress(datos) + c.flush()
+
+
+def test_una_bomba_comprimida_no_se_abre_entera(monkeypatch):
+    """Unos pocos bytes comprimidos dos veces (o una capa que se infla de más)
+    se comían la memoria del servidor antes de cualquier tope, porque httpx
+    descomprime solo. Ahora se pide sin comprimir, se lee crudo y se abre una
+    sola capa, con tope."""
+    url = "https://bomba.example/pieza.jpg"
+    doble = _gzip(_gzip(b"\x00" * 50_000_000))
+    red = Red(monkeypatch, {("GET", url): lambda r: httpx.Response(
+        200, headers={"content-encoding": "gzip, gzip", "content-type": "image/jpeg"}, stream=_Crudo(doble))})
+    j = _juntar(link=url)
+    assert red.pedidos[0].headers["accept-encoding"] == "identity"
+    assert j.imagenes == [] and "comprimido de una forma que no se abre" in j.no_se_pudo_abrir[0]
+    # Una sola capa que se infla más que el tope: se corta en el tope.
+    una = _gzip(b"\x00" * (m.MAX_BYTES_LINK + 5_000_000))
+    Red(monkeypatch, {("GET", url): lambda r: httpx.Response(
+        200, headers={"content-encoding": "gzip", "content-type": "image/jpeg"}, stream=_Crudo(una))})
+    j = _juntar(link=url)
+    assert j.imagenes == [] and "pesa más de" in j.no_se_pudo_abrir[0]
+    # Otra forma de comprimir (br): no se abre.
+    Red(monkeypatch, {("GET", url): lambda r: httpx.Response(
+        200, headers={"content-encoding": "br"}, stream=_Crudo(b"xx"))})
+    assert "comprimido de una forma que no se abre" in _juntar(link=url).no_se_pudo_abrir[0]
+
+
+def test_una_imagen_comprimida_una_vez_se_abre(monkeypatch):
+    url = "https://comprime.example/pieza.jpg"
+    Red(monkeypatch, {("GET", url): lambda r: httpx.Response(
+        200, headers={"content-encoding": "gzip", "content-type": "image/jpeg"}, stream=_Crudo(_gzip(_jpeg())))})
+    j = _juntar(link=url)
+    assert len(j.imagenes) == 1 and j.no_se_pudo_abrir == []
+
+
+def test_el_nombre_se_controla_como_lo_usa_la_conexion(monkeypatch):
+    """url.host y el nombre con el que conecta httpx (raw_host, en IDNA)
+    pueden ser distintos: «faß» se controlaba como «fass» y se conectaba a
+    «xn--fa-hia». Con dos nombres, uno pasaba el control y el otro llevaba
+    a la red interna."""
+    controlados = []
+
+    async def resolver(host):
+        controlados.append(host)
+        return [PUBLICA]
+
+    monkeypatch.setattr(m, "_resolver", resolver)
+    url = httpx.URL("https://faß.example/pieza.jpg")
+    asyncio.run(m._host_publico(url))
+    assert controlados == [url.raw_host.decode("ascii")] and controlados[0].startswith("xn--")
+
+
+def test_la_conexion_va_a_la_misma_ip_que_se_controlo(monkeypatch):
+    conectadas = []
+
+    class RedFalsa:
+        async def connect_tcp(self, host, port, **kw):
+            conectadas.append((host, port))
+            return "conexión"
+
+    nombres = {"publico.example": [PUBLICA], "rebind.example": ["127.0.0.1"], "mixto.example": [PUBLICA, "10.0.0.1"]}
+
+    async def resolver(host):
+        return nombres[host]
+
+    monkeypatch.setattr(m, "_resolver", resolver)
+    red = m._RedPublica()
+    red._red = RedFalsa()
+    assert asyncio.run(red.connect_tcp("publico.example", 443)) == "conexión"
+    assert conectadas == [(PUBLICA, 443)]
+    for host in ("rebind.example", "mixto.example"):
+        with pytest.raises(m.NoSePudoAbrir, match="dirección interna"):
+            asyncio.run(red.connect_tcp(host, 443))
+    assert conectadas == [(PUBLICA, 443)]  # a la interna ni se intentó
+
+
+def test_el_cliente_de_los_links_usa_la_red_controlada():
+    """Si una versión nueva de httpx cambiara cómo arma la conexión, que salte
+    acá y no que se conecte sin el control."""
+    cliente = m.cliente_http()
+    try:
+        assert isinstance(cliente._transport._pool._network_backend, m._RedPublica)
+    finally:
+        asyncio.run(cliente.aclose())
+
+
+def test_un_dns_que_cambia_entre_el_control_y_la_conexion_no_llega_a_la_red_interna(monkeypatch):
+    """De punta a punta, con un servidor de verdad en 127.0.0.1: el nombre da
+    una IP pública al controlarlo y la interna al conectar (DNS rebinding).
+    Antes el pedido llegaba al servidor interno y recién después se cortaba."""
+    import threading
+
+    servidor = socket.socket()
+    servidor.bind(("127.0.0.1", 0))
+    servidor.listen(5)
+    servidor.settimeout(2)
+    puerto = servidor.getsockname()[1]
+    aceptadas = []
+
+    def escuchar():
+        try:
+            c, _ = servidor.accept()
+            aceptadas.append(1)
+            c.close()
+        except OSError:
+            pass
+
+    hilo = threading.Thread(target=escuchar, daemon=True)
+    hilo.start()
+    vueltas = []
+
+    async def resolver(host):
+        vueltas.append(host)
+        return [PUBLICA] if len(vueltas) == 1 else ["127.0.0.1"]
+
+    monkeypatch.setattr(m, "_resolver", resolver)
+    j = _juntar(link=f"http://rebind.example:{puerto}/pieza.jpg")
+    hilo.join(3)
+    servidor.close()
+    assert len(vueltas) == 2  # se controló y se volvió a controlar al conectar
+    assert aceptadas == [] and "dirección interna" in j.no_se_pudo_abrir[0]
+
+
+def test_el_peso_de_una_transferencia_se_redondea_para_arriba():
+    # 42.000.000 bytes son 40,05 MB: no puede decir «pesa 40 MB» si el tope es 40.
+    with pytest.raises(m.NoSePudoAbrir, match="pesa 41 MB"):
+        m._controlar_peso(42_000_000, "Smash")
+
+
 def test_un_servidor_que_no_existe_se_anota(monkeypatch):
     Red(monkeypatch)
     j = _juntar(link="https://noexiste.example/pieza.jpg")

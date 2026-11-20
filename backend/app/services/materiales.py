@@ -71,17 +71,20 @@ import io
 import ipaddress
 import json
 import logging
+import math
 import re
 import socket
 import struct
 import threading
 import time
 import zipfile
+import zlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
+import httpcore
 import httpx
 
 from app.services.entregas import (
@@ -605,11 +608,56 @@ def imagenes_para_la_ronda(datos: bytes, *, lugar: int, saltar: frozenset[int] =
 # El link
 # ---------------------------------------------------------------------------
 
+class _RedPublica(httpcore.AsyncNetworkBackend):
+    """La red con la que se conecta el cliente de los links: resuelve el
+    nombre, controla que TODAS sus IPs sean públicas y se conecta a una de
+    esas mismas IPs (19/11/2026). Así el control y la conexión no pueden
+    separarse: antes se controlaba el nombre y httpx resolvía otra vez al
+    conectar, y un DNS que cambia en el medio (o dos formas de escribir el
+    nombre) llegaba a la red interna antes de que se cortara. Lo de TLS no
+    cambia: el certificado se controla contra el nombre del link."""
+
+    def __init__(self) -> None:
+        self._red = httpcore.AnyIOBackend()
+
+    async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+        try:
+            ips = await _resolver(host)
+        except (socket.gaierror, OSError, UnicodeError) as exc:
+            raise NoSePudoAbrir(f"no se encontró el servidor {host}") from exc
+        if not ips or any(_ip_privada(ip) for ip in ips):
+            raise NoSePudoAbrir("el link apunta a una dirección interna y no se abre")
+        ultimo: Exception | None = None
+        for ip in ips:
+            try:
+                return await self._red.connect_tcp(
+                    ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options,
+                )
+            except (httpcore.ConnectError, httpcore.ConnectTimeout) as exc:
+                ultimo = exc
+        raise ultimo or httpcore.ConnectError("no se pudo conectar")
+
+    async def connect_unix_socket(self, path, timeout=None, socket_options=None):
+        raise NoSePudoAbrir("solo se abren links http o https")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._red.sleep(seconds)
+
+
 def cliente_http() -> httpx.AsyncClient:
     """El cliente con el que se baja. En un solo lugar para que las pruebas lo
     cambien por uno con respuestas grabadas (httpx.MockTransport), sin red.
-    Las redirecciones se siguen a mano (`_pedir`): cada salto se controla."""
-    return httpx.AsyncClient(timeout=httpx.Timeout(ESPERA_LINK), follow_redirects=False)
+    Las redirecciones se siguen a mano (`_pedir`): cada salto se controla.
+    Se conecta con `_RedPublica`: httpx no deja pasarle la red, así que se
+    pone en su pileta de conexiones; si una versión nueva de httpx la
+    cambiara, esto falla (y el link queda anotado como que no se abrió),
+    nunca se conecta sin el control. Hay una prueba que lo vigila."""
+    transporte = httpx.AsyncHTTPTransport()
+    pileta = transporte._pool
+    if not hasattr(pileta, "_network_backend"):
+        raise NoSePudoAbrir("la plataforma no puede abrir links con esta versión de httpx")
+    pileta._network_backend = _RedPublica()
+    return httpx.AsyncClient(transport=transporte, timeout=httpx.Timeout(ESPERA_LINK), follow_redirects=False)
 
 
 async def _resolver(host: str) -> list[str]:
@@ -642,8 +690,11 @@ async def _host_publico(url: httpx.URL) -> None:
     host = url.host
     if not host:
         raise NoSePudoAbrir("el link no tiene un servidor")
+    # Se resuelve el nombre como lo usa la conexión (raw_host, con IDNA):
+    # url.host puede ser otro («faß» vs «xn--fa-hia»), y con dos nombres un
+    # atacante pasaba el control con uno y conectaba con el otro (19/11/2026).
     try:
-        ips = await _resolver(host)
+        ips = await _resolver(url.raw_host.decode("ascii"))
     except (socket.gaierror, OSError, UnicodeError) as exc:
         raise NoSePudoAbrir(f"no se encontró el servidor {host}") from exc
     if not ips or any(_ip_privada(ip) for ip in ips):
@@ -689,8 +740,12 @@ async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, 
     cabeceras = dict(cabeceras or {})
     for _ in range(MAX_REDIRECCIONES + 1):
         await _host_publico(actual)
+        # identity: que el servidor no mande nada comprimido. Si lo manda igual,
+        # se abre una sola capa y con tope (ver abajo): unos pocos bytes
+        # comprimidos dos veces inflaban cientos de MB de una (19/11/2026).
         pedido = cliente.build_request(
-            metodo, actual, json=json_cuerpo, headers={"User-Agent": _AGENTE, **cabeceras},
+            metodo, actual, json=json_cuerpo,
+            headers={"User-Agent": _AGENTE, "Accept-Encoding": "identity", **cabeceras},
         )
         try:
             r = await cliente.send(pedido, stream=True)
@@ -718,20 +773,53 @@ async def _pedir(cliente: httpx.AsyncClient, metodo: str, url: str | httpx.URL, 
             largo = r.headers.get("content-length", "")
             if largo.isdigit() and int(largo) > tope:
                 raise NoSePudoAbrir(f"el archivo pesa más de {_mb(tope)}")
-            cuerpo = bytearray()
-            try:
-                async for trozo in r.aiter_bytes():
-                    cuerpo += trozo
-                    if len(cuerpo) > tope:
-                        raise NoSePudoAbrir(f"el archivo pesa más de {_mb(tope)}")
-            except httpx.TimeoutException as exc:
-                raise NoSePudoAbrir("la descarga tardó demasiado") from exc
-            except httpx.HTTPError as exc:
-                raise NoSePudoAbrir(f"se cortó la descarga ({type(exc).__name__})") from exc
-            return Respuesta(str(actual), r.status_code, r.headers, bytes(cuerpo))
+            cuerpo = await _leer_con_tope(r, tope)
+            return Respuesta(str(actual), r.status_code, r.headers, cuerpo)
         finally:
             await r.aclose()
     raise NoSePudoAbrir("el link redirige demasiadas veces")
+
+
+async def _leer_con_tope(r: httpx.Response, tope: int) -> bytes:
+    """El cuerpo, cortado en `tope` bytes YA descomprimidos. Se lee crudo
+    (aiter_raw): httpx descomprime solo y sin tope, así que una «bomba» de
+    pocos bytes (gzip dentro de gzip) se comía la memoria antes de cualquier
+    control (revisión del 19/11/2026). Se acepta una sola capa de gzip o
+    deflate, abierta de a pedazos y con tope; cualquier otra cosa se anota."""
+    demasiado = NoSePudoAbrir(f"el archivo pesa más de {_mb(tope)}")
+    if r.is_stream_consumed:
+        # Ya leída: solo pasa con respuestas armadas en memoria (las pruebas);
+        # una de la red llega sin leer (send con stream=True).
+        if len(r.content) > tope:
+            raise demasiado
+        return r.content
+    capas = [c.strip().casefold() for c in r.headers.get("content-encoding", "").split(",")]
+    capas = [c for c in capas if c and c != "identity"]
+    if len(capas) > 1 or (capas and capas[0] not in ("gzip", "x-gzip", "deflate")):
+        raise NoSePudoAbrir("el servidor mandó el archivo comprimido de una forma que no se abre")
+    # wbits 47: gzip o zlib, lo que venga, una sola capa.
+    abrir = zlib.decompressobj(wbits=47) if capas else None
+    cuerpo = bytearray()
+    try:
+        async for trozo in r.aiter_raw():
+            if abrir is not None:
+                trozo = abrir.decompress(trozo, tope + 1 - len(cuerpo))
+                if abrir.unconsumed_tail:
+                    raise demasiado
+            cuerpo += trozo
+            if len(cuerpo) > tope:
+                raise demasiado
+        if abrir is not None:
+            cuerpo += abrir.flush(tope + 1 - len(cuerpo))
+            if len(cuerpo) > tope or abrir.unconsumed_tail:
+                raise demasiado
+    except zlib.error as exc:
+        raise NoSePudoAbrir("el archivo llegó dañado") from exc
+    except httpx.TimeoutException as exc:
+        raise NoSePudoAbrir("la descarga tardó demasiado") from exc
+    except httpx.HTTPError as exc:
+        raise NoSePudoAbrir(f"se cortó la descarga ({type(exc).__name__})") from exc
+    return bytes(cuerpo)
 
 
 # WeTransfer (revisado el 19/11/2026 contra lo que hace hoy su página). Los
@@ -824,7 +912,8 @@ def _controlar_peso(tamano: object, servicio: str) -> None:
     tope, no se baja para cortarla a la mitad: se anota."""
     if isinstance(tamano, (int, float)) and not isinstance(tamano, bool) and tamano > MAX_BYTES_LINK:
         raise NoSePudoAbrir(
-            f"la transferencia de {servicio} pesa {round(tamano / 1024 / 1024)} MB y la plataforma baja "
+            # Para arriba: 40,05 MB no puede decir «pesa 40 MB» si el tope es 40.
+            f"la transferencia de {servicio} pesa {math.ceil(tamano / 1024 / 1024)} MB y la plataforma baja "
             f"hasta {_mb(MAX_BYTES_LINK)}"
         )
 
