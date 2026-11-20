@@ -698,10 +698,14 @@ def test_lo_que_no_se_puede_pasar_a_la_ronda_se_anota_y_sigue_con_lo_proximo():
 def test_las_paginas_se_dibujan_de_a_una_y_se_suelta_la_memoria(monkeypatch):
     """El servidor tiene 512 MB: PyMuPDF guarda lo que decodifica (hasta 256
     MB) y se vacía después de cada página y al cerrar el PDF. Y un PDF por
-    vez en todo el proceso: PyMuPDF no se puede usar desde dos hilos a la vez."""
+    vez en todo el proceso: PyMuPDF no se puede usar desde dos hilos a la vez
+    (el candado es el común, app/services/de_a_uno.py, desde la revisión del
+    19/11/2026: lo toma también la validación de RRSS)."""
     import threading
 
     import pymupdf
+
+    from app.services.de_a_uno import DE_A_UNO
 
     vaciadas = []
     original = pymupdf.TOOLS.store_shrink
@@ -711,9 +715,9 @@ def test_las_paginas_se_dibujan_de_a_una_y_se_suelta_la_memoria(monkeypatch):
         tomado = []
 
         def probar():
-            pude = m._DE_A_UNO.acquire(blocking=False)
+            pude = DE_A_UNO.acquire(blocking=False)
             if pude:
-                m._DE_A_UNO.release()
+                DE_A_UNO.release()
             tomado.append(not pude)
 
         otro = threading.Thread(target=probar)

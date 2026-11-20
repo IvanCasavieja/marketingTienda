@@ -67,7 +67,6 @@ import logging
 import re
 import socket
 import struct
-import threading
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -78,6 +77,7 @@ import httpx
 from app.services.entregas import (
     CALIDAD_JPEG, LADO_MAYOR, LADO_MINIATURA, MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, tipo_de_imagen,
 )
+from app.services.de_a_uno import DE_A_UNO
 from app.services.revision_ia import LADO_MAXIMO, MAX_PIXELES, ImagenParaIA, preparar_imagen
 
 logger = logging.getLogger(__name__)
@@ -109,13 +109,12 @@ _AGENTE = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 # El PDF
 MAX_PAGINAS_PDF = 10
 
-# Lo pesado (un PDF abierto, una imagen grande decodificada), de a uno en todo
-# el proceso: PyMuPDF no se puede usar desde dos hilos a la vez (su
-# documentación avisa que puede tirar abajo el proceso), y dos imágenes
-# grandes juntas en 512 MB son demasiado. Lo usan la entrega, en el pedido
+# Lo pesado (un PDF abierto, una imagen grande decodificada) va de a uno en
+# todo el proceso, con `DE_A_UNO`: lo usan la entrega, en el pedido
 # (imagenes_para_la_ronda), y la IA, en segundo plano (extraer_del_zip), cada
-# una desde su hilo. Reentrante, por si una función de acá llama a otra.
-_DE_A_UNO = threading.RLock()
+# una desde su hilo. Desde la revisión del 19/11/2026 vive en
+# app/services/de_a_uno.py, porque también lo toma la validación de RRSS
+# (PyMuPDF no se puede usar desde dos hilos a la vez, sea quien sea).
 
 
 class NoSePudoAbrir(Exception):
@@ -344,7 +343,7 @@ def extraer_del_zip(
                     tipo = tipo_de_imagen(contenido)
                     if tipo is None:
                         raise NoSePudoAbrir("no es una imagen JPG, PNG ni WebP (aunque el nombre lo diga)")
-                    with _DE_A_UNO:
+                    with DE_A_UNO:
                         juntado.imagenes.append(preparar_imagen(None, contenido, tipo, nombre=e.nombre, origen=origen))
                     juntado.revisados.append({"nombre": e.nombre, "origen": origen, "paginas": None})
                     agregadas += 1
@@ -411,8 +410,8 @@ def paginas_de_pdf(
     imágenes que van a la IA), empezando por la página `desde` + 1 (las
     anteriores ya van como imágenes de la ronda), y cuántas páginas tiene en
     total. ValueError si no se puede leer o pide contraseña. De a una página
-    en memoria, y un PDF por vez en todo el proceso (`_DE_A_UNO`)."""
-    with _DE_A_UNO:
+    en memoria, y un PDF por vez en todo el proceso (`DE_A_UNO`)."""
+    with DE_A_UNO:
         doc = _abrir_pdf(datos)
         try:
             total = doc.page_count
@@ -511,7 +510,7 @@ def _imagen_de_la_ronda(contenido: bytes) -> tuple[bytes, bytes]:
 
     if tipo_de_imagen(contenido) is None:
         raise NoSePudoAbrir("no es una imagen JPG, PNG ni WebP (aunque el nombre lo diga)")
-    with _DE_A_UNO:
+    with DE_A_UNO:
         try:
             img = Image.open(io.BytesIO(contenido))  # solo el encabezado
             if img.width * img.height > MAX_PIXELES:
@@ -527,10 +526,10 @@ def _imagen_de_la_ronda(contenido: bytes) -> tuple[bytes, bytes]:
 def _paginas_de_la_ronda(contenido: bytes, cuantas: int) -> tuple[list[tuple[bytes, bytes]], int]:
     """Las primeras `cuantas` páginas de un PDF como imágenes de la ronda
     (grande y miniatura), dibujadas de a una, y cuántas páginas tiene. Un PDF
-    por vez en todo el proceso (`_DE_A_UNO`)."""
+    por vez en todo el proceso (`DE_A_UNO`)."""
     from PIL import Image
 
-    with _DE_A_UNO:
+    with DE_A_UNO:
         doc = _abrir_pdf(contenido)
         try:
             total = doc.page_count
@@ -828,7 +827,7 @@ def _sumar_descarga(j: Juntado, nombre: str, datos: bytes, clase: str, lugar: in
         j.no_se_pudo_abrir.append(f"«{nombre}»: quedó afuera por el tope de imágenes por entrega")
         return
     if clase == "imagen":
-        with _DE_A_UNO:
+        with DE_A_UNO:
             j.imagenes.append(preparar_imagen(None, datos, tipo_de_imagen(datos), nombre=nombre, origen="link"))
         j.revisados.append({"nombre": nombre, "origen": "link", "paginas": None})
         return
