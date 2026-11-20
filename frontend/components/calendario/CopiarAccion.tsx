@@ -19,6 +19,14 @@ import type { CalendarioCopia } from '@/lib/api'
 const conAnio = (iso: string) => `${fechaCorta(iso)}/${iso.slice(0, 4)}`
 
 /**
+ * Por qué una tarea copiada queda sin responsable. Desde el 19/11/2026 hay
+ * dos motivos: esa persona ya no entra al calendario, o ahora es de una
+ * agencia (Publicis, Another Monday, Diseñadores: agencias externas) y la
+ * tarea es de Tienda.
+ */
+const QUIEN_LA_TENIA = 'quien la tenía ya no entra a este calendario o ahora es de una agencia'
+
+/**
  * "Copiar a otra fecha", desde la ficha de una acción o de un envío suelto
  * (pedido de Ivan, 15/11/2026: que el Ciberlunes 2026 nazca del 2025 con
  * todo lo que tenía).
@@ -68,7 +76,10 @@ export function CopiarAccion({ accion, onCerrar }: {
   useDeslizarParaCerrar(cajaRef, true, cerrarSiSePuede)
 
   const resumen = useMemo(
-    () => queSeCopia(accion, personasEstado === 'ok' ? new Set(personas.map(p => p.id)) : null, gestionaTareas),
+    () => queSeCopia(
+      accion, personasEstado === 'ok' ? new Set(personas.map(p => p.id)) : null, gestionaTareas,
+      new Set(personas.filter(p => p.externo).map(p => p.id)),
+    ),
     [accion, personas, personasEstado, gestionaTareas],
   )
 
@@ -236,7 +247,7 @@ export function CopiarAccion({ accion, onCerrar }: {
                   )}
                   {resumen.sinResponsable > 0 && (
                     <span className={nota}>
-                      {resumen.sinResponsable === 1 ? '1 queda' : `${resumen.sinResponsable} quedan`} sin responsable: esa persona ya no entra a este calendario.
+                      {resumen.sinResponsable === 1 ? '1 queda' : `${resumen.sinResponsable} quedan`} sin responsable: {QUIEN_LA_TENIA}.
                     </span>
                   )}
                 </span>
@@ -321,8 +332,8 @@ function avisarComoQuedo(r: CalendarioCopia, nombre: string, desde: string) {
   const detalle = [
     lleva.length ? `Con ${enLista(lleva)}${c.piezas || c.tareas ? ', todo en pendiente' : ''}.` : '',
     r.tareasSinPermiso ? `Las ${cuantas(r.tareasSinPermiso, 'tarea', 'tareas')} no se copiaron: cargar tareas pide un permiso que no tenés.` : '',
-    r.sinResponsable ? `${r.sinResponsable === 1 ? 'Una tarea quedó' : `${r.sinResponsable} tareas quedaron`} sin responsable: esa persona ya no entra a este calendario.` : '',
-    r.destinatariosQuitados ? `${r.destinatariosQuitados === 1 ? 'Salió 1 persona' : `Salieron ${r.destinatariosQuitados} personas`} de los avisos por lo mismo.` : '',
+    r.sinResponsable ? `${r.sinResponsable === 1 ? 'Una tarea quedó' : `${r.sinResponsable} tareas quedaron`} sin responsable: ${QUIEN_LA_TENIA}.` : '',
+    r.destinatariosQuitados ? `${r.destinatariosQuitados === 1 ? 'Salió 1 persona' : `Salieron ${r.destinatariosQuitados} personas`} de los avisos: ya no ${r.destinatariosQuitados === 1 ? 'entra' : 'entran'} a este calendario.` : '',
     r.avisados ? `Le llegó el aviso de sus tareas a ${r.avisados === 1 ? '1 persona' : `${r.avisados} personas`}.` : '',
     r.enviadosAhora ? 'Un aviso ya tocaba con la fecha nueva y salió ahora.' : '',
   ].filter(Boolean).join(' ')

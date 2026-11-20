@@ -303,6 +303,30 @@ export function agenciasSinRepetir(nombres: (string | null | undefined)[]): stri
 }
 
 /**
+ * Lo que muestra el selector de agencia del panel de usuarios para lo que se
+ * eligió o escribió (`valor`):
+ * - `opciones`: las agencias que ya existen (GET /admin/agencias) y, si no
+ *   está entre ellas, la que la cuenta ya tiene (`actual`). Al editar una
+ *   cuenta la lista viene sin ella (?menos=<id>): si es la única de su
+ *   agencia, esa agencia no viene, y tiene que seguir apareciendo elegida.
+ * - `elegida`: la opción que es `valor` (sin tildes ni mayúsculas), o null.
+ * - `yaExiste`: si lo escrito es una agencia que ya existe sin contar esta
+ *   cuenta, el nombre con el que la guarda el servidor; null si la guarda
+ *   como se escribió. Antes se comparaba también con la de la propia cuenta,
+ *   y al corregirle cómo se escribe a la única de una agencia el panel decía
+ *   «Ya existe: se guarda como» el nombre viejo, y el servidor guardaba el
+ *   nuevo (revisión del 19/11/2026).
+ */
+export function agenciaElegida(
+  agencias: string[] | null, valor: string, actual?: string | null,
+): { opciones: string[] | null; elegida: string | null; yaExiste: string | null } {
+  const yaExiste = agencias?.find(a => mismaEmpresa(a, valor)) ?? null
+  const propia = (actual ?? '').split(/\s+/).filter(Boolean).join(' ')
+  const opciones = agencias && propia && !agencias.some(a => mismaEmpresa(a, propia)) ? [...agencias, propia] : agencias
+  return { opciones, elegida: opciones?.find(a => mismaEmpresa(a, valor)) ?? null, yaExiste }
+}
+
+/**
  * El catalogo de lo que puede llevar una accion. El area `web-home` es la
  * unica que toca el calendario de headers: una pieza `Header` de ahi baja
  * sola a una posicion libre de marketing.

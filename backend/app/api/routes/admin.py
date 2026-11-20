@@ -31,6 +31,7 @@ from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.core import alcance, externos
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
+from app.core.tableros import tablero_de
 from app.models.user import User
 from app.services import agencias
 
@@ -724,13 +725,21 @@ async def update_externo(
         )).scalar_one_or_none()
         if es_sucursal is not None:
             raise HTTPException(status_code=422, detail="Un login de sucursal no puede ser una cuenta externa")
-        if ya_era_externa and empresa_vieja and not externos.misma_empresa(empresa_vieja, empresa):
+        if (ya_era_externa and empresa_vieja and not externos.misma_empresa(empresa_vieja, empresa)
+                and not tablero_de(empresa_vieja)):
             # Le corrigieron el nombre a la empresa ("Publisis" -> "Publicis").
             # Las tarjetas son de la AGENCIA, por nombre: si era la última
             # cuenta con el nombre viejo, se pasan al nuevo; si no, el
             # tablero de la agencia quedaba vacío y nadie las podía entregar.
             # Si quedan otras cuentas con el nombre viejo, las tarjetas siguen
             # siendo de ellas: esta cuenta es la que cambió de agencia.
+            # Si la vieja es uno de los tres tableros (Publicis, Another
+            # Monday, Diseñadores) no es un nombre mal escrito: la cuenta se
+            # cambió de agencia y lo de ese tablero se queda ahí, aunque se
+            # quede sin cuentas. Antes, pasar a la única cuenta de Diseñadores
+            # a Publicis (porque se eligió mal) se llevaba todas las tarjetas
+            # y plantillas de Diseñadores, y volverla atrás se traía también
+            # las de Publicis (revisión del 19/11/2026).
             clave_vieja = externos.clave_de_empresa(empresa_vieja)
             quedan = (await db.execute(
                 select(func.count()).select_from(User).where(
@@ -770,7 +779,12 @@ async def update_externo(
                  "plantillas_pasadas": plantillas_pasadas},
         ip_address=_client_ip(request),
     ))
-    return {"es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or []}
+    return {
+        "es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or [],
+        # Cuántas tarjetas y plantillas pasaron al nombre nuevo de la agencia
+        # (0 si no se le corrigió el nombre a ninguna): el panel lo avisa.
+        "tarjetas_pasadas": tarjetas_pasadas, "plantillas_pasadas": plantillas_pasadas,
+    }
 
 
 @router.get("/mundos")
@@ -781,6 +795,7 @@ async def list_mundos(_: User = Depends(_require_admin_panel)):
 
 @router.get("/agencias")
 async def list_agencias(
+    menos: int | None = None,
     _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
@@ -788,8 +803,14 @@ async def list_agencias(
     (19/11/2026, Ivan: "¿no debería ser una selección?"): los tres tableros
     (Publicis, Another Monday, Diseñadores) y las empresas de las cuentas
     externas, cada una una sola vez. Una nueva se agrega escribiéndola en el
-    panel, que solo usa quien administra."""
-    return await agencias.existentes(db)
+    panel, que solo usa quien administra.
+
+    `menos`: la cuenta que se está editando, que no cuenta, como al guardarla
+    (update_externo usa como_ya_esta con menos=<id>). Si es la única de una
+    agencia que no es un tablero, esa agencia no viene: al corregirle cómo se
+    escribe, el panel decía «Ya existe: se guarda como…» con el nombre viejo,
+    y el servidor guardaba el nuevo (revisión del 19/11/2026)."""
+    return await agencias.existentes(db, menos=menos)
 
 
 async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str) -> int:

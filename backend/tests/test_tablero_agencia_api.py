@@ -725,6 +725,8 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
             "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
         assert r.status_code == 200, r.text
+        # La respuesta dice cuántas pasaron al nombre nuevo.
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 0)
         # Sigue viendo su tarjeta (pasó al nombre nuevo) y conserva su alcance.
         assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
         async with d.Sesion() as s:
@@ -737,6 +739,7 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         r = await promo.patch(f"/admin/users/{d.a1.id}/externo", json={
             "es_externo": True, "empresa": f"Otra Agencia {d.sufijo}"})
         assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
         assert await _tarjeta(Cliente(d.http, d.a2), de_pampa) is not None
         assert await _tarjeta(Cliente(d.http, d.a1), de_pampa) is None
     correr(prueba)
@@ -976,6 +979,7 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
             "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
         assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 1)
         async with d.Sesion() as s:
             tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
         assert tareas[0]["agencia"] == f"Estudio del Sur {d.sufijo}" and tareas[1].get("agencia") is None
@@ -996,6 +1000,83 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
         r = await lider.post(f"/calendario/barras/{d.ahora.id}/plantilla", json={"plantillaId": plantilla, "ids": ids})
         assert r.status_code == 201, r.text
         assert r.json()["agenciasSinCuentas"] == [f"Estudio del Sur {d.sufijo}"]
+    correr(prueba)
+
+
+def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
+    """Revisión del 19/11/2026: Fer, la única cuenta de Diseñadores (una
+    agencia externa, como Publicis), pasa a Publicis porque se eligió mal, y
+    después vuelve. Eso se tomaba como «le corrigieron el nombre a la
+    agencia»: se llevaba a Publicis todas las tarjetas y las plantillas de
+    Diseñadores, y al volver se traía las de Publicis. Un tablero no se
+    renombra: cada tarjeta y cada plantilla se queda en el suyo. Corregir el
+    nombre de una agencia que no es un tablero («Publisis» -> «Publicis») las
+    sigue pasando, y la respuesta dice cuántas."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        de_dis, de_pub = f"ta-vd-{d.sufijo}", f"ta-vp-{d.sufijo}"
+        for tarea_id, agencia in ((de_dis, "Diseñadores"), (de_pub, "Publicis")):
+            r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+                "id": tarea_id, "tipo": "push", "para": "agencia", "agencia": agencia})
+            assert r.status_code == 201, r.text
+        plantilla = f"pl-vuelta-{d.sufijo}"
+        r = await lider.put(f"/calendario/plantillas/{plantilla}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": "Diseñadores",
+                 "ancla": "inicio", "dias": -3},
+                {"id": "t2", "titulo": "Banners", "tipo": "banners", "opciones": ["Header"], "para": "agencia",
+                 "agencia": "Publicis", "ancla": "inicio", "dias": -2},
+            ]})
+        assert r.status_code == 200, r.text
+
+        async def cada_una_en_su_tablero():
+            async with d.Sesion() as s:
+                assert (await s.get(CalendarioTarea, de_dis)).agencia == "Diseñadores"
+                assert (await s.get(CalendarioTarea, de_pub)).agencia == "Publicis"
+                tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
+            assert [t["agencia"] for t in tareas] == ["Diseñadores", "Publicis"]
+
+        # Ida y vuelta.
+        for empresa in ("Publicis", "Diseñadores"):
+            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": empresa})
+            assert r.status_code == 200, r.text
+            assert r.json()["empresa"] == empresa
+            assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+            await cada_una_en_su_tablero()
+        # De vuelta en Diseñadores, Fer ve su tarjeta y no la de Publicis.
+        c = Cliente(d.http, fer)
+        assert await _tarjeta(c, de_dis) is not None
+        assert await _tarjeta(c, de_pub) is None
+        # Con el tablero escrito de otra forma («DISENADORES», guardado a mano
+        # antes del 19/11) es el mismo tablero: tampoco se lleva nada.
+        async with d.Sesion() as s:
+            (await s.get(User, fer.id)).empresa = "DISENADORES"
+            await s.commit()
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": "Another Monday"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        await cada_una_en_su_tablero()
+
+        # «Publisis» no es un tablero: es Publicis mal escrito. Su única
+        # cuenta pasa a Publicis y se lleva su tarjeta y su plantilla.
+        publisis = await _persona(d, "Pato Publisis", externo=True, empresa=f"Publisis {d.sufijo}")
+        mal_escrita = f"ta-vm-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
+            "id": mal_escrita, "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        r = await lider.put(f"/calendario/plantillas/{plantilla}-m", json={
+            "mundo": MUNDO, "nombre": "Mal escrita", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}",
+                 "ancla": "inicio", "dias": -3}]})
+        assert r.status_code == 200, r.text
+        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, mal_escrita)).agencia == "Publicis"
+            assert (await s.get(CalendarioPlantilla, f"{plantilla}-m")).tareas[0]["agencia"] == "Publicis"
+        await cada_una_en_su_tablero()
     correr(prueba)
 
 
@@ -2102,6 +2183,42 @@ def test_la_agencia_se_elige_y_se_compara_sin_tildes_ni_mayusculas():
     correr(prueba)
 
 
+def test_la_lista_de_agencias_para_editar_una_cuenta_no_la_cuenta_a_ella():
+    """Revisión del 19/11/2026: al corregir cómo se escribe la única cuenta de
+    una agencia que no es un tablero, el panel decía «Ya existe: se guarda
+    como «Estudio Sur»» y el servidor guardaba lo nuevo (no la cuenta a ella
+    misma). La lista para editarla, GET /admin/agencias?menos=<id>, tampoco:
+    da lo mismo que usa el servidor al guardar."""
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        sur, pampa = f"Estudio Sur {d.sufijo}", f"Agencia Pampa {d.sufijo}"
+        completa = (await promo.get("/admin/agencias")).json()
+        assert sur in completa and pampa in completa
+
+        # Bruno es la única cuenta de Estudio Sur: sin él, no existe.
+        r = await promo.get("/admin/agencias", params={"menos": d.b1.id})
+        assert r.status_code == 200, r.text
+        sin_bruno = r.json()
+        assert sur not in sin_bruno and pampa in sin_bruno
+        assert sin_bruno[:3] == ["Publicis", "Another Monday", "Diseñadores"]
+        # Y el servidor guarda lo que se escribe, como dice esa lista.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"estudio súr {d.sufijo}"})
+        assert r.status_code == 200 and r.json()["empresa"] == f"estudio súr {d.sufijo}"
+
+        # Pampa tiene dos: sin una de ellas, sigue estando (como la escribió
+        # la otra, «agencia  pampa», sin los espacios de más).
+        assert f"agencia pampa {d.sufijo}" in (await promo.get("/admin/agencias", params={"menos": d.a1.id})).json()
+        assert pampa in (await promo.get("/admin/agencias", params={"menos": d.a2.id})).json()
+        # La única cuenta de un tablero: el tablero está siempre.
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        assert "Diseñadores" in (await promo.get("/admin/agencias", params={"menos": fer.id})).json()
+        # Quien no administra, tampoco con `menos`; y un `menos` que no es un número no entra.
+        assert (await Cliente(d.http, d.lucia).get("/admin/agencias", params={"menos": d.b1.id})).status_code == 403
+        assert (await promo.get("/admin/agencias", params={"menos": "x"})).status_code == 422
+    correr(prueba)
+
+
 def test_la_empresa_se_compara_igual_en_la_base_que_en_python():
     """La base (`empresa_en_sql`) y Python (`clave_de_empresa`) tienen que dar
     exactamente lo mismo: si no, el tablero de una agencia y su campanita
@@ -2192,6 +2309,56 @@ def test_el_responsable_de_una_tarea_de_tienda_es_alguien_de_tienda():
         async with d.Sesion() as s:
             t = await s.get(CalendarioTarea, pieza)
             assert (t.para, t.agencia, t.asignado_a_id) == ("agencia", "Diseñadores", fer.id)
+    correr(prueba)
+
+
+def test_copiar_la_accion_no_le_deja_una_tarea_de_tienda_a_alguien_de_una_agencia():
+    """Revisión del 19/11/2026: la tarea de Tienda la llevaba alguien que
+    después pasó a ser de una agencia (Diseñadores, una agencia externa).
+    Copiar la acción la hacía nacer a su nombre, con su aviso y su tarjeta,
+    como si fuera una pieza de la agencia. Ahora la copia sale sin
+    responsable, como al aplicar una plantilla, y la respuesta lo cuenta. La
+    pieza de la agencia sí sigue a nombre de alguien de ella."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        ids = {"brief": f"ta-cb-{d.sufijo}", "pieza": f"ta-cp-{d.sufijo}", "fuera": f"ta-cf-{d.sufijo}",
+               "agencia": f"ta-ca-{d.sufijo}"}
+        for cuerpo in (
+            {"id": ids["brief"], "titulo": "Brief del Ciberlunes", "asignadoA": d.aprob2.id},
+            {"id": ids["pieza"], "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.aprob2.id},
+            {"id": ids["fuera"], "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+             "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.aprob2.id},
+            {"id": ids["agencia"], "tipo": "push", "para": "agencia", "agencia": "Diseñadores", "asignadoA": fer.id},
+        ):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json=cuerpo)
+            assert r.status_code == 201, r.text
+        # Quien las llevaba se pasa a Diseñadores.
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Diseñadores"})
+        assert r.status_code == 200, r.text
+
+        copia = f"br-cx-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        assert r.json()["sinResponsable"] == 3
+        async with d.Sesion() as s:
+            copiadas = (await s.execute(select(CalendarioTarea).where(CalendarioTarea.barra_id == copia))).scalars().all()
+        por_tipo = {(t.tipo, t.para): t for t in copiadas}
+        assert len(por_tipo) == 4
+        assert por_tipo[(None, "tienda")].asignado_a_id is None
+        assert por_tipo[("banners", "tienda")].asignado_a_id is None and por_tipo[("banners", "tienda")].agencia is None
+        assert por_tipo[("mailing", "fuera")].asignado_a_id is None
+        assert por_tipo[("mailing", "fuera")].agencia == "Estudio Afuera"
+        pieza_de_la_agencia = por_tipo[("push", "agencia")]
+        assert (pieza_de_la_agencia.agencia, pieza_de_la_agencia.asignado_a_id) == ("Diseñadores", fer.id)
+        # A la cuenta de la agencia no le llegó nada de lo de Tienda, ni lo ve en su tablero.
+        de_tienda = [t.id for t in copiadas if t.para != "agencia"]
+        for tarea_id in de_tienda:
+            assert await _avisos(d, d.aprob2, tarea_id) == []
+            assert await _tarjeta(Cliente(d.http, d.aprob2), tarea_id) is None
+        # La de la agencia, sí: es suya (de Diseñadores).
+        assert await _tarjeta(Cliente(d.http, d.aprob2), pieza_de_la_agencia.id) is not None
     correr(prueba)
 
 
