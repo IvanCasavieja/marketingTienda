@@ -795,6 +795,7 @@ async def list_mundos(_: User = Depends(_require_admin_panel)):
 
 @router.get("/agencias")
 async def list_agencias(
+    menos: int | None = None,
     _: User = Depends(_require_admin_panel),
     db: AsyncSession = Depends(get_db),
 ):
@@ -802,8 +803,14 @@ async def list_agencias(
     (19/11/2026, Ivan: "¿no debería ser una selección?"): los tres tableros
     (Publicis, Another Monday, Diseñadores) y las empresas de las cuentas
     externas, cada una una sola vez. Una nueva se agrega escribiéndola en el
-    panel, que solo usa quien administra."""
-    return await agencias.existentes(db)
+    panel, que solo usa quien administra.
+
+    `menos`: la cuenta que se está editando, que no cuenta, como al guardarla
+    (update_externo usa como_ya_esta con menos=<id>). Si es la única de una
+    agencia que no es un tablero, esa agencia no viene: al corregirle cómo se
+    escribe, el panel decía «Ya existe: se guarda como…» con el nombre viejo,
+    y el servidor guardaba el nuevo (revisión del 19/11/2026)."""
+    return await agencias.existentes(db, menos=menos)
 
 
 async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str) -> int:

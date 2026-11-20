@@ -9,7 +9,8 @@ import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno, ventana
 import { alcanceDe, veCalendario } from './alcance'
 import { inicioDe } from './mundos'
 import {
-  agenciasSinRepetir, asignablesPara, claveDeEmpresa, delEquipo, mismaEmpresa, nombreConEmpresa, type Persona,
+  agenciaElegida, agenciasSinRepetir, asignablesPara, claveDeEmpresa, delEquipo, mismaEmpresa, nombreConEmpresa,
+  type Persona,
 } from './calendario/tipos'
 import type { CurrentUser } from '../types'
 
@@ -92,6 +93,26 @@ ok('otra agencia no', !mismaEmpresa('Publicis', 'Diseñadores'))
 ok('sin empresa no hay con quién compartirla', !mismaEmpresa('', '') && !mismaEmpresa(null, undefined))
 igual('cada agencia una vez, como la escribió la primera', agenciasSinRepetir(['Diseñadores', 'Disenadores', null, 'Publicis', ' publicis ']),
   ['Diseñadores', 'Publicis'])
+
+// El selector de agencia del panel (revisión del 19/11/2026). Al editar la
+// única cuenta de «Agencia Oceano», la lista llega sin ella (?menos=<id>),
+// como la usa el servidor al guardar: corregirle cómo se escribe no es «Ya
+// existe», y su agencia sigue en la lista, elegida.
+const tableros = ['Publicis', 'Another Monday', 'Diseñadores']
+igual('al abrirla, su agencia sigue en la lista y elegida',
+  agenciaElegida(tableros, 'Agencia Oceano', 'Agencia Oceano'),
+  { opciones: [...tableros, 'Agencia Oceano'], elegida: 'Agencia Oceano', yaExiste: null })
+igual('corregirle cómo se escribe no dice «Ya existe» con el nombre viejo',
+  agenciaElegida(tableros, 'Agencia Océano', 'Agencia Oceano').yaExiste, null)
+igual('pero si escribe un tablero, sí: se guarda como el tablero',
+  agenciaElegida(tableros, ' publicis', 'Agencia Oceano').yaExiste, 'Publicis')
+igual('si su agencia tiene otras cuentas, ya viene en la lista: no se repite',
+  agenciaElegida([...tableros, 'Agencia Pampa'], 'agencia  pampa', 'agencia  pampa').opciones, [...tableros, 'Agencia Pampa'])
+igual('en el alta, con la lista completa, como antes',
+  agenciaElegida([...tableros, 'Agencia Pampa'], 'disenadores'),
+  { opciones: [...tableros, 'Agencia Pampa'], elegida: 'Diseñadores', yaExiste: 'Diseñadores' })
+igual('mientras no llega la lista, nada',
+  agenciaElegida(null, 'Agencia Oceano', 'Agencia Oceano'), { opciones: null, elegida: null, yaExiste: null })
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

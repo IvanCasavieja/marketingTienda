@@ -2103,6 +2103,42 @@ def test_la_agencia_se_elige_y_se_compara_sin_tildes_ni_mayusculas():
     correr(prueba)
 
 
+def test_la_lista_de_agencias_para_editar_una_cuenta_no_la_cuenta_a_ella():
+    """Revisión del 19/11/2026: al corregir cómo se escribe la única cuenta de
+    una agencia que no es un tablero, el panel decía «Ya existe: se guarda
+    como «Estudio Sur»» y el servidor guardaba lo nuevo (no la cuenta a ella
+    misma). La lista para editarla, GET /admin/agencias?menos=<id>, tampoco:
+    da lo mismo que usa el servidor al guardar."""
+    async def prueba(d):
+        promo = Cliente(d.http, d.promo)
+        sur, pampa = f"Estudio Sur {d.sufijo}", f"Agencia Pampa {d.sufijo}"
+        completa = (await promo.get("/admin/agencias")).json()
+        assert sur in completa and pampa in completa
+
+        # Bruno es la única cuenta de Estudio Sur: sin él, no existe.
+        r = await promo.get("/admin/agencias", params={"menos": d.b1.id})
+        assert r.status_code == 200, r.text
+        sin_bruno = r.json()
+        assert sur not in sin_bruno and pampa in sin_bruno
+        assert sin_bruno[:3] == ["Publicis", "Another Monday", "Diseñadores"]
+        # Y el servidor guarda lo que se escribe, como dice esa lista.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": f"estudio súr {d.sufijo}"})
+        assert r.status_code == 200 and r.json()["empresa"] == f"estudio súr {d.sufijo}"
+
+        # Pampa tiene dos: sin una de ellas, sigue estando (como la escribió
+        # la otra, «agencia  pampa», sin los espacios de más).
+        assert f"agencia pampa {d.sufijo}" in (await promo.get("/admin/agencias", params={"menos": d.a1.id})).json()
+        assert pampa in (await promo.get("/admin/agencias", params={"menos": d.a2.id})).json()
+        # La única cuenta de un tablero: el tablero está siempre.
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        assert "Diseñadores" in (await promo.get("/admin/agencias", params={"menos": fer.id})).json()
+        # Quien no administra, tampoco con `menos`; y un `menos` que no es un número no entra.
+        assert (await Cliente(d.http, d.lucia).get("/admin/agencias", params={"menos": d.b1.id})).status_code == 403
+        assert (await promo.get("/admin/agencias", params={"menos": "x"})).status_code == 422
+    correr(prueba)
+
+
 def test_la_empresa_se_compara_igual_en_la_base_que_en_python():
     """La base (`empresa_en_sql`) y Python (`clave_de_empresa`) tienen que dar
     exactamente lo mismo: si no, el tablero de una agencia y su campanita
