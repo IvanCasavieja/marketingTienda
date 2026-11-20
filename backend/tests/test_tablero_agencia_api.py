@@ -2196,6 +2196,56 @@ def test_el_responsable_de_una_tarea_de_tienda_es_alguien_de_tienda():
     correr(prueba)
 
 
+def test_copiar_la_accion_no_le_deja_una_tarea_de_tienda_a_alguien_de_una_agencia():
+    """Revisión del 19/11/2026: la tarea de Tienda la llevaba alguien que
+    después pasó a ser de una agencia (Diseñadores, una agencia externa).
+    Copiar la acción la hacía nacer a su nombre, con su aviso y su tarjeta,
+    como si fuera una pieza de la agencia. Ahora la copia sale sin
+    responsable, como al aplicar una plantilla, y la respuesta lo cuenta. La
+    pieza de la agencia sí sigue a nombre de alguien de ella."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        ids = {"brief": f"ta-cb-{d.sufijo}", "pieza": f"ta-cp-{d.sufijo}", "fuera": f"ta-cf-{d.sufijo}",
+               "agencia": f"ta-ca-{d.sufijo}"}
+        for cuerpo in (
+            {"id": ids["brief"], "titulo": "Brief del Ciberlunes", "asignadoA": d.aprob2.id},
+            {"id": ids["pieza"], "tipo": "banners", "opciones": ["Header"], "para": "tienda", "asignadoA": d.aprob2.id},
+            {"id": ids["fuera"], "tipo": "mailing", "opciones": ["Físico (impreso)"], "detalles": {"paginas": 16},
+             "para": "fuera", "agencia": "Estudio Afuera", "asignadoA": d.aprob2.id},
+            {"id": ids["agencia"], "tipo": "push", "para": "agencia", "agencia": "Diseñadores", "asignadoA": fer.id},
+        ):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json=cuerpo)
+            assert r.status_code == 201, r.text
+        # Quien las llevaba se pasa a Diseñadores.
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Diseñadores"})
+        assert r.status_code == 200, r.text
+
+        copia = f"br-cx-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        assert r.json()["sinResponsable"] == 3
+        async with d.Sesion() as s:
+            copiadas = (await s.execute(select(CalendarioTarea).where(CalendarioTarea.barra_id == copia))).scalars().all()
+        por_tipo = {(t.tipo, t.para): t for t in copiadas}
+        assert len(por_tipo) == 4
+        assert por_tipo[(None, "tienda")].asignado_a_id is None
+        assert por_tipo[("banners", "tienda")].asignado_a_id is None and por_tipo[("banners", "tienda")].agencia is None
+        assert por_tipo[("mailing", "fuera")].asignado_a_id is None
+        assert por_tipo[("mailing", "fuera")].agencia == "Estudio Afuera"
+        pieza_de_la_agencia = por_tipo[("push", "agencia")]
+        assert (pieza_de_la_agencia.agencia, pieza_de_la_agencia.asignado_a_id) == ("Diseñadores", fer.id)
+        # A la cuenta de la agencia no le llegó nada de lo de Tienda, ni lo ve en su tablero.
+        de_tienda = [t.id for t in copiadas if t.para != "agencia"]
+        for tarea_id in de_tienda:
+            assert await _avisos(d, d.aprob2, tarea_id) == []
+            assert await _tarjeta(Cliente(d.http, d.aprob2), tarea_id) is None
+        # La de la agencia, sí: es suya (de Diseñadores).
+        assert await _tarjeta(Cliente(d.http, d.aprob2), pieza_de_la_agencia.id) is not None
+    correr(prueba)
+
+
 # ---------------------------------------------------------------------------
 # Mi agenda (0074): el calendario de cada persona, solo para ella
 # ---------------------------------------------------------------------------

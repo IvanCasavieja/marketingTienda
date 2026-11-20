@@ -2412,6 +2412,8 @@ async def copiar_barra(
       (`calendario.tareas`), como al crearlas a mano. Si no, se copia el resto
       y la respuesta lo dice (`tareasSinPermiso`).
     - Un responsable o un destinatario que ya no puede abrir ese mundo se saca.
+    - Una tarea de Tienda cuyo responsable ahora es de una agencia sale sin
+      responsable (19/11/2026), como al aplicar una plantilla.
     - A cada responsable le llega UN aviso con todas sus tareas.
 
     Todo en una transacción y con una sola revisión: quien mira el calendario
@@ -2450,10 +2452,11 @@ async def copiar_barra(
     pedidos = {t.asignado_a_id for t in tareas if t.asignado_a_id is not None} if copia_tareas else set()
     for a in avisos:
         pedidos.update(ids_de_personas(a.destinatarios))
-    validos = {
-        u.id for u in (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars()
-        if _puede_ver_el_mundo(u, origen.mundo)
-    } if pedidos else set()
+    personas = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all() if pedidos else []
+    validos = {u.id for u in personas if _puede_ver_el_mundo(u, origen.mundo)}
+    # Y quiénes son de una agencia (cuentas externas): una tarea de Tienda no
+    # se copia a su nombre (ver copiar_tareas).
+    de_agencias = {u.id for u in personas if externos.es_externo(u)}
 
     nombre = payload.nombre or nombre_para_la_copia(origen.nombre, origen.desde, origen.hasta, payload.desde)
     barra = CalendarioBarra(**copiar_la_accion(
@@ -2463,6 +2466,7 @@ async def copiar_barra(
     filas_piezas = copiar_piezas(piezas, payload.id, corrimiento)
     copiadas_tareas = copiar_tareas(
         tareas if copia_tareas else [], payload.id, corrimiento, validos, current_user.id,
+        de_agencias=de_agencias,
     )
     # El nombre de una tarjeta lleva el de su acción ("Ciberlunes 2025 -
     # Banners"): en la copia tiene que decir el de la acción nueva, también
