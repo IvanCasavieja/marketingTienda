@@ -226,9 +226,31 @@ export function pesoLegible(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+/** Cuánto se espera, como mucho, a que termine una entrega (en ms): 180 s
+ *  más 1 s por cada 100 KB de lo que se sube (revisión del 19/11/2026). Con
+ *  el ZIP siempre en la subida, una conexión lenta no llegaba a mandar 40 MB
+ *  en los 180 s fijos de antes y la entrega se cortaba a mitad de camino. Un
+ *  ZIP de 40 MB da 590 s (unos 70 KB por segundo); fotos sueltas, poco más
+ *  que antes. */
+export function esperaDeEntrega(bytes: number): number {
+  return 180_000 + Math.ceil(Math.max(0, bytes) / (100 * 1024)) * 1000
+}
+
+/** Lo que pesa lo que va en un formulario: los archivos y el texto. */
+export function pesoDelFormulario(form: FormData): number {
+  let total = 0
+  form.forEach(v => { total += typeof v === 'string' ? v.length : v.size })
+  return total
+}
+
 /** La línea debajo del nombre del ZIP en el formulario: lo que pesa, qué se
  *  tomó de adentro y qué pasa con lo demás al entregar. `lugar`: los lugares
- *  de imagen que quedan libres en la ronda. */
+ *  de imagen que quedan libres en la ronda.
+ *
+ *  Lo que se agrega al entregar se dice con su máximo (revisión del
+ *  19/11/2026): «las páginas del PDF se agregan» prometía el folleto entero,
+ *  y entran solo las que caben en los lugares libres. Es `lugar`, o menos si
+ *  no hay PDF (cada imagen suelta da una sola); sin lugar no se promete nada. */
 export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean, lugar: number): string {
   const partes = [pesoLegible(tamano)]
   if (leyendo) return [...partes, 'abriéndolo…'].join(' · ')
@@ -236,11 +258,9 @@ export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean,
   if (n) partes.push(n === 1 ? 'se tomó 1 imagen de adentro' : `se tomaron ${n} imágenes de adentro`)
   const p = pendientesDelZip(z)
   if (zipSumaImagenes(z, lugar)) {
-    partes.push(
-      p == null ? 'se abre al entregar'
-        : p.pdfs > 0 ? `las páginas ${p.pdfs === 1 ? 'del PDF' : 'de los PDF'} se agregan al entregar`
-          : `las ${n ? 'otras ' : ''}imágenes se agregan al entregar`,
-    )
+    const hasta = p && p.pdfs === 0 ? Math.min(lugar, p.imagenes) : lugar
+    partes.push(hasta === 1 ? 'se agrega 1 página o imagen del ZIP al entregar'
+      : `se agregan hasta ${hasta} páginas o imágenes del ZIP al entregar`)
   } else if (p && p.imagenes + p.pdfs > 0) {
     const resto = p.imagenes + p.pdfs
     partes.push(resto === 1 ? '1 archivo más para revisar' : `${resto} archivos más para revisar`)
@@ -248,10 +268,12 @@ export function detalleDelZip(z: EstadoDelZip, tamano: number, leyendo: boolean,
   return partes.join(' · ')
 }
 
-/** Lo que dice la ficha de una ronda cuyo ZIP no se guardó porque la base
- *  estaba llena (19/11/2026): qué hacer, según quién mira. */
+/** Lo que dice la ficha de una ronda cuyo ZIP no se guardó porque no había
+ *  lugar (19/11/2026): qué hacer, según quién mira. Desde la revisión de ese
+ *  día los ZIP tienen su propio tope en el servidor (ZIP_TOPE_MB), así que
+ *  no dice «la base estaba llena»: puede estar lleno solo el lugar de los ZIP. */
 export function avisoZipSinGuardar(hayLink: boolean, laHizoQuienMira: boolean): string {
-  const que = 'El ZIP no se guardó porque la base estaba llena'
+  const que = 'El ZIP no se guardó porque no había lugar en la base'
   if (hayLink) return `${que}: el original queda en el link.`
   return laHizoQuienMira ? `${que}: pasá el link al original en los comentarios.` : `${que}: pedile el link a quien la hace.`
 }

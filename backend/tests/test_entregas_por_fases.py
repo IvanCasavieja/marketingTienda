@@ -382,18 +382,20 @@ def test_el_freno_de_espacio():
     assert entra(10_000 * mb, mb, 0)
 
 
-def test_el_zip_original_deja_lugar_para_las_imagenes():
-    """19/11/2026: el ZIP de una ronda (hasta 40 MB) se guarda solo si después
-    siguen libres ZIP_RESERVA_MB debajo del tope: unos pocos ZIP no pueden
-    dejar sin lugar a las imágenes, que son las que se miran y se marcan."""
+def test_los_zip_tienen_su_propio_tope():
+    """Revisión del 19/11/2026: el ZIP de una ronda (hasta 40 MB) se guarda
+    solo si, con los ZIP ya guardados, no pasan entre todos de ZIP_TOPE_MB
+    (100). Antes era una reserva debajo del tope de la base, que dejaba a los
+    ZIP llegar a 350 de los 400 MB: no protegía a las imágenes, que son las
+    que se miran y se marcan. La cuenta es la misma que la de la base."""
     from app.core.config import Settings
 
     mb = 1024 * 1024
-    assert Settings().ZIP_RESERVA_MB == 50
-    assert entra(300 * mb, 40 * mb, 400, reserva_mb=50)          # 340 de 350: entra
-    assert not entra(320 * mb, 40 * mb, 400, reserva_mb=50)      # 360 de 350: no
-    assert entra(320 * mb, 200 * 1024, 400)                      # una imagen, en el mismo momento, sí
-    assert entra(10_000 * mb, 40 * mb, 0, reserva_mb=50)         # sin tope, no frena
+    assert Settings().ZIP_TOPE_MB == 100
+    assert not hasattr(Settings(), "ZIP_RESERVA_MB")
+    assert entra(60 * mb, 40 * mb, 100)            # 100 de 100: entra
+    assert not entra(60 * mb + 1, 40 * mb, 100)    # un byte más: no
+    assert entra(10_000 * mb, 40 * mb, 0)          # 0: sin tope propio (queda el de la base)
 
 
 def test_bajar_el_zip_tiene_su_propio_limite_por_minuto():

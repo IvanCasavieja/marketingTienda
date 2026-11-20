@@ -12,7 +12,7 @@ miran y se marcan.
 Es una tabla de la base y no Supabase Storage porque el servidor no usa
 Storage para nada: todo archivo vive en Postgres (las imágenes de las
 entregas, los PDF de facturación). `datos` es NULL cuando el ZIP no se guardó
-porque la base estaba llena (la entrega se hizo igual). Cuelga de la versión
+porque no había lugar (la entrega se hizo igual). Cuelga de la versión
 con ON DELETE CASCADE, como sus imágenes. Ver app/models/entregas.py
 (CalendarioVersionZip).
 

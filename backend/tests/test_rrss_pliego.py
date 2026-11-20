@@ -141,6 +141,62 @@ def test_el_limite_de_paginas_cuenta_carillas_y_no_hojas():
     assert str(imagenes.MAX_PAGINAS_MAILING) in str(err.value)
 
 
+def _tomado_por_otro_hilo() -> bool:
+    """Si otro hilo encontraría tomado el candado de PyMuPDF."""
+    import threading
+
+    from app.services.de_a_uno import DE_A_UNO
+
+    tomado = []
+
+    def probar():
+        pude = DE_A_UNO.acquire(blocking=False)
+        if pude:
+            DE_A_UNO.release()
+        tomado.append(not pude)
+
+    otro = threading.Thread(target=probar)
+    otro.start()
+    otro.join()
+    return tomado[0]
+
+
+def test_el_pdf_del_mailing_se_dibuja_con_el_candado_comun_de_pymupdf(monkeypatch):
+    """Revisión del 19/11/2026: PyMuPDF no se puede usar desde dos hilos a la
+    vez, y las entregas también abren PDF (app/services/materiales.py). La
+    validación de RRSS toma el mismo candado (app/services/de_a_uno.py) desde
+    que abre el PDF hasta que vacía el depósito de MuPDF: otro hilo no entra.
+    Es reentrante: quien ya lo tiene no se traba al pedirlo de nuevo."""
+    from app.services import materiales
+    from app.services.de_a_uno import DE_A_UNO
+
+    assert imagenes.DE_A_UNO is DE_A_UNO and materiales.DE_A_UNO is DE_A_UNO
+    pliego = _pdf_de_una_hoja(1257, 908)
+    abierto, vaciado = [], []
+    abrir, vaciar = pymupdf.open, pymupdf.TOOLS.store_shrink
+
+    def abrir_espiando(*a, **kw):
+        abierto.append(_tomado_por_otro_hilo())
+        return abrir(*a, **kw)
+
+    def vaciar_espiando(n):
+        vaciado.append(_tomado_por_otro_hilo())
+        return vaciar(n)
+
+    monkeypatch.setattr(pymupdf, "open", abrir_espiando)
+    monkeypatch.setattr(pymupdf.TOOLS, "store_shrink", vaciar_espiando)
+    assert len(imagenes.paginas_del_mailing(pliego, "application/pdf", "mailing.pdf")) == 2
+    assert len(imagenes.hojas_para_mirar(pliego, "application/pdf", "mailing.pdf")) == 1
+    assert abierto == [True, True] and vaciado == [True, True]
+    # Con el candado ya tomado en este hilo, no se traba (RLock).
+    with DE_A_UNO:
+        assert len(imagenes.paginas_del_mailing(pliego, "application/pdf", "mailing.pdf")) == 2
+    # Y al terminar queda libre, también si el PDF no se pudo abrir.
+    with pytest.raises(imagenes.ArchivoInvalido):
+        imagenes.paginas_del_mailing(b"%PDF-roto", "application/pdf", "mailing.pdf")
+    assert not _tomado_por_otro_hilo()
+
+
 # ---------------------------------------------------------------------------
 # La vigencia sale de la carilla del producto
 # ---------------------------------------------------------------------------

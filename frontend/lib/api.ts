@@ -5,6 +5,7 @@ import type { Columna, ComentarioDeTarjeta, DetalleEntregas, Metricas, ResumenEn
 import type { TipoDeTarea } from "@/lib/calendario/tipos-de-tarea";
 import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 import type { MiAgenda } from "@/lib/calendario/mi-agenda";
+import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2316,9 +2317,6 @@ export const colocacionApi = {
 // devuelven con marcas. Las imágenes NO vienen con la tarea: se piden de a
 // una (`imagen`), con la sesión, y el front arma una URL local.
 
-/** Una subida con fotos desde el teléfono puede tardar: más que el resto del calendario. */
-const ESPERA_SUBIDA = { timeout: 180_000 };
-
 export const entregasApi = {
   /** Que la tarea lleve entregas (o cambiarle el brief, las fases o los aprobadores). */
   configurar: (tareaId: string, datos: {
@@ -2332,15 +2330,18 @@ export const entregasApi = {
   detalle: (tareaId: string) =>
     api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
   /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
-   *  vino un ZIP, `zip.guardado` dice si se guardó (con la base llena, no) y
-   *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor. */
+   *  vino un ZIP, `zip.guardado` dice si se guardó (sin lugar, no) y
+   *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor.
+   *  Puede tardar (fotos desde el teléfono, un ZIP de 40 MB): se espera
+   *  según lo que se sube, 180 s más 1 s por cada 100 KB (`esperaDeEntrega`,
+   *  revisión del 19/11/2026; antes eran 180 s fijos). */
   entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
     api.post<CalendarioEscrito & {
       ronda: number; entrega: ResumenEntrega;
       zip?: { nombre: string; tamano: number; guardado: boolean; sumadas: number; archivos: string[]; ignorados: string[] } | null;
     }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/versiones`, form, {
-        ...ESPERA_SUBIDA,
+        timeout: esperaDeEntrega(pesoDelFormulario(form)),
         headers: { "Content-Type": "multipart/form-data" },
         onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
       }),
