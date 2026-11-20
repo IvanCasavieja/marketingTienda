@@ -7,7 +7,7 @@ import { herramientaDe, inicioDe, mundosDe, useMundoElegido, type Mundo } from "
 
 /**
  * Lo que se ve al abrir una herramienta que no es del mundo en el que se está:
- * la planilla de pedidos estando en Tienda Inglesa, los medios estando en
+ * la planilla de pedidos estando en Tienda Inglesa, los precios estando en
  * Redexpres. Pasa con un link guardado o con un aviso de la campanita.
  *
  * No se cambia de mundo solo: los mundos están separados a propósito, y pasar

@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from app.api.routes.calendario import (
     _NIVELES_DE_TAREA, BarraNueva, TareaCambios, TareaNueva,
-    mensaje_de_asignacion, mensaje_de_tarea_hecha, nivel_de, referencia_de_tarea,
+    mensaje_de_asignacion, mensaje_de_tarea_hecha, nivel_de, referencia_de_tarea, repartir_orden,
 )
 from app.core.mundos import (
     MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, mundos_iniciales, mundos_que_no_puede_dar,
@@ -216,6 +216,14 @@ def test_tarea_subtarea_y_subsubtarea_y_no_mas():
 
 def test_un_ciclo_no_cuelga_el_servidor():
     assert nivel_de("a", {"a": "b", "b": "a"}) > _NIVELES_DE_TAREA
+
+
+def test_ordenar_reusa_los_mismos_lugares():
+    # Arrastradas (20/11/2026): las hermanas se reparten los lugares que ya
+    # tenían, así ninguna otra tarea de la acción se mueve.
+    assert repartir_orden({"a": 2, "b": 5, "c": 9}, ["c", "a", "b"]) == {"c": 2, "a": 5, "b": 9}
+    # Lugares repetidos (nacieron juntas): pasan a ser seguidos desde el menor.
+    assert repartir_orden({"a": 3, "b": 3, "c": 3}, ["b", "c", "a"]) == {"b": 3, "c": 4, "a": 5}
 
 
 def test_una_tarea_sin_titulo_no_se_guarda():

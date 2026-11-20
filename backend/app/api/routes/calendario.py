@@ -296,6 +296,9 @@ def _aviso_json(a: CalendarioAviso) -> dict:
         "destinatarios": list(a.destinatarios or []),
         "creadoPor": a.creado_por_id,
     }
+    if a.pieza_id:
+        # Se cuenta desde que sale ese envío (0084).
+        out["piezaId"] = a.pieza_id
     if a.control:
         # Lanzar o Cierre (0077): le llega a todo el equipo del mundo.
         out["control"] = a.control
@@ -996,7 +999,12 @@ async def cambiar_pieza(
     if "enSharePoint" in campos and payload.enSharePoint is not None:
         pieza.en_sharepoint = payload.enSharePoint
     rev = await _nueva_revision(db, mundo)
+    barra_id = pieza.barra_id
     await db.commit()
+    if "desde" in campos:
+        # Un aviso contado desde este envío (0084) se mueve con él: si con la
+        # fecha nueva ya toca, sale ahora.
+        await _avisar_sin_romper(db, barra_id)
     return {"id": pieza_id, "rev": _rev_para(current_user, rev)}
 
 
@@ -1023,6 +1031,12 @@ class AvisoNuevo(BaseModel):
     id: str = Field(..., pattern=_ID)
     diasAntes: int = Field(..., ge=1, le=365)
     destinatarios: list[int] = Field(..., min_length=1, max_length=200)
+    # Contar los días desde que sale este envío y no desde que arranca la
+    # acción (0084, 20/11/2026). Una pieza de envío de la misma acción.
+    piezaId: str | None = Field(None, pattern=_ID)
+
+
+_AREAS_DE_ENVIO = frozenset({"email", "whatsapp", "push"})
 
 
 @router.post("/barras/{barra_id}/avisos", status_code=201)
@@ -1058,13 +1072,20 @@ async def configurar_aviso(
             detail="Hay personas elegidas que no pueden abrir el calendario: no les llegaría el aviso",
         )
 
+    if payload.piezaId is not None:
+        pieza = await db.get(CalendarioPieza, payload.piezaId)
+        if pieza is None or pieza.barra_id != barra_id:
+            raise HTTPException(status_code=404, detail="Ese envío ya no está en la acción: lo sacaron.")
+        if pieza.area not in _AREAS_DE_ENVIO:
+            raise HTTPException(status_code=422, detail="Los avisos se cuentan desde un envío: un email, un WhatsApp o una push")
+
     existente = (await db.execute(
         select(CalendarioAviso.id).where(CalendarioAviso.id == payload.id)
     )).scalar_one_or_none()
     if existente is None:
         db.add(CalendarioAviso(
             id=payload.id, barra_id=barra_id, dias_antes=payload.diasAntes,
-            destinatarios=pedidos, creado_por_id=current_user.id,
+            destinatarios=pedidos, creado_por_id=current_user.id, pieza_id=payload.piezaId,
         ))
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
@@ -1357,6 +1378,18 @@ def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
     return nivel
 
 
+def repartir_orden(ordenes: dict[str, int], ids: list[str]) -> dict[str, int]:
+    """El `orden` nuevo de unas tareas hermanas que se arrastraron (Ivan,
+    20/11/2026: "ordenar las tareas arrastrando"). Reusan los mismos lugares
+    que ya tenían, en el orden nuevo: así no se mueve ninguna otra tarea de la
+    acción. Si había lugares repetidos (tareas que nacieron juntas), pasan a
+    ser seguidos desde el menor. Pura."""
+    lugares = sorted(ordenes[i] for i in ids)
+    if len(set(lugares)) < len(lugares):
+        lugares = list(range(lugares[0], lugares[0] + len(lugares)))
+    return dict(zip(ids, lugares))
+
+
 # --- Vencimientos anclados a la acción (0065) ---------------------------------
 # Una tarea que vino de una plantilla vence "N días antes/después del inicio o
 # del fin" de su acción. Se guarda la fecha calculada (es lo que leen "Mis
@@ -1472,6 +1505,11 @@ class TareaCambios(BaseModel):
     estado: EstadoTarea | None = None
     asignadoA: int | None = None
     vence: Fecha | None = None
+
+
+class OrdenDeTareas(BaseModel):
+    """Unas tareas hermanas (cuelgan de lo mismo), en el orden nuevo."""
+    ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
 @router.get("/tipos-de-tarea")
@@ -1590,6 +1628,36 @@ async def crear_tarea(
         "titulo": titulo, "para": para, "agencia": agencia, "vence": vence.isoformat() if vence else None,
         "entrega": entrega,
     }
+
+
+@router.put("/barras/{barra_id}/tareas/orden")
+async def ordenar_tareas(
+    barra_id: str,
+    payload: OrdenDeTareas,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ordenar las tareas arrastrándolas (Ivan, 20/11/2026). Llegan las
+    hermanas en el orden nuevo y cada una toma uno de los lugares que ya
+    tenían (`repartir_orden`). Si mientras tanto alguien agregó otra, esa
+    queda donde estaba. Lo puede hacer quien gestiona las tareas."""
+    if not _puede_gestionar_tareas(current_user):
+        raise HTTPException(status_code=403, detail="Solo quien gestiona las tareas puede ordenarlas")
+    if len(set(payload.ids)) != len(payload.ids):
+        raise HTTPException(status_code=422, detail="Una tarea vino dos veces")
+    barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
+    tareas = {t.id: t for t in (await db.execute(
+        select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id)
+    )).scalars()}
+    if any(i not in tareas for i in payload.ids):
+        raise HTTPException(status_code=404, detail="Una de esas tareas ya no existe: la borró otra persona.")
+    if len({tareas[i].parent_id for i in payload.ids}) > 1:
+        raise HTTPException(status_code=422, detail="Se ordenan las tareas de un mismo nivel")
+    for tarea_id, orden in repartir_orden({i: tareas[i].orden for i in payload.ids}, payload.ids).items():
+        tareas[tarea_id].orden = orden
+    rev = await _nueva_revision(db, barra.mundo)
+    await db.commit()
+    return {"rev": _rev_para(current_user, rev)}
 
 
 _QUIEN_CARGA_LO_DE_AFUERA = "Quien carga lo de una agencia de afuera es alguien del equipo"
@@ -2454,6 +2522,8 @@ async def copiar_barra(
     # Los avisos de Lanzar no se copian: la copia trae los suyos (0077).
     copiados_avisos = copiar_avisos(
         [a for a in avisos if not a.control], payload.id, corrimiento, validos, current_user.id,
+        # Un aviso de un envío (0084) se cuenta desde el envío de la copia.
+        piezas_copiadas={p.id: f["id"] for p, f in zip(piezas, filas_piezas)},
     )
 
     # Una pieza o una tarea con su propia fecha puede irse de rango aunque la

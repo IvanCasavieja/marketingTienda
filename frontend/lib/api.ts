@@ -2131,6 +2131,9 @@ export const calendarioApi = {
   cambiarTarea: (id: string, cambios: unknown) =>
     api.patch<CalendarioEscrito & { avisados?: number }>(`/calendario/tareas/${encodeURIComponent(id)}`, cambios, ESPERA),
   borrarTarea: (id: string) => api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(id)}`, ESPERA),
+  /** Unas tareas hermanas en el orden nuevo (arrastradas, 20/11/2026). */
+  ordenarTareas: (barraId: string, ids: string[]) =>
+    api.put<CalendarioEscrito>(`/calendario/barras/${encodeURIComponent(barraId)}/tareas/orden`, { ids }, ESPERA),
   /** Lo que tengo asignado, en todos mis mundos, con la acción de cada tarea. */
   misTareas: () => api.get<any[]>("/calendario/mis-tareas", ESPERA),
   /** El catálogo de tipos de tarea (Banners, Cenefas…) con sus opciones y medidas. */
@@ -2158,7 +2161,7 @@ export const calendarioApi = {
     api.patch<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, cambios, ESPERA),
   quitarPieza: (id: string) => api.delete<CalendarioEscrito>(`/calendario/piezas/${encodeURIComponent(id)}`, ESPERA),
 
-  configurarAviso: (barraId: string, aviso: { id: string; diasAntes: number; destinatarios: number[] }) =>
+  configurarAviso: (barraId: string, aviso: { id: string; diasAntes: number; destinatarios: number[]; piezaId?: string | null }) =>
     api.post<CalendarioEscrito & { enviadosAhora?: number }>(
       `/calendario/barras/${encodeURIComponent(barraId)}/avisos`, aviso, ESPERA),
   quitarAviso: (id: string) => api.delete<CalendarioEscrito>(`/calendario/avisos/${encodeURIComponent(id)}`, ESPERA),

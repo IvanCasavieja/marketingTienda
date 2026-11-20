@@ -231,6 +231,9 @@ export type Aviso = {
   /** Ids de usuario de la plataforma. */
   destinatarios: number[]
   creadoPor: number | null
+  /** Contado desde que sale este envio (una pieza email, WhatsApp o push de
+   *  la accion) y no desde que arranca la accion (0084, 20/11/2026). */
+  piezaId?: string | null
   /** Lanzar (18/11/2026): lo trae sola cada accion de Redexpres y le llega a
    *  todo el equipo del mundo, ademas de `destinatarios`. Cierre y los de los
    *  Super FDS se sacaron el 20/11/2026 (el Cierre lo crea Valentina a mano). */

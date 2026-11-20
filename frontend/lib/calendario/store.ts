@@ -17,6 +17,7 @@ import type {
   AnclaTarea, AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Plantilla, Seccion, Tarea,
 } from './tipos'
 import { conCambios, moverAncladas, tareasDesdePlantilla, venceAnclado, type CambiosDeTarea } from './plantillas'
+import { conOrden } from './orden'
 import { BANDAS_COMERCIAL, BANDAS_RETAIL, type BandaCatalogo } from './catalogo'
 import { avisoDeAgenciasSinCuentas } from './tablero'
 import { MUNDO_POR_DEFECTO, mundoDe, useMundoElegido } from '@/lib/mundos'
@@ -251,7 +252,8 @@ type Estado = {
   quitarPieza: (piezaId: string) => void
   actualizarPieza: (piezaId: string, cambios: Partial<Pick<Pieza, 'estado' | 'desde' | 'hasta' | 'hora'>>) => void
 
-  agregarAviso: (diasAntes: number, destinatarios: number[]) => void
+  /** `piezaId`: contado desde que sale ese envío, no desde que arranca la acción. */
+  agregarAviso: (diasAntes: number, destinatarios: number[], piezaId?: string | null) => void
   quitarAviso: (avisoId: string) => void
 
   /** El estado de un envío suelto (pendiente → publicado), desde su ficha. */
@@ -265,6 +267,8 @@ type Estado = {
   cambiarTarea: (tareaId: string, cambios: CambiosDeTarea) => void
   /** Borra la tarea y todo lo que cuelga de ella. */
   borrarTarea: (tareaId: string) => void
+  /** Unas tareas hermanas de la acción `barraId`, en el orden nuevo. */
+  ordenarTareas: (barraId: string, ids: string[]) => void
 
   abrirPlantillas: (barraId: string | null) => void
   cerrarPlantillas: () => void
@@ -811,7 +815,12 @@ export const useCalendario = create<Estado>()(
         quitarPieza: piezaId => {
           const duena = duenaDe(get().barras, b => (b.piezas ?? []).some(p => p.id === piezaId))
           if (!duena) return
-          cambiarBarraLocal(duena.id, b => ({ ...b, piezas: (b.piezas ?? []).filter(p => p.id !== piezaId) }))
+          // Los avisos contados desde ese envío (0084) se van con él, como en el servidor.
+          cambiarBarraLocal(duena.id, b => ({
+            ...b,
+            piezas: (b.piezas ?? []).filter(p => p.id !== piezaId),
+            avisos: (b.avisos ?? []).filter(a => a.piezaId !== piezaId),
+          }))
           void escribir(() => calendarioApi.quitarPieza(piezaId), duena.id)
         },
 
@@ -835,16 +844,16 @@ export const useCalendario = create<Estado>()(
           void escribir(() => calendarioApi.cambiarPieza(piezaId, payload), duena.id)
         },
 
-        agregarAviso: (diasAntes, destinatarios) => {
+        agregarAviso: (diasAntes, destinatarios, piezaId = null) => {
           const accion = get().accionAbierta()
           if (!accion || destinatarios.length === 0) return
-          const aviso: Aviso = { id: nuevoId('av'), diasAntes, destinatarios, creadoPor: null }
+          const aviso: Aviso = { id: nuevoId('av'), diasAntes, destinatarios, creadoPor: null, piezaId }
           cambiarBarraLocal(accion.id, b => ({
             ...b,
             avisos: [...(b.avisos ?? []), aviso].sort((x, y) => y.diasAntes - x.diasAntes),
           }))
           void escribir(() => calendarioApi.configurarAviso(accion.id, {
-            id: aviso.id, diasAntes, destinatarios,
+            id: aviso.id, diasAntes, destinatarios, ...(piezaId ? { piezaId } : {}),
           }), accion.id).then(r => {
             if (r?.enviadosAhora) {
               toast.success('La fecha de ese aviso ya pasó, así que salió ahora.')
@@ -945,6 +954,12 @@ export const useCalendario = create<Estado>()(
           const fuera = conDescendientes(tareaId, duena.tareas ?? [])
           cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => !fuera.has(t.id)) }))
           void escribir(() => calendarioApi.borrarTarea(tareaId), duena.id)
+        },
+
+        ordenarTareas: (barraId, ids) => {
+          // Se ve al toque; el servidor reparte los mismos lugares (repartir_orden).
+          cambiarBarraLocal(barraId, b => ({ ...b, tareas: conOrden(b.tareas ?? [], ids) }))
+          void escribir(() => calendarioApi.ordenarTareas(barraId, ids), barraId)
         },
 
         abrirPlantillas: barraId => set({ dialogoPlantillas: { barraId } }),

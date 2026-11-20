@@ -123,6 +123,14 @@ class CalendarioAviso(Base):
         ForeignKey("calendario_barras.id", ondelete="CASCADE"), nullable=False, index=True
     )
     dias_antes: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Desde dónde se cuentan los días (0084, Ivan 20/11/2026: "que un aviso se
+    # pueda programar según la fecha de un envío"). Vacío = desde que arranca
+    # la acción; con una pieza de envío (email, WhatsApp, push) = desde que
+    # sale ese envío, y se mueve solo si el envío cambia de fecha. Si se saca
+    # el envío, el aviso se va con él.
+    pieza_id: Mapped[str | None] = mapped_column(
+        ForeignKey("calendario_piezas.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     # Ids de usuario. Una lista y no una tabla: nadie consulta "los avisos de
     # tal persona", y el aviso se lee siempre entero.
     destinatarios: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

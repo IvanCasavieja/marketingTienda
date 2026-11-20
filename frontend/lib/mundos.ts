@@ -9,7 +9,8 @@
 //
 // Entrar a un mundo cambia tres cosas:
 //   1. Qué herramientas hay en el menú (RUTAS_DE_MUNDO, acá abajo): la
-//      planilla de pedidos es de Redexpres, los medios son de Tienda Inglesa.
+//      planilla de pedidos es solo de Redexpres; los medios y las finanzas
+//      están en todos.
 //   2. Lo que se guarda separado por negocio: el calendario y sus tareas, y
 //      los tipos de cenefa. Eso lo cuida también el servidor.
 //   3. Nada más. Los permisos valen igual que siempre: el mundo dice DE QUÉ
@@ -129,7 +130,12 @@ export function mundoEfectivo(user: CurrentUser | null | undefined, elegido: str
 //
 // Cada herramienta es de los mundos donde tiene sentido. Lo que no está en
 // esta lista (el calendario, Mis tareas, el perfil, la ayuda, Don Tino, el
-// panel de administración) está en todos.
+// panel de administración, los medios y las finanzas) está en todos.
+//
+// Ivan (20/11/2026): "medios para todos, finanzas para todos, planilla de
+// pedidos solo Redexpres". Los medios (dashboard, Analytics, campañas, el
+// análisis con IA y las conexiones) y Finanzas son los mismos datos en todos
+// los mundos: no se separan por negocio.
 //
 // Es una lista corta a propósito: para sumarle una herramienta a un mundo
 // alcanza con agregar su clave acá, y aparece en su menú.
@@ -143,13 +149,7 @@ export const RUTAS_DE_MUNDO: { prefijo: string; nombre: string; mundos: string[]
   // en cada mundo lo decide el tipo de cenefa (cenefa_destinos.mundo).
   { prefijo: '/materiales', nombre: 'Las cenefas', mundos: ['tienda_inglesa', 'redexpres'] },
   { prefijo: '/redes-sociales', nombre: 'La validación de redes sociales', mundos: SOLO_TIENDA_INGLESA },
-  { prefijo: '/dashboard', nombre: 'El dashboard de medios', mundos: SOLO_TIENDA_INGLESA },
-  { prefijo: '/canales', nombre: 'Analytics', mundos: SOLO_TIENDA_INGLESA },
-  { prefijo: '/campaigns', nombre: 'Las campañas de medios', mundos: SOLO_TIENDA_INGLESA },
-  { prefijo: '/analytics', nombre: 'El análisis con IA', mundos: SOLO_TIENDA_INGLESA },
-  { prefijo: '/settings', nombre: 'Las conexiones de medios', mundos: SOLO_TIENDA_INGLESA },
   { prefijo: '/redexpres', nombre: 'Los pedidos de Redexpres', mundos: ['redexpres'] },
-  { prefijo: '/facturacion', nombre: 'Finanzas', mundos: SOLO_TIENDA_INGLESA },
   { prefijo: '/precios', nombre: 'Los precios', mundos: SOLO_TIENDA_INGLESA },
 ]
 

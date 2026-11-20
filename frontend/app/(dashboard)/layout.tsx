@@ -9,6 +9,8 @@ import Link from "next/link";
 import { Menu, CalendarDays, ShieldAlert, ArrowLeftRight } from "lucide-react";
 import { MARCA, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import FueraDeMundo from "@/components/layout/FueraDeMundo";
+import SinAcceso from "@/components/layout/SinAcceso";
+import { puedeEntrar } from "@/lib/acceso";
 import NavegacionInferior from "@/components/layout/NavegacionInferior";
 import { Campanita } from "@/components/layout/Campanita";
 import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
@@ -191,13 +193,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:pb-5 lg:p-6 overflow-auto">
           <ErrorBoundary>
             {/* Una herramienta que no es de este mundo no se muestra: se dice
-                dónde está y se ofrece pasar. */}
+                dónde está y se ofrece pasar. Y una para la que no se tiene el
+                permiso dice eso, en vez de errores sueltos (lib/acceso.ts). */}
             <ClientOnly>
               {/* Arriba del calendario, a quien lo ve limitado: qué parte ve. */}
               {user?.ventana && pathname === "/calendario" && <AvisoDeVentana user={user} />}
               {mundo && !rutaEnMundo(pathname, mundo.clave)
                 ? <FueraDeMundo pathname={pathname} mundo={mundo} />
-                : children}
+                : !puedeEntrar(pathname, user)
+                  ? <SinAcceso pathname={pathname} />
+                  : children}
             </ClientOnly>
           </ErrorBoundary>
         </main>
