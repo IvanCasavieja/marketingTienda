@@ -270,7 +270,18 @@ function UserEditorModal({
       // Externa o del equipo, antes que los permisos: al pasarla a externa el
       // servidor le saca lo que no le corresponde.
       if (externo !== !!user.es_externo || (externo && empresa.trim() !== (user.empresa ?? ""))) {
-        await api.patch(`/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+        const { data } = await api.patch<{ empresa: string | null; tarjetas_pasadas?: number; plantillas_pasadas?: number }>(
+          `/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
+        // Si era la única cuenta de una agencia que no es un tablero y se le
+        // corrigió el nombre («Publisis» -> «Publicis»), sus tarjetas y
+        // plantillas pasaron al nombre nuevo: que quien administra lo sepa
+        // (19/11/2026). Las de un tablero no se mueven nunca.
+        const contar = (n: number | undefined, una: string, varias: string) => (n ? `${n} ${n === 1 ? una : varias}` : "");
+        const pasadas = [
+          contar(data.tarjetas_pasadas, "tarjeta", "tarjetas"), contar(data.plantillas_pasadas, "plantilla", "plantillas"),
+        ].filter(Boolean);
+        const una = (data.tarjetas_pasadas ?? 0) + (data.plantillas_pasadas ?? 0) === 1;
+        if (pasadas.length) toast.info(`${pasadas.join(" y ")} de «${user.empresa}» ${una ? "pasó" : "pasaron"} a «${data.empresa}».`);
       }
       // Después de lo de externa: al pasarla a externa el servidor la deja en
       // "No lo ve", y si acá se eligió otra cosa, manda esto.
