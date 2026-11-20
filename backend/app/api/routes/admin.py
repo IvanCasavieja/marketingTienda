@@ -982,6 +982,61 @@ def _ids_de(valores) -> set[int]:
     return out
 
 
+async def _cadenas_en_curso(db: AsyncSession) -> list[list]:
+    """Las cadenas de aprobación de las entregas sin terminar."""
+    from app.models.entregas import CalendarioEntrega
+    return list((await db.execute(
+        select(CalendarioEntrega.aprobadores).where(
+            CalendarioEntrega.momento != "aprobada", CalendarioEntrega.archivada_at.is_(None),
+        )
+    )).scalars().all())
+
+
+async def _por_que_no_se_elimina(
+    db: AsyncSession, current_user: User, user: User, cadenas: list[list],
+) -> tuple[int, str] | None:
+    """(código, motivo) si esta cuenta no se puede eliminar; None si se puede."""
+    if user.id == current_user.id:
+        return 403, "No podés eliminar tu propia cuenta"
+    if user.is_superuser:
+        return 403, "Una cuenta de Super Admin no se elimina desde acá"
+    try:
+        await _check_not_protected_admin(current_user, user, db)
+    except HTTPException as exc:
+        return exc.status_code, str(exc.detail)
+    n = aprueba_en_curso(cadenas, user.id)
+    if n:
+        return 409, (
+            f"{user.full_name or 'Esta persona'} aprueba {n} "
+            f"{'entrega' if n == 1 else 'entregas'} en curso: si se elimina, "
+            f"{'quedaría trabada' if n == 1 else 'quedarían trabadas'}. Cambiá quién aprueba "
+            "o, si solo querés que no entre más, desactivala."
+        )
+    return None
+
+
+async def _eliminar(db: AsyncSession, current_user: User, user: User, ip: str | None) -> None:
+    """Borra la cuenta (sin commit): la saca de los avisos, deja el registro en
+    la auditoría y borra la fila."""
+    from app.models.calendario import CalendarioAviso
+    for aviso in (await db.execute(
+        select(CalendarioAviso).where(CalendarioAviso.destinatarios.contains([user.id]))
+    )).scalars().all():
+        quedan = [u for u in (aviso.destinatarios or []) if _ids_de([u]) != {user.id}]
+        if not quedan and not aviso.control:
+            await db.delete(aviso)
+        else:
+            aviso.destinatarios = quedan
+    db.add(AuditLog(
+        user_id=current_user.id, action="admin.user.delete", resource="user", resource_id=str(user.id),
+        details={"email": user.email, "nombre": user.full_name, "empresa": user.empresa},
+        ip_address=ip,
+    ))
+    # Un DELETE directo: lo que cuelga lo resuelve la base (CASCADE o SET
+    # NULL). Con db.delete(user) el ORM intentaría vaciar él las relaciones.
+    await db.execute(delete(User).where(User.id == user.id))
+
+
 @router.delete("/users/{user_id}", status_code=204)
 @limiter.limit("20/minute")
 async def eliminar_usuario(
@@ -1003,53 +1058,48 @@ async def eliminar_usuario(
       terminar: esa entrega quedaría esperando a alguien que no existe.
     - Ni a uno mismo ni a un Super Admin, y las mismas protecciones que para
       editar (un Admin no borra a otro Admin)."""
-    from app.models.calendario import CalendarioAviso
-    from app.models.entregas import CalendarioEntrega
-
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if user.id == current_user.id:
-        raise HTTPException(status_code=403, detail="No podés eliminar tu propia cuenta")
-    if user.is_superuser:
-        raise HTTPException(status_code=403, detail="Una cuenta de Super Admin no se elimina desde acá")
-    await _check_not_protected_admin(current_user, user, db)
-
-    cadenas = (await db.execute(
-        select(CalendarioEntrega.aprobadores).where(
-            CalendarioEntrega.momento != "aprobada", CalendarioEntrega.archivada_at.is_(None),
-        )
-    )).scalars().all()
-    n = aprueba_en_curso(list(cadenas), user.id)
-    if n:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"{user.full_name or 'Esta persona'} aprueba {n} "
-                f"{'entrega' if n == 1 else 'entregas'} en curso: si se elimina, "
-                f"{'quedaría trabada' if n == 1 else 'quedarían trabadas'}. Cambiá quién aprueba "
-                "o, si solo querés que no entre más, desactivala."
-            ),
-        )
-
-    for aviso in (await db.execute(
-        select(CalendarioAviso).where(CalendarioAviso.destinatarios.contains([user.id]))
-    )).scalars().all():
-        quedan = [u for u in (aviso.destinatarios or []) if _ids_de([u]) != {user.id}]
-        if not quedan and not aviso.control:
-            await db.delete(aviso)
-        else:
-            aviso.destinatarios = quedan
-
-    db.add(AuditLog(
-        user_id=current_user.id, action="admin.user.delete", resource="user", resource_id=str(user.id),
-        details={"email": user.email, "nombre": user.full_name, "empresa": user.empresa},
-        ip_address=_client_ip(request),
-    ))
-    # Un DELETE directo: lo que cuelga lo resuelve la base (CASCADE o SET
-    # NULL). Con db.delete(user) el ORM intentaría vaciar él las relaciones.
-    await db.execute(delete(User).where(User.id == user.id))
+    no = await _por_que_no_se_elimina(db, current_user, user, await _cadenas_en_curso(db))
+    if no:
+        raise HTTPException(status_code=no[0], detail=no[1])
+    await _eliminar(db, current_user, user, _client_ip(request))
     await db.commit()
+
+
+class EliminarVarios(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/users/eliminar")
+@limiter.limit("10/minute")
+async def eliminar_usuarios(
+    payload: EliminarVarios,
+    request: Request,
+    current_user: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Eliminar varias cuentas de una vez (Ivan, 20/11/2026: "seleccionar y
+    seleccionar todo en usuarios, para poder agarrar a más de uno y volarlos").
+    Cada una con las mismas reglas que de a una (`eliminar_usuario`). Las que
+    no se pueden quedan, con su motivo; las demás se eliminan igual."""
+    cadenas = await _cadenas_en_curso(db)
+    ip = _client_ip(request)
+    eliminados: list[int] = []
+    no: list[dict] = []
+    for user_id in dict.fromkeys(payload.ids):
+        user = await db.get(User, user_id)
+        if user is None:
+            continue  # ya no estaba: lo que se pedía, ya pasó
+        motivo = await _por_que_no_se_elimina(db, current_user, user, cadenas)
+        if motivo:
+            no.append({"id": user_id, "nombre": user.full_name or user.email, "motivo": motivo[1]})
+            continue
+        await _eliminar(db, current_user, user, ip)
+        eliminados.append(user_id)
+    await db.commit()
+    return {"eliminados": eliminados, "noSePudieron": no}
 
 
 @router.get("/users/{user_id}/stats")

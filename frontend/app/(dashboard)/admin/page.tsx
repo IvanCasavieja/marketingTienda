@@ -13,6 +13,9 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { ALCANCES, alcanceDe, nombreDeAlcance, type Alcance } from "@/lib/alcance";
 import { agenciaElegida } from "@/lib/calendario/tipos";
+import {
+  FILTROS_DE_ROL, alfabetico, alternarTodas, filtrarPorRol, seleccionable, type FiltroDeRol,
+} from "@/lib/admin/usuarios";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
@@ -705,6 +708,10 @@ export default function AdminPage() {
   const [activeTab,   setActiveTab]   = useState<AdminTab>("usuarios");
   const [lista,       setLista]       = useState<ListaDeUsuarios>("personas");
   const [activityUser, setActivityUser] = useState<AdminUser | null>(null);
+  // Filtrar por rol y elegir varias para eliminarlas juntas (20/11/2026).
+  const [filtroRol, setFiltroRol] = useState<FiltroDeRol>("todos");
+  const [elegidas, setElegidas] = useState<Set<number>>(new Set());
+  const [eliminando, setEliminando] = useState(false);
   // Las agencias que ya existen, para elegir la de una cuenta externa nueva
   // (19/11/2026). Al editar una, el editor pide la lista sin ella (?menos).
   // null = todavía no llegaron.
@@ -746,7 +753,23 @@ export default function AdminPage() {
     redex:    users.filter((u) => esSucursal(u) && u.sucursal_tipo !== "tienda"),
     tienda:   users.filter((u) => esSucursal(u) && u.sucursal_tipo === "tienda"),
   };
-  const usuariosVisibles = usuariosPorLista[lista];
+  // En orden alfabético; el filtro de rol vale para las personas (las
+  // externas y las sucursales no llevan rol).
+  const conRoles = lista === "personas";
+  const usuariosVisibles = alfabetico(filtrarPorRol(usuariosPorLista[lista], conRoles ? filtroRol : "todos"));
+  const cuantasPorRol = (f: FiltroDeRol) => filtrarPorRol(usuariosPorLista.personas, f).length;
+  const seleccionables = usuariosVisibles.filter((u) => seleccionable(u, yo?.id)).map((u) => u.id);
+  // Solo cuentan las que se ven; y cambiar de lista o de filtro vacía la
+  // selección (en el mismo clic), así no queda nada elegido escondido.
+  const elegidasVisibles = seleccionables.filter((id) => elegidas.has(id));
+  const todasElegidas = seleccionables.length > 0 && elegidasVisibles.length === seleccionables.length;
+  function alternarUna(id: number) {
+    setElegidas((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // No disparamos /admin/* hasta confirmar que el usuario tiene acceso al
   // panel (superuser o permiso platform.admin) — evita requests innecesarios
@@ -853,6 +876,39 @@ export default function AdminPage() {
       toast.success(`Listo: ${quien} se eliminó.`);
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? "No se pudo eliminar la cuenta");
+    }
+  }
+
+  // Varias de una vez: cada una con sus reglas en el servidor; las que no se
+  // pueden quedan y se dice por qué.
+  async function handleDeleteSelected() {
+    const ids = elegidasVisibles;
+    if (ids.length === 0) return;
+    const nombres = usuariosVisibles.filter((u) => ids.includes(u.id)).map((u) => u.full_name || u.email);
+    const lista5 = nombres.slice(0, 5).join(", ") + (nombres.length > 5 ? ` y ${nombres.length - 5} más` : "");
+    if (!confirm(
+      `¿Eliminar ${ids.length === 1 ? "1 cuenta" : `${ids.length} cuentas`}? ${lista5}.\n\n` +
+      "Se borran y no se puede deshacer. Lo que hicieron (tareas, entregas, comentarios) queda, sin su nombre.\n\n" +
+      "Si solo querés que no entren más, desactivalas.",
+    )) return;
+    setEliminando(true);
+    try {
+      const { data } = await api.post("/admin/users/eliminar", { ids });
+      const fuera = new Set<number>(data.eliminados ?? []);
+      setUsers((prev) => prev.filter((u) => !fuera.has(u.id)));
+      setElegidas(new Set());
+      if (fuera.size) toast.success(fuera.size === 1 ? "Listo: se eliminó 1 cuenta." : `Listo: se eliminaron ${fuera.size} cuentas.`);
+      const no: { nombre: string; motivo: string }[] = data.noSePudieron ?? [];
+      if (no.length) {
+        toast.error(
+          no.length === 1 ? `No se pudo eliminar a ${no[0].nombre}` : `No se pudieron eliminar ${no.length} cuentas`,
+          { description: no.map((n) => `${n.nombre}: ${n.motivo}`).join("\n"), duration: 12000 },
+        );
+      }
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? "No se pudieron eliminar las cuentas");
+    } finally {
+      setEliminando(false);
     }
   }
 
@@ -1094,7 +1150,7 @@ export default function AdminPage() {
               ["redex",    t("admin.listas.redex"),    Store],
               ["tienda",   t("admin.listas.tienda"),   Store],
             ] as const).map(([clave, etiqueta, Icono]) => (
-              <button key={clave} onClick={() => setLista(clave)}
+              <button key={clave} onClick={() => { setLista(clave); setElegidas(new Set()); }}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all duration-150 ${
                   lista === clave
                     ? "bg-white dark:bg-slate-700 shadow-sm text-slate-800 dark:text-slate-100"
@@ -1106,6 +1162,58 @@ export default function AdminPage() {
             ))}
           </div>
         </div>
+        {/* Seleccionar todo, eliminar las elegidas y filtrar por rol (20/11/2026). */}
+        {!loading && (seleccionables.length > 0 || conRoles) && (
+          <div className="px-5 py-2 border-b border-slate-50 dark:border-slate-800 flex items-center gap-3 flex-wrap">
+            {seleccionables.length > 0 && (
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={todasElegidas}
+                  ref={(el) => { if (el) el.indeterminate = elegidasVisibles.length > 0 && !todasElegidas; }}
+                  onChange={() => setElegidas((prev) => alternarTodas(prev, seleccionables))}
+                  className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+                />
+                Seleccionar todo
+              </label>
+            )}
+            {elegidasVisibles.length > 0 && (
+              <>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {elegidasVisibles.length === 1 ? "1 elegida" : `${elegidasVisibles.length} elegidas`}
+                </span>
+                <button
+                  type="button"
+                  disabled={eliminando}
+                  onClick={handleDeleteSelected}
+                  className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                >
+                  {eliminando ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  Eliminar ({elegidasVisibles.length})
+                </button>
+                <button type="button" onClick={() => setElegidas(new Set())}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+                  Cancelar
+                </button>
+              </>
+            )}
+            {conRoles && (
+              <div className="ml-auto flex flex-wrap gap-1" role="group" aria-label="Filtrar por rol">
+                {FILTROS_DE_ROL.map(({ clave, nombre }) => (
+                  <button key={clave} type="button" onClick={() => { setFiltroRol(clave); setElegidas(new Set()); }}
+                    aria-pressed={filtroRol === clave}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                      filtroRol === clave
+                        ? "bg-brand-600 text-white"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    }`}>
+                    {nombre} <span className={`font-normal ${filtroRol === clave ? "text-white/80" : "text-slate-400"}`}>{cuantasPorRol(clave)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center p-10"><Loader2 size={20} className="animate-spin text-slate-400" /></div>
         ) : (
@@ -1116,7 +1224,21 @@ export default function AdminPage() {
               </p>
             )}
             {usuariosVisibles.map((u) => (
-              <div key={u.id} className="flex items-center gap-4 px-5 py-3">
+              <div key={u.id} className={`flex items-center gap-4 px-5 py-3 ${elegidas.has(u.id) ? "bg-rose-50/60 dark:bg-rose-500/[.06]" : ""}`}>
+                {seleccionables.length > 0 && (
+                  seleccionable(u, yo?.id) ? (
+                    <input
+                      type="checkbox"
+                      checked={elegidas.has(u.id)}
+                      onChange={() => alternarUna(u.id)}
+                      aria-label={`Elegir a ${u.full_name || u.email}`}
+                      className="h-4 w-4 shrink-0 rounded border-slate-300 accent-brand-600 cursor-pointer"
+                    />
+                  ) : (
+                    // La propia y la del Super Admin no se eliminan: el lugar queda.
+                    <span className="h-4 w-4 shrink-0" aria-hidden />
+                  )
+                )}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                   u.is_active ? "bg-brand-100 text-brand-600" : "bg-slate-100 text-slate-400"
                 }`}>
