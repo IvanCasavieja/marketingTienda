@@ -1298,3 +1298,33 @@ def test_el_control_previo_nunca_levanta(monkeypatch):
         imagenes=[(b"x", "image/jpeg")], comentario=None,
     ))
     assert r.estado == "no-disponible"
+
+
+# ---------------------------------------------------------------------------
+# Cambios pedidos solo con texto (20/11/2026)
+# ---------------------------------------------------------------------------
+
+def test_los_pedidos_salen_de_cada_renglon_del_comentario():
+    # La agencia no veía el control de la IA cuando se pedían cambios sin
+    # marcas ("¿Qué hay que cambiar?" en el tablero): cada renglón es un pedido.
+    comentario = "\n".join([
+        "Dos cosas:", "- Cambiar el precio a $199", "• Sacar el logo viejo", "2) Más grande el 2x1", "",
+        "- Sacar el logo viejo",
+    ])
+    assert rv.pedidos_del_comentario([comentario, None, "  "]) == [
+        "Dos cosas:", "Cambiar el precio a $199", "Sacar el logo viejo", "Más grande el 2x1",
+    ]
+    assert rv.pedidos_del_comentario(["Un solo párrafo. Con dos oraciones."]) == ["Un solo párrafo. Con dos oraciones."]
+    muchos = "\n".join(f"- pedido {i}" for i in range(30))
+    assert len(rv.pedidos_del_comentario([muchos])) == rv.MAX_PEDIDOS_DEL_COMENTARIO
+    assert rv.pedidos_del_comentario([]) == []
+
+
+def test_un_pedido_del_comentario_va_sin_lugar_en_la_imagen():
+    r = rv.RondaAnterior(ronda=1, imagenes=1, marcas=(
+        rv.MarcaPedida("comentario-1", 1, "Cambiar el precio a $199", None, None, None),
+    ), comentarios=(), miniaturas=())
+    lineas = rv.lineas_de_los_cambios_pedidos(r)
+    assert lineas[1] == "- Marca 1 (pedida en el comentario, sin lugar en la imagen): Cambiar el precio a $199"
+    assert not any("Comentario de quien" in l for l in lineas)
+

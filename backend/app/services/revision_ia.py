@@ -137,6 +137,7 @@ import asyncio
 import base64
 import io
 import logging
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -369,10 +370,11 @@ class MarcaPedida:
     numero: int
     texto: str
     # En qué imagen de esa ronda estaba, por orden (1, 2...), o None si no se
-    # encontró; y el punto, de 0 a 1 como toda marca.
+    # encontró; y el punto, de 0 a 1 como toda marca. Un pedido que salió del
+    # comentario (sin marcas, 20/11/2026) no tiene imagen ni punto.
     imagen: int | None
-    x: float
-    y: float
+    x: float | None
+    y: float | None
 
 
 @dataclass(frozen=True)
@@ -610,11 +612,15 @@ def lineas_de_los_cambios_pedidos(r: RondaAnterior) -> list[str]:
         tenia = f" (tenía {cuantas})"
     lineas = [f"En la ronda {r.ronda}{tenia} se pidieron estos cambios:"]
     for m in r.marcas:
+        texto = _recortar(' '.join(m.texto.split()), MAX_TEXTO_MARCA)
+        if m.x is None or m.y is None:
+            # Pedido escrito en el comentario, sin marca sobre la imagen.
+            lineas.append(f"- Marca {m.numero} (pedida en el comentario, sin lugar en la imagen): {texto}")
+            continue
         imagen = f"en la imagen {m.imagen}, " if m.imagen else ""
         lineas.append(
             f"- Marca {m.numero}, {imagen}{lugar_en_palabras(m.x, m.y)} "
-            f"({round(m.x * 100)}% del ancho, {round(m.y * 100)}% del alto): "
-            f"{_recortar(' '.join(m.texto.split()), MAX_TEXTO_MARCA)}"
+            f"({round(m.x * 100)}% del ancho, {round(m.y * 100)}% del alto): {texto}"
         )
     comentario = "\n".join(c.strip() for c in r.comentarios if c and c.strip())
     if comentario:
@@ -1099,6 +1105,28 @@ async def cargar_version(db, version_id: str) -> tuple[Contexto, list[tuple[str,
     return contexto, [(i, d, t) for i, d, t in imagenes]
 
 
+# Cuántos pedidos se sacan, como mucho, de un comentario sin marcas.
+MAX_PEDIDOS_DEL_COMENTARIO = 12
+_VINETA = re.compile(r"^\s*(?:[-*•·–—]|\d{1,2}[.)-])\s*")
+
+
+def pedidos_del_comentario(comentarios) -> list[str]:
+    """Lo que se pidió en el comentario, en pedidos sueltos (20/11/2026): cada
+    renglón no vacío, sin la viñeta ni el número de adelante. Es lo que la IA
+    controla cuando se pidieron cambios solo con texto, sin marcas sobre la
+    imagen (lo más común desde el tablero: "¿Qué hay que cambiar?"). Un
+    párrafo de un solo renglón queda como un solo pedido. Pura."""
+    out: list[str] = []
+    for c in comentarios or []:
+        if not isinstance(c, str):
+            continue
+        for renglon in c.splitlines():
+            limpio = " ".join(_VINETA.sub("", renglon).split())
+            if limpio and limpio not in out:
+                out.append(_recortar(limpio, MAX_TEXTO_MARCA))
+    return out[:MAX_PEDIDOS_DEL_COMENTARIO]
+
+
 async def ronda_anterior_de(db, version) -> RondaAnterior | None:
     """Lo que se pidió en la ronda anterior de la MISMA fase (19/11/2026): la
     de número más alto antes de esta, como en la pantalla (versionAnterior),
@@ -1132,8 +1160,24 @@ async def ronda_anterior_de(db, version) -> RondaAnterior | None:
         .where(CalendarioMarca.version_id == anterior.id)
         .order_by(CalendarioMarca.numero)
     )).all()
-    if not marcas:
-        return None
+    comentarios = (await db.execute(
+        select(CalendarioDecision.comentario).where(
+            CalendarioDecision.version_id == anterior.id, CalendarioDecision.decision == "cambios",
+            CalendarioDecision.comentario.isnot(None),
+        ).order_by(CalendarioDecision.id)
+    )).scalars().all()
+    comentarios = [c for c in comentarios if c and c.strip()]
+    sin_marcas = not marcas
+    if sin_marcas:
+        # Se pidieron cambios solo con texto (20/11/2026: la agencia no veía
+        # el control de la IA porque no había marcas): cada renglón del
+        # comentario es un pedido, con un id que no es de ninguna marca (la
+        # pantalla del aprobador, que los pone al lado de cada marca, no los
+        # muestra; la agencia sí, en el control antes de entregar).
+        pedidos = pedidos_del_comentario(comentarios)
+        if not pedidos:
+            return None
+        marcas = [(f"comentario-{n}", n, texto, None, None, None) for n, texto in enumerate(pedidos, 1)]
     imagenes = (await db.execute(
         select(CalendarioVersionImagen.id, CalendarioVersionImagen.miniatura,
                CalendarioVersionImagen.tipo_mime_miniatura)
@@ -1142,19 +1186,15 @@ async def ronda_anterior_de(db, version) -> RondaAnterior | None:
     )).all()
     lugar = {imagen_id: i for i, (imagen_id, _, _) in enumerate(imagenes, 1)}
     miniaturas = [preparar_miniatura(i, datos, tipo) for i, (_, datos, tipo) in enumerate(imagenes, 1)]
-    comentarios = (await db.execute(
-        select(CalendarioDecision.comentario).where(
-            CalendarioDecision.version_id == anterior.id, CalendarioDecision.decision == "cambios",
-            CalendarioDecision.comentario.isnot(None),
-        ).order_by(CalendarioDecision.id)
-    )).scalars().all()
     return RondaAnterior(
         ronda=anterior.ronda, imagenes=len(imagenes),
         marcas=tuple(
             MarcaPedida(marca_id=i, numero=n, texto=t, imagen=lugar.get(im), x=x, y=y)
             for i, n, t, im, x, y in marcas
         ),
-        comentarios=tuple(c for c in comentarios if c.strip()),
+        # Si los pedidos salieron del comentario, no va además entero: sería
+        # lo mismo dos veces.
+        comentarios=() if sin_marcas else tuple(comentarios),
         miniaturas=tuple(m for m in miniaturas if m)[:MAX_MINIATURAS_ANTERIOR],
     )
 

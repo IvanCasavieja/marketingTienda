@@ -62,6 +62,7 @@ pudo mostrar de adentro (las páginas de un PDF) el servidor lo pasa a
 imágenes de la ronda al entregar: ver `entregar`.
 """
 import asyncio
+import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
@@ -447,6 +448,7 @@ def _puede_decidir(usuario: User, tarea: CalendarioTarea, entrega: CalendarioEnt
 @router.get("/tareas/{tarea_id}/entregas")
 async def ver_entregas(
     tarea_id: str,
+    huella: str | None = None,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -463,6 +465,12 @@ async def ver_entregas(
     entrega = await db.get(CalendarioEntrega, tarea_id)
     if entrega is None:
         raise HTTPException(status_code=404, detail=_NO_LLEVA)
+    # La tarjeta abierta pregunta cada tanto si cambió (Ivan, 20/11/2026: "si
+    # se completa una tarea o una entrega y tengo abierta la tarjeta, su estado
+    # no se actualiza solo"). Si no cambió nada, la respuesta es una línea.
+    actual_huella = await _huella_de_la_tarjeta(db, tarea, barra)
+    if huella is not None and huella == actual_huella:
+        return {"huella": actual_huella, "sinCambios": True}
 
     fases = (await db.execute(
         select(CalendarioFase).where(CalendarioFase.tarea_id == tarea_id).order_by(CalendarioFase.orden)
@@ -568,6 +576,7 @@ async def ver_entregas(
     quien = _quien_mueve(current_user, tarea, entrega, puede_decidir)
     columna = reglas.columna_de_entrega(entrega)
     return {
+        "huella": actual_huella,
         "tarea": {
             "id": tarea.id, "titulo": tarea.titulo, "descripcion": tarea.descripcion, "estado": tarea.estado,
             "asignadoA": tarea.asignado_a_id, "vence": tarea.vence.isoformat() if tarea.vence else None,
@@ -624,6 +633,43 @@ async def ver_entregas(
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
     }
+
+
+def huella_de(*valores) -> str:
+    """Un resumen corto de unos valores: cambia si cambia cualquiera. Pura."""
+    return hashlib.sha1(repr(valores).encode("utf-8")).hexdigest()[:16]
+
+
+async def _huella_de_la_tarjeta(db: AsyncSession, tarea, barra) -> str:
+    """Lo que, si cambia, cambia lo que se ve en la tarjeta: la tarea (estado,
+    nombre, vencimiento, responsable), la acción, la entrega (cada movimiento
+    le toca `updated_at`: entregar, decidir, mover, archivar) y cuántas rondas,
+    decisiones, marcas y comentarios hay, con la última de cada una. Una sola
+    consulta chica: es lo que se pregunta cada pocos segundos mientras la
+    tarjeta está abierta, en vez de traerla entera."""
+    t = tarea.id
+    def cuantos_y_ultimo(modelo, columna):
+        return (
+            select(func.count()).select_from(modelo).where(modelo.tarea_id == t).scalar_subquery(),
+            select(func.max(columna)).where(modelo.tarea_id == t).scalar_subquery(),
+        )
+    decisiones = (
+        select(func.count(CalendarioDecision.id), func.max(CalendarioDecision.id))
+        .join(CalendarioVersion, CalendarioVersion.id == CalendarioDecision.version_id)
+        .where(CalendarioVersion.tarea_id == t)
+    ).subquery()
+    fila = (await db.execute(select(
+        select(CalendarioEntrega.updated_at).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
+        select(CalendarioEntrega.momento).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
+        *cuantos_y_ultimo(CalendarioVersion, CalendarioVersion.created_at),
+        *cuantos_y_ultimo(CalendarioComentario, CalendarioComentario.created_at),
+        *cuantos_y_ultimo(CalendarioMarca, CalendarioMarca.created_at),
+        *decisiones.c,
+    ))).one()
+    return huella_de(
+        tuple(fila), tarea.estado, tarea.titulo, tarea.vence, tarea.asignado_a_id, tarea.descripcion,
+        barra.nombre, barra.desde, barra.hasta, barra.color,
+    )
 
 
 def _comentario_json(c: CalendarioComentario, usuario: User, nombres: dict) -> dict:
