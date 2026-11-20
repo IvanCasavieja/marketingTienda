@@ -1442,6 +1442,62 @@ def test_aprobado_con_cambios_ya_no_existe_y_las_decisiones_viejas_siguen_valien
     correr(prueba)
 
 
+def test_el_analisis_de_entregas_dice_cuanto_tarda_cada_agencia_y_cuantas_se_pasan_de_fecha():
+    """Ivan (20/11/2026): «Retrabajo» pasa a ser «Análisis de entregas» ("el
+    retrabajo sí sirve, pero sería más un análisis") y suma "cuánto tarda cada
+    agencia y cuántas piezas se pasan de fecha". El equipo ve todas las
+    agencias; una agencia, solo lo suyo. Las rondas siguen viajando igual."""
+    async def prueba(d):
+        lider, lucia, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.lucia), Cliente(d.http, d.a1)
+        pampa, sur = f"agencia:agencia pampa {d.sufijo}", f"agencia:estudio sur {d.sufijo}"
+        # 1. Pampa la entrega a los 3 días de pedida, a tiempo, y se aprueba.
+        a_tiempo, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{a_tiempo}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lucia.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        # 2. A Pampa se le pasó otra: vencía ayer y todavía no entregó nada.
+        vencida, _ = await _pedir_banners(d, d.lider)
+        # 3. Estudio Sur entrega hoy una que vencía hace 3 días (pedida hace 5).
+        tarde, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
+        async with d.Sesion() as s:
+            for tarea_id, dias in ((a_tiempo, 3), (tarde, 5)):
+                await s.execute(update(CalendarioEntrega).where(CalendarioEntrega.tarea_id == tarea_id)
+                                .values(created_at=CalendarioEntrega.created_at - timedelta(days=dias)))
+            for tarea_id, dias in ((vencida, 1), (tarde, 3)):
+                await s.execute(update(CalendarioTarea).where(CalendarioTarea.id == tarea_id)
+                                .values(vence=d.hoy - timedelta(days=dias), ancla=None, ancla_dias=None))
+            await s.commit()
+        version = f"ve-at-{d.sufijo}"
+        assert (await _entregar_link(a1, a_tiempo, version)).status_code == 201
+        assert (await _decidir(lucia, version, "aprobada")).status_code == 200
+        assert (await _entregar_link(Cliente(d.http, d.b1), tarde, f"ve-ta-{d.sufijo}")).status_code == 201
+
+        # El equipo: cada agencia con lo suyo.
+        r = await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        m = r.json()
+        grupos = {g["clave"]: g for g in m["porAgencia"]}
+        assert grupos[pampa]["nombre"] == f"Agencia Pampa {d.sufijo}"
+        assert grupos[pampa]["entregadas"] == 1 and grupos[pampa]["diasHastaEntregar"] == 3.0
+        assert grupos[pampa]["aprobadas"] == 1 and grupos[pampa]["diasHastaAprobar"] == 3.0
+        assert grupos[pampa]["aTiempo"] == 100 and grupos[pampa]["entregaronTarde"] == 0
+        assert grupos[pampa]["vencidas"] == 1 and grupos[pampa]["sePasaron"] == 1
+        assert grupos[sur]["diasHastaEntregar"] == 5.0 and grupos[sur]["aTiempo"] == 0
+        assert grupos[sur]["entregaronTarde"] == 1 and grupos[sur]["sePasaron"] == 1
+        assert m["tiempos"]["entregadas"] >= 2 and m["tiempos"]["sePasaron"] >= 2
+        # Las rondas siguen viajando como antes.
+        assert m["fases"] >= 1 and "porResponsable" in m and "porTipo" in m
+
+        # La agencia: solo lo suyo.
+        r = await a1.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 200, r.text
+        m = r.json()
+        assert [g["clave"] for g in m["porAgencia"]] == [pampa]
+        assert m["tiempos"]["entregadas"] == 1 and m["tiempos"]["vencidas"] == 1 and m["tiempos"]["sePasaron"] == 1
+        assert "Estudio Sur" not in json.dumps(m)
+    correr(prueba)
+
+
 def _zip_de_prueba(archivos: dict) -> bytes:
     import io
     import zipfile

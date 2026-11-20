@@ -6,7 +6,9 @@ import { Archive, BarChart3, ChevronDown, Layers, Loader2, RotateCcw, Search, Sh
 import { toast } from "sonner";
 import { entregasApi } from "@/lib/api";
 import { usePermissionGuard } from "@/hooks/usePermissionGuard";
-import { numero, proximoPaso, type Columna, type Metricas, type Tarjeta } from "@/lib/calendario/entregas";
+import {
+  numero, proximoPaso, type Columna, type Metricas, type Tarjeta, type TiemposDeAgencia, type TiemposDeEntrega,
+} from "@/lib/calendario/entregas";
 import {
   COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, OTRAS, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna,
   ordenar, pestanasDeTableros, queHaceMover, seMovioElDedo, sePuedeSoltar, tableroDeTarjeta,
@@ -642,10 +644,10 @@ export default function TableroPage() {
               className="flex min-h-[44px] items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <BarChart3 className="h-4 w-4 text-brand-600 dark:text-brand-300" />
-              {externo ? "Tu retrabajo" : "Retrabajo"}
+              {externo ? "Tu análisis de entregas" : "Análisis de entregas"}
               <ChevronDown className={`h-4 w-4 transition-transform ${verMetricas ? "rotate-180" : ""}`} />
             </button>
-            {verMetricas && claveMundo && <Retrabajo mundo={claveMundo} propio={externo} />}
+            {verMetricas && claveMundo && <AnalisisDeEntregas mundo={claveMundo} propio={externo} />}
           </section>
         </>
       )}
@@ -876,10 +878,12 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
 }
 
 /**
- * Cuánto retrabajo hubo: las rondas que llevó aprobar cada fase y cuántas se
- * aprobaron a la primera. Se pide al abrirlo (no viaja con el tablero).
+ * El análisis de entregas (ex «Retrabajo»; Ivan, 20/11/2026: "el retrabajo sí
+ * sirve, pero sería más un análisis"): cuánto tarda cada agencia, cuántas
+ * piezas se pasan de fecha y cuántas rondas llevó aprobar cada fase. Se pide
+ * al abrirlo (no viaja con el tablero). Una agencia ve solo lo suyo.
  */
-function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
+function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean }) {
   const [dias, setDias] = useState(90);
   // Las métricas quedan atadas al pedido (mundo y días) que las trajo; si
   // falla, se dice y se puede reintentar (antes quedaba el esqueleto para
@@ -898,7 +902,7 @@ function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
   const actual = metricas && metricas.clave === clave ? metricas : null;
   const m = actual?.datos ?? null;
   return (
-    <section aria-label="Retrabajo" className="mt-2 rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+    <section aria-label={propio ? "Tu análisis de entregas" : "Análisis de entregas"} className="mt-2 rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="segmentado !p-0.5" role="group" aria-label="Período">
           {[30, 90, 365].map(d => (
@@ -912,34 +916,42 @@ function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
         <div className="skeleton h-20 rounded-xl" />
       ) : !m ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-slate-700 dark:text-slate-200">No se pudo traer el retrabajo.</p>
+          <p className="text-sm text-slate-700 dark:text-slate-200">No se pudo traer el análisis.</p>
           <button type="button" onClick={() => setIntento(n => n + 1)}
             className="min-h-[40px] rounded-xl px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
             Probar de nuevo
           </button>
         </div>
-      ) : m.fases === 0 ? (
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas rondas llevaron.
-        </p>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-2 sm:gap-3">
-            <Dato etiqueta="Rondas hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
-            <Dato etiqueta="Aprobado a la primera" valor={m.aLaPrimera == null ? "—" : `${m.aLaPrimera}%`} bajada="de las fases" />
-            <Dato etiqueta="Fases aprobadas" valor={String(m.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
-          </div>
-          <button type="button" onClick={() => setVerDetalle(v => !v)} aria-expanded={verDetalle}
-            className="-ml-2 mt-3 flex min-h-[40px] items-center gap-1 rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
-            <ChevronDown className={`h-4 w-4 transition-transform ${verDetalle ? "rotate-180" : ""}`} />
-            {verDetalle ? "Ocultar el detalle" : propio ? "Ver por tipo de pieza" : "Ver por tipo de pieza, responsable y mundo"}
-          </button>
-          {verDetalle && (
-            <div className={`mt-2 grid gap-5 ${propio ? "" : "lg:grid-cols-3"}`}>
-              <TablaDeRetrabajo titulo="Por tipo de pieza" filas={m.porTipo} />
-              {!propio && <TablaDeRetrabajo titulo="Por responsable" filas={m.porResponsable} />}
-              {!propio && <TablaDeRetrabajo titulo="Por mundo" filas={m.porMundo} />}
-            </div>
+          {m.tiempos && <TiemposYFechas tiempos={m.tiempos} porAgencia={propio ? [] : m.porAgencia ?? []} propio={propio} />}
+          <h3 className={`mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 ${m.tiempos ? "mt-5 border-t border-slate-200 pt-4 dark:border-slate-700" : ""}`}>
+            Rondas
+          </h3>
+          {m.fases === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas rondas llevaron.
+            </p>
+              ) : (
+            <>
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                <Dato etiqueta="Rondas hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
+                <Dato etiqueta="Aprobado a la primera" valor={m.aLaPrimera == null ? "—" : `${m.aLaPrimera}%`} bajada="de las fases" />
+                <Dato etiqueta="Fases aprobadas" valor={String(m.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
+              </div>
+              <button type="button" onClick={() => setVerDetalle(v => !v)} aria-expanded={verDetalle}
+                className="-ml-2 mt-3 flex min-h-[40px] items-center gap-1 rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
+                <ChevronDown className={`h-4 w-4 transition-transform ${verDetalle ? "rotate-180" : ""}`} />
+                {verDetalle ? "Ocultar el detalle" : propio ? "Ver por tipo de pieza" : "Ver por tipo de pieza, responsable y mundo"}
+              </button>
+              {verDetalle && (
+                <div className={`mt-2 grid gap-5 ${propio ? "" : "lg:grid-cols-3"}`}>
+                  <TablaDeRondas titulo="Por tipo de pieza" filas={m.porTipo} />
+                  {!propio && <TablaDeRondas titulo="Por responsable" filas={m.porResponsable} />}
+                  {!propio && <TablaDeRondas titulo="Por mundo" filas={m.porMundo} />}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -947,11 +959,105 @@ function Retrabajo({ mundo, propio }: { mundo: string; propio: boolean }) {
   );
 }
 
-function Dato({ etiqueta, valor, bajada }: { etiqueta: string; valor: string; bajada: string }) {
+/**
+ * Cuánto tarda y cuántas piezas se pasan de fecha: el total y, para el
+ * equipo, una fila por agencia (los tres tableros primero, después las demás
+ * y el equipo al final: lo ordena el servidor).
+ */
+function TiemposYFechas({ tiempos: t, porAgencia, propio }: {
+  tiempos: TiemposDeEntrega; porAgencia: TiemposDeAgencia[]; propio: boolean;
+}) {
+  const titulo = (
+    <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      {propio ? "Tus tiempos y fechas" : "Tiempos y fechas"}
+    </h3>
+  );
+  if (t.entregadas === 0 && t.aprobadas === 0 && t.vencidas === 0) {
+    return (
+      <>
+        {titulo}
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          {propio
+            ? "Todavía no entregaste nada en este período: cuando entregues, acá se ve cuánto tardás y si llegás a tiempo."
+            : "Todavía no hay entregas en este período: cuando entreguen, acá se ve cuánto tarda cada agencia y cuántas piezas se pasan de fecha."}
+        </p>
+      </>
+    );
+  }
+  return (
+    <>
+      {titulo}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Dato etiqueta="Días hasta entregar" valor={numero(t.diasHastaEntregar)} bajada="promedio, desde que se pide" />
+        <Dato etiqueta="Entregado a tiempo" valor={t.aTiempo == null ? "—" : `${t.aTiempo}%`}
+          bajada={cuantas(t.entregadas, "entregada", "entregadas")} />
+        <Dato etiqueta="Se pasaron de fecha" valor={String(t.sePasaron)} alerta={t.sePasaron > 0}
+          bajada={cuantas(t.vencidas, "vencida hoy", "vencidas hoy")} />
+      </div>
+      {t.aprobadas > 0 && (
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          Aprobarse del todo llevó{" "}
+          <strong className="font-semibold text-slate-800 dark:text-slate-200">{dias(t.diasHastaAprobar)}</strong>{" "}
+          en promedio desde que se pidió ({cuantas(t.aprobadas, "pieza aprobada", "piezas aprobadas")}).
+        </p>
+      )}
+      {porAgencia.length > 0 && (
+        <div className="mt-4">
+          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Por agencia</h4>
+          <ul>
+            {porAgencia.map(g => (
+              <li key={g.clave} className="flex flex-col gap-1.5 border-b border-slate-200 py-2.5 last:border-0 dark:border-slate-700 sm:flex-row sm:items-center sm:gap-4">
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-200" title={g.nombre}>{g.nombre}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {cuantas(g.entregadas, "entregada", "entregadas")} · {cuantas(g.aprobadas, "aprobada", "aprobadas")}
+                    {g.vencidas > 0 && ` · ${cuantas(g.vencidas, "vencida hoy", "vencidas hoy")}`}
+                  </span>
+                </div>
+                <dl className="grid grid-cols-3 gap-2 text-xs sm:w-[26rem] sm:flex-none">
+                  <div>
+                    <dt className="text-slate-500 dark:text-slate-400">Hasta entregar</dt>
+                    <dd className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{dias(g.diasHastaEntregar)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 dark:text-slate-400">Hasta aprobarse</dt>
+                    <dd className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">{dias(g.diasHastaAprobar)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-500 dark:text-slate-400">Se pasaron de fecha</dt>
+                    <dd className={`font-semibold tabular-nums ${g.sePasaron > 0 ? "text-amber-700 dark:text-amber-300" : "text-slate-800 dark:text-slate-200"}`}>
+                      {g.sePasaron}
+                    </dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+        «Hasta entregar»: los días desde que se pidió la pieza hasta su primera entrega. «Se pasaron de fecha»: la
+        primera entrega llegó después del vencimiento, o hoy está vencida y le toca a quien la hace (sin entregar o con
+        cambios pedidos). Lo que espera la revisión del equipo no cuenta.
+      </p>
+    </>
+  );
+}
+
+function cuantas(n: number, una: string, varias: string): string {
+  return n === 1 ? `1 ${una}` : `${n} ${varias}`;
+}
+
+function dias(n: number | null): string {
+  if (n == null) return "—";
+  return `${numero(n)} ${n === 1 ? "día" : "días"}`;
+}
+
+function Dato({ etiqueta, valor, bajada, alerta = false }: { etiqueta: string; valor: string; bajada: string; alerta?: boolean }) {
   return (
     <div className="rounded-xl bg-slate-50 px-3 py-2.5 dark:bg-slate-800/50">
       <p className="text-xs font-semibold leading-tight text-slate-600 dark:text-slate-400">{etiqueta}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100 sm:text-3xl">{valor}</p>
+      <p className={`mt-1 text-2xl font-bold sm:text-3xl ${alerta ? "text-amber-700 dark:text-amber-300" : "text-slate-900 dark:text-slate-100"}`}>{valor}</p>
       <p className="text-xs text-slate-600 dark:text-slate-400">{bajada}</p>
     </div>
   );
@@ -959,7 +1065,7 @@ function Dato({ etiqueta, valor, bajada }: { etiqueta: string; valor: string; ba
 
 /** Una fila por grupo: cuántas fases, rondas promedio y una barra con el %
  *  aprobado a la primera (sobre el 100 %), con el número al lado. */
-function TablaDeRetrabajo({ titulo, filas }: { titulo: string; filas: Metricas["porTipo"] }) {
+function TablaDeRondas({ titulo, filas }: { titulo: string; filas: Metricas["porTipo"] }) {
   return (
     <div>
       <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{titulo}</h3>

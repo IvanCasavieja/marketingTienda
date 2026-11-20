@@ -37,7 +37,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable
+from typing import Iterable, NamedTuple
 
 from sqlalchemy import and_, func, not_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -788,6 +788,124 @@ def metricas_de_retrabajo(filas: Iterable[tuple[str, int | None, str, int]]) -> 
     )
     por_mundo = sorted(agrupar(2), key=lambda g: (-g["fases"], g["clave"]))
     return {**_bloque([f[3] for f in lista]), "porTipo": por_tipo, "porResponsable": por_responsable, "porMundo": por_mundo}
+
+
+# ---------------------------------------------------------------------------
+# El análisis por agencia: cuánto tarda y cuántas se pasan de fecha (puro)
+# ---------------------------------------------------------------------------
+#
+# Pedido de Ivan (20/11/2026): el retrabajo pasa a llamarse «Análisis de
+# entregas» ("el retrabajo sí sirve, pero sería más un análisis") y suma
+# "cuánto tarda cada agencia y cuántas piezas se pasan de fecha". Las rondas
+# (metricas_de_retrabajo) siguen igual; esto va al lado.
+
+EQUIPO_PROPIO = "equipo"
+NOMBRE_DEL_EQUIPO_PROPIO = "El equipo (sin agencia)"
+
+
+class PiezaDelAnalisis(NamedTuple):
+    """Una pieza (una tarjeta del tablero), con lo que mira el análisis."""
+    tarea_id: str
+    # Quién la hace (calendario_tareas.para y .agencia): 'agencia', 'fuera' o 'tienda'.
+    para: str | None
+    agencia: str | None
+    # Cuándo se le pidió: cuándo se creó la tarjeta (calendario_entregas.created_at).
+    pedida_at: datetime
+    # La primera versión que se subió, de cualquier fase y ronda.
+    primera_entrega_at: datetime | None
+    # Cuándo quedó aprobada entera (finalizada_at: todas sus fases).
+    aprobada_at: datetime | None
+    # Para cuándo se la pidió (calendario_tareas.vence), en días de Uruguay.
+    vence: date | None
+    # Si HOY le toca a quien la hace: sin entregar o con cambios pedidos,
+    # y abierta (ni archivada ni cerrada a mano).
+    le_toca_a_quien_la_hace: bool
+
+
+def quien_la_hace(para: str | None, agencia: str | None) -> tuple[str, str]:
+    """El grupo de una pieza en el análisis, (clave, nombre): su agencia, sea
+    de la plataforma o de afuera, o el equipo si la hace la gente de la casa.
+    La agencia se compara sin tildes, mayúsculas ni espacios de más
+    («Disenadores» es Diseñadores) y uno de los tres tableros se escribe como
+    en app/core/tableros.py. Pura."""
+    from app.core import externos
+    from app.core.tableros import tablero_de
+    limpia = externos.limpiar_empresa(agencia) if para in ("agencia", "fuera") else None
+    if not limpia:
+        return EQUIPO_PROPIO, NOMBRE_DEL_EQUIPO_PROPIO
+    return f"agencia:{externos.clave_de_empresa(limpia)}", tablero_de(limpia) or limpia
+
+
+def _dias_entre(desde: datetime, hasta: datetime) -> float:
+    return max(0.0, (hasta - desde).total_seconds() / 86400)
+
+
+def _promedio_de_dias(valores: list[float]) -> float | None:
+    return round(sum(valores) / len(valores), 1) if valores else None
+
+
+def _bloque_de_tiempos(piezas: list[PiezaDelAnalisis], desde: datetime, hoy: date) -> dict:
+    from app.core.alcance import hoy_en_uruguay
+    entregadas = [p for p in piezas if p.primera_entrega_at is not None and p.primera_entrega_at >= desde]
+    aprobadas = [p for p in piezas if p.aprobada_at is not None and p.aprobada_at >= desde]
+    con_fecha = [p for p in entregadas if p.vence is not None]
+    tarde = {p.tarea_id for p in con_fecha if hoy_en_uruguay(p.primera_entrega_at) > p.vence}
+    vencidas = {p.tarea_id for p in piezas if p.le_toca_a_quien_la_hace and p.vence is not None and p.vence < hoy}
+    return {
+        "entregadas": len(entregadas),
+        "diasHastaEntregar": _promedio_de_dias([_dias_entre(p.pedida_at, p.primera_entrega_at) for p in entregadas]),
+        "aprobadas": len(aprobadas),
+        "diasHastaAprobar": _promedio_de_dias([_dias_entre(p.pedida_at, p.aprobada_at) for p in aprobadas]),
+        "aTiempo": round(100 * (len(con_fecha) - len(tarde)) / len(con_fecha)) if con_fecha else None,
+        "entregaronTarde": len(tarde),
+        "vencidas": len(vencidas),
+        "sePasaron": len(tarde | vencidas),
+    }
+
+
+def analisis_por_agencia(piezas: Iterable[PiezaDelAnalisis], desde: datetime, hoy: date) -> dict:
+    """Cuánto tarda cada agencia y cuántas piezas se pasan de fecha, en el
+    período que empieza en `desde` (los días que se eligen en la pantalla).
+
+    - **Entregadas**: las piezas cuya PRIMERA entrega cayó en el período.
+    - **Cuánto tarda en entregar**: el promedio, en días, desde que se le
+      pidió la pieza (se creó la tarjeta) hasta esa primera entrega.
+    - **Cuánto tarda en aprobarse**: el promedio desde que se pidió hasta que
+      quedó aprobada entera, de las que se aprobaron en el período. Ese
+      tiempo también incluye lo que tardan en revisar quienes aprueban.
+    - **Se pasaron de fecha**: las que entregaron por primera vez después
+      de su vencimiento (de las entregadas en el período) más las que HOY
+      están vencidas y le toca a quien la hace (sin entregar o con cambios
+      pedidos). Cuenta cada pieza una vez. Lo que se pasó esperando la
+      revisión del equipo no se le cuenta a la agencia.
+    - **A tiempo**: el % de las entregadas con vencimiento cuya primera
+      entrega llegó a tiempo (ese mismo día o antes).
+
+    Devuelve el total y una fila por agencia: primero los tres tableros, en
+    su orden, después las demás agencias por nombre y al final el equipo."""
+    from app.core.tableros import TABLEROS
+    lista = list(piezas)
+    grupos: dict[str, list[PiezaDelAnalisis]] = {}
+    nombres: dict[str, str] = {}
+    for p in lista:
+        clave, nombre = quien_la_hace(p.para, p.agencia)
+        grupos.setdefault(clave, []).append(p)
+        nombres.setdefault(clave, nombre)
+
+    def orden(clave: str) -> tuple:
+        nombre = nombres[clave]
+        if clave == EQUIPO_PROPIO:
+            return (2, 0, "")
+        if nombre in TABLEROS:
+            return (0, TABLEROS.index(nombre), "")
+        return (1, 0, nombre.lower())
+
+    por_agencia = []
+    for clave in sorted(grupos, key=orden):
+        bloque = _bloque_de_tiempos(grupos[clave], desde, hoy)
+        if bloque["entregadas"] or bloque["aprobadas"] or bloque["vencidas"]:
+            por_agencia.append({"clave": clave, "nombre": nombres[clave], **bloque})
+    return {"total": _bloque_de_tiempos(lista, desde, hoy), "porAgencia": por_agencia}
 
 
 # ---------------------------------------------------------------------------

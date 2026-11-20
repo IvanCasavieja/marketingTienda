@@ -202,6 +202,29 @@ export type GrupoDeMetricas = {
   aLaPrimera: number | null
 }
 
+/** Cuánto tarda y cuántas piezas se pasan de fecha (Ivan, 20/11/2026), del
+ *  total o de una agencia. Cómo se cuenta cada número: analisis_por_agencia
+ *  en backend/app/services/entregas.py. */
+export type TiemposDeEntrega = {
+  /** Piezas con su primera entrega en el período. */
+  entregadas: number
+  /** Promedio de días desde que se pidió la pieza hasta su primera entrega. */
+  diasHastaEntregar: number | null
+  /** Piezas aprobadas enteras en el período. */
+  aprobadas: number
+  diasHastaAprobar: number | null
+  /** % de las entregadas con vencimiento que llegaron a tiempo. */
+  aTiempo: number | null
+  entregaronTarde: number
+  /** Hoy vencidas y le toca a quien la hace. */
+  vencidas: number
+  /** Las que entregaron tarde más las vencidas hoy, cada pieza una vez. */
+  sePasaron: number
+}
+
+export type TiemposDeAgencia = TiemposDeEntrega & { clave: string; nombre: string }
+
+/** El análisis de entregas (ex «Retrabajo»): GET /calendario/entregas/metricas. */
 export type Metricas = {
   fases: number
   rondasPromedio: number | null
@@ -210,6 +233,10 @@ export type Metricas = {
   porResponsable: GrupoDeMetricas[]
   porMundo: GrupoDeMetricas[]
   dias: number
+  /** Opcionales: un servidor de antes del 20/11/2026 no los manda (Vercel y
+   *  Render despliegan cada uno por su lado). */
+  tiempos?: TiemposDeEntrega
+  porAgencia?: TiemposDeAgencia[]
 }
 
 // ---------------------------------------------------------------------------
