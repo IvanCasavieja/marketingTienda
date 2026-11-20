@@ -58,8 +58,9 @@ export type RevisionIA = {
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]
   /** Si se ve hecho lo que pedía cada marca de la ronda anterior (19/11/2026).
-   *  Vacío en una primera ronda, si la anterior volvió sin marcas y en las
-   *  revisiones de antes. */
+   *  Vacío si no había nada que controlar (una primera ronda, o la anterior
+   *  volvió sin marcas), si la IA no llegó a mirar y en las revisiones de
+   *  antes. */
   cambiosPedidos?: CambioPedidoIA[]
 }
 
@@ -74,7 +75,7 @@ export type CambioPedidoIA = {
   marcaId: string
   numero: number
   veredicto: VeredictoIA
-  /** Una frase corta: «El -40% ahora es más grande.» */
+  /** Una frase corta: «Ahora dice "Válido", con tilde.» */
   nota: string
 }
 
@@ -96,10 +97,14 @@ export const TIPO_OBSERVACION: Record<TipoObservacionIA, string> = {
 }
 
 /** "La IA encontró 3 cosas para mirar". Cuenta todas, también las que ya se
- *  descartaron o se hicieron marca: el título no cambia mientras se trabaja. */
-export function tituloRevisionIA(observaciones: ObservacionIA[]): string {
+ *  descartaron o se hicieron marca: el título no cambia mientras se trabaja.
+ *  `conCambiosPedidos`: si además dijo algo de las marcas de la ronda
+ *  anterior. Sin observaciones decía «no encontró nada para marcar» mientras
+ *  al lado de una marca decía «IA: falta»: ahí dice «nada nuevo» (revisión
+ *  del 19/11/2026). */
+export function tituloRevisionIA(observaciones: ObservacionIA[], conCambiosPedidos = false): string {
   const n = observaciones.length
-  if (n === 0) return 'La IA no encontró nada para marcar'
+  if (n === 0) return conCambiosPedidos ? 'La IA no encontró nada nuevo para marcar' : 'La IA no encontró nada para marcar'
   return n === 1 ? 'La IA encontró 1 cosa para mirar' : `La IA encontró ${n} cosas para mirar`
 }
 

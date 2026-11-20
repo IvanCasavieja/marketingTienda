@@ -1517,7 +1517,8 @@ def _espiar_la_ia(monkeypatch) -> list:
     return llamadas
 
 
-async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_subidas=None, link=None):
+async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_subidas=None, link=None,
+                    color="white"):
     data = {"versionId": version_id}
     if ya_subidas is not None:
         data["zipYaSubidas"] = ya_subidas
@@ -1525,8 +1526,8 @@ async def _entregar(cliente, tarea_id, version_id, *, imagenes=0, zip_=None, ya_
         data["link"] = link
     files = []
     for i in range(imagenes):
-        files += [("imagenes", (f"i{i}.jpg", _jpeg_de_verdad(), "image/jpeg")),
-                  ("miniaturas", (f"m{i}.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))]
+        files += [("imagenes", (f"i{i}.jpg", _jpeg_de_verdad(color=color), "image/jpeg")),
+                  ("miniaturas", (f"m{i}.jpg", _jpeg_de_verdad(64, 48, color), "image/jpeg"))]
     if zip_ is not None:
         files.append(("zip", (zip_[0], zip_[1], "application/zip")))
     return await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data=data, files=files or None)
@@ -1727,7 +1728,8 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
     ronda anterior (cada marca con su imagen por orden y su lugar, y el
     comentario de quien pidió los cambios, no la nota interna) y que lo que
     contestó lo ve quien aprueba, nunca la agencia. Lo que hace la IA con eso
-    está en test_revision_ia.py."""
+    está en test_revision_ia.py. Desde la revisión del 19/11/2026 recibe
+    además las miniaturas de esa ronda, para comparar."""
     from app.services import revision_ia
 
     # Entregar no dispara la revisión de verdad (acá no hay clave; por las dudas).
@@ -1736,8 +1738,11 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
     async def prueba(d):
         lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
         tarea_id, _ = await _pedir_banners(d, d.lider)
-        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg")),
-               ("imagenes", ("b.jpg", JPEG, "image/jpeg")), ("miniaturas", ("n.jpg", JPEG, "image/jpeg"))]
+        # Las miniaturas, de verdad y de distinto tamaño: así se ve su orden.
+        dos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg")),
+               ("imagenes", ("b.jpg", JPEG, "image/jpeg")),
+               ("miniaturas", ("n.jpg", _jpeg_de_verdad(48, 64), "image/jpeg"))]
         v1, v2, v3 = (f"ve-r{i}-{d.sufijo}" for i in (1, 2, 3))
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=dos)
         assert r.status_code == 201, r.text
@@ -1766,6 +1771,16 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
             assert "comercial" not in texto
             # La primera ronda no tiene nada antes.
             assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+            # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
+            # Una que no está (la purga de antes del 19/11/2026 vació algunas)
+            # no va, y la otra conserva su número: el que dicen las marcas.
+            await s.execute(update(CalendarioVersionImagen).where(CalendarioVersionImagen.id == im1)
+                            .values(miniatura=None))
+            antes = (await revision_ia.cargar_version(s, v2))[0].ronda_anterior
+            assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(2, 48, 64)]
+            assert [(m.numero, m.imagen) for m in antes.marcas] == [(1, 2), (2, 1)]
+            await s.rollback()  # la purga era solo para esta prueba
 
         # Lo que contestó la IA (una revisión guardada) lo ve quien aprueba;
         # la agencia, nunca.
@@ -1796,6 +1811,71 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
         assert r.status_code == 201, r.text
         async with d.Sesion() as s:
             assert (await revision_ia.cargar_version(s, v3))[0].ronda_anterior is None
+    correr(prueba)
+
+
+def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
+    """Revisión del 19/11/2026: lo que se pidió cuenta solo dentro de la misma
+    fase. El Boceto vuelve con cambios y una marca, su ronda 2 se aprueba y
+    arranca el Arte final: su ronda 1 no tiene nada que controlar (lo de antes
+    es de otra fase), y su ronda 2 recibe lo que se pidió en su ronda 1, con
+    sus miniaturas. Las marcas del Boceto no aparecen nunca."""
+    from app.models.entregas import CalendarioMarca
+    from app.services import revision_ia
+
+    monkeypatch.setattr(revision_ia, "activa", lambda: False)
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id],
+            "fases": [{"nombre": "Boceto"}, {"nombre": "Arte final"}]})
+        assert r.status_code == 200, r.text
+        b1, b2, f1, f2 = (f"ve-{n}-{d.sufijo}" for n in ("bo1", "bo2", "af1", "af2"))
+
+        # Boceto: la ronda 1 vuelve con cambios y una marca; la 2 se aprueba.
+        assert (await _entregar(a1, tarea_id, b1, imagenes=1)).status_code == 201
+        imagen = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        r = await lider.post(f"/calendario/versiones/{b1}/decision", json={
+            "decision": "cambios", "comentario": "Boceto: probemos otra foto",
+            "marcas": [{"imagenId": imagen, "x": 0.5, "y": 0.5, "texto": "Boceto: otra foto de fondo"}]})
+        assert r.status_code == 200, r.text
+        assert (await _entregar(a1, tarea_id, b2, imagenes=1)).status_code == 201
+        assert (await _decidir(lider, b2, "aprobada")).status_code == 200
+
+        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que controlar.
+        assert (await _entregar(a1, tarea_id, f1, imagenes=1, color="black")).status_code == 201
+        async with d.Sesion() as s:
+            contexto, _ = await revision_ia.cargar_version(s, f1)
+        assert (contexto.fase, contexto.ronda, contexto.ronda_anterior) == ("Arte final", 1, None)
+        assert "Boceto:" not in revision_ia.texto_del_pedido(contexto)
+
+        # Arte final, ronda 2: lo que se pidió en su ronda 1, con sus miniaturas.
+        imagen = (await _detalle(lider, tarea_id))["fases"][1]["versiones"][0]["imagenes"][0]["id"]
+        r = await lider.post(f"/calendario/versiones/{f1}/decision", json={
+            "decision": "cambios", "comentario": "Arte final: falta el legal",
+            "marcas": [{"imagenId": imagen, "x": 0.5, "y": 0.9, "texto": "Arte final: agregar el legal"}]})
+        assert r.status_code == 200, r.text
+        assert (await _entregar(a1, tarea_id, f2, imagenes=1, color="black")).status_code == 201
+        async with d.Sesion() as s:
+            contexto, _ = await revision_ia.cargar_version(s, f2)
+            del_boceto = set((await s.execute(
+                select(CalendarioMarca.id).where(CalendarioMarca.version_id.in_([b1, b2]))
+            )).scalars())
+            miniaturas = dict((await s.execute(
+                select(CalendarioVersionImagen.version_id, CalendarioVersionImagen.miniatura)
+                .where(CalendarioVersionImagen.version_id.in_([b1, f1]))
+            )).all())
+        antes = contexto.ronda_anterior
+        assert (contexto.fase, contexto.ronda, antes.ronda) == ("Arte final", 2, 1)
+        assert [m.texto for m in antes.marcas] == ["Arte final: agregar el legal"]
+        assert antes.comentarios == ("Arte final: falta el legal",)
+        assert len(del_boceto) == 1 and not del_boceto & {m.marca_id for m in antes.marcas}
+        assert "Boceto:" not in revision_ia.texto_del_pedido(contexto)
+        # Las miniaturas son las de su ronda 1, no las del Boceto.
+        assert miniaturas[f1] != miniaturas[b1]
+        assert [m.datos for m in antes.miniaturas] == [miniaturas[f1]]
     correr(prueba)
 
 

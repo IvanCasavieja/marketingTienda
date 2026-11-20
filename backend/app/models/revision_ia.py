@@ -49,8 +49,10 @@ class CalendarioRevisionIA(Base):
     # Si se ve hecho lo que se pidió en la ronda anterior (0082, 19/11/2026):
     # [{marcaId, numero, veredicto ('hecho' | 'falta' | 'dudoso'), nota}], una
     # por marca de esa ronda (ver `limpiar_cambios_pedidos` en el servicio).
-    # Null si la versión no venía después de una ronda que volvió con marcas,
-    # y en las revisiones de antes.
+    # Null si no había nada que controlar (la versión no venía después de una
+    # ronda que volvió con marcas), si la IA no llegó a mirar (falló o no
+    # había imágenes) y en las revisiones de antes del 19/11/2026. Vacía, en
+    # cambio, es que miró y no dijo nada que sirviera de ninguna marca.
     cambios_pedidos: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
