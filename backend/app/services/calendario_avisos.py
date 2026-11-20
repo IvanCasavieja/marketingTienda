@@ -111,26 +111,17 @@ def mensaje(
 def mensaje_de_control(
     control: str, nombre: str, banda: str, inicio: date, hoy: date,
 ) -> str:
-    """El texto de Lanzar o Cierre (0077): "Lanzar: Mailing diciembre (MAILING
-    - 16 PAG EL PAIS) arranca en 60 días, el 01/12." Sin firma: no lo
-    configuró nadie, lo trae la acción."""
+    """El texto de Lanzar (0077): "Lanzar: Mailing diciembre (MAILING - 16 PAG
+    EL PAIS) arranca en 60 días, el 01/12." Sin firma: no lo configuró nadie,
+    lo trae la acción."""
     from app.services.controles_redexpres import NOMBRE_DEL_CONTROL
     titulo = NOMBRE_DEL_CONTROL.get(control, control.capitalize())
-    if control == "lanzar_fds":
-        # Es del mes entero, no de este fin de semana: "Lanzar FDS de marzo:
-        # el primer Super FDS del mes arranca en 10 días, el 05/03."
-        return f"{titulo} de {_MESES[inicio.month - 1]}: {mensaje('el primer Super FDS del mes', '', inicio, hoy, None)}"
     return f"{titulo}: {mensaje(nombre, banda, inicio, hoy, None)}"
 
 
-_MESES = (
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "setiembre", "octubre", "noviembre", "diciembre",
-)
-
 
 def edita_el_calendario(usuario: User) -> bool:
-    """Del equipo que lleva el calendario: a quien le llegan Lanzar y Cierre."""
+    """Del equipo que lleva el calendario: a quien le llega Lanzar."""
     return bool(usuario.is_superuser or "calendario.edit" in (usuario.permissions or []))
 
 
@@ -216,7 +207,7 @@ async def _revisar(db: AsyncSession, hoy: date, barra_id: str | None) -> int:
         u.id: u for u in (await db.execute(select(User).where(User.id.in_(ids)))).scalars()
     } if ids else {}
 
-    # Lanzar y Cierre (0077) le llegan a todo el equipo del mundo: quienes lo
+    # Lanzar (0077) le llega a todo el equipo del mundo: quienes lo
     # abren y editan el calendario. Se calcula al avisar, así le llega también
     # a quien entró al equipo después de que se cargó la acción.
     equipo: dict[str, list[int]] = {}

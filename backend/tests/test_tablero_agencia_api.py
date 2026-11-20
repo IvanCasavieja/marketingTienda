@@ -2682,11 +2682,11 @@ def test_el_equipo_mueve_la_tarjeta_libre_como_trello():
     correr(prueba)
 
 
-def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
-    """Ivan (18/11/2026): cada acción de Redexpres nace con las tareas Lanzar
-    (60 días antes) y Cierre (4 semanas antes), y con sus avisos a todo el
-    equipo del mundo: Lanzar a los 60 y a los 30, Cierre a los 28. Cargada
-    con menos tiempo, el aviso sale en el momento (una vez)."""
+def test_redexpres_nace_con_lanzar_y_le_avisa_a_todo_el_equipo():
+    """Ivan (18/11/2026): cada acción de Redexpres nace con la tarea Lanzar (60
+    días antes) y sus avisos a todo el equipo del mundo, a los 60 y a los 30.
+    Cargada con menos tiempo, el aviso sale en el momento (una vez). Desde el
+    20/11/2026 el Cierre es manual: no se crea ni avisa solo."""
     async def prueba(d):
         from app.services import calendario_avisos
         hoy = d.hoy
@@ -2727,36 +2727,35 @@ def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
                     Notificacion.user_id == usuario.id, Notificacion.origen_ref.startswith(f"{barra_id}:"),
                 ).order_by(Notificacion.id))).scalars()]
 
-        # 1. Con tiempo: las dos tareas ancladas y los tres avisos; todavía nadie recibe nada.
+        # 1. Con tiempo: la tarea anclada y los dos avisos; todavía nadie recibe nada.
         con_tiempo = f"br-rx-t-{d.sufijo}"
         r = await crear(cv, con_tiempo, "ESPECIAL - CM", 100)
         assert r.status_code == 201 and r.json().get("recargar") is True, r.text
         tareas, avisos = await de(con_tiempo)
-        assert set(tareas) == {"Lanzar", "Cierre"}
+        assert set(tareas) == {"Lanzar"}  # el Cierre lo crea Valentina a mano
         assert tareas["Lanzar"].vence == hoy + timedelta(days=40) and tareas["Lanzar"].ancla == "inicio"
-        assert tareas["Cierre"].vence == hoy + timedelta(days=72) and tareas["Cierre"].ancla_dias == -28
-        assert avisos == [("cierre", 28), ("lanzar", 30), ("lanzar", 60)]
+        assert avisos == [("lanzar", 30), ("lanzar", 60)]
         assert await avisos_de(otra, con_tiempo) == []
         # La ficha los muestra como controles.
         datos = (await cv.get("/calendario/datos", params={"mundo": "redexpres"})).json()
         accion = next(b for b in datos["barras"] if b["id"] == con_tiempo)
-        assert sorted(a.get("control") for a in accion["avisos"]) == ["cierre", "lanzar", "lanzar"]
+        assert sorted(a.get("control") for a in accion["avisos"]) == ["lanzar", "lanzar"]
 
-        # 2. Tarde (faltan 20 días): vencen hoy y sale UN Lanzar y UN Cierre, a todo el equipo.
+        # 2. Tarde (faltan 20 días): vence hoy y sale UN Lanzar, a todo el equipo.
         tarde = f"br-rx-l-{d.sufijo}"
         assert (await crear(cv, tarde, "MAILING - 16 PAG EL PAIS", 20)).status_code == 201
         tareas, _ = await de(tarde)
-        assert tareas["Lanzar"].vence == hoy and tareas["Lanzar"].ancla is None and tareas["Cierre"].vence == hoy
+        assert tareas["Lanzar"].vence == hoy and tareas["Lanzar"].ancla is None and "Cierre" not in tareas
         for u in (valen, otra):
             mensajes = await avisos_de(u, tarde)
-            assert sorted(m.split(":")[0] for m in mensajes) == ["Cierre", "Lanzar"], mensajes
+            assert [m.split(":")[0] for m in mensajes] == ["Lanzar"], mensajes
         assert await avisos_de(mira, tarde) == [] and await avisos_de(de_ti, tarde) == []
         # Otra vuelta del loop ese día: nada más.
         async with d.Sesion() as s:
             await calendario_avisos.revisar_avisos(s, hoy=hoy, barra_id=tarde)
-        assert len(await avisos_de(otra, tarde)) == 2
+        assert len(await avisos_de(otra, tarde)) == 1
 
-        # 3. Faltan 45: Lanzar ya; a los 30, el segundo Lanzar; a los 28, Cierre.
+        # 3. Faltan 45: Lanzar ya y, a los 30, el segundo Lanzar. A los 28, nada (sin Cierre).
         medio = f"br-rx-m-{d.sufijo}"
         assert (await crear(cv, medio, "TÁCTICO (x LOCAL) CM", 45)).status_code == 201
         assert [m.split(":")[0] for m in await avisos_de(otra, medio)] == ["Lanzar"]
@@ -2776,9 +2775,15 @@ def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
         await loop_el_dia(desde - timedelta(days=30))
         assert [m.split(":")[0] for m in await avisos_de(otra, medio)] == ["Lanzar", "Lanzar"]
         await loop_el_dia(desde - timedelta(days=28))
-        assert sorted(m.split(":")[0] for m in await avisos_de(otra, medio)) == ["Cierre", "Lanzar", "Lanzar"]
         await loop_el_dia(desde - timedelta(days=10))
-        assert len(await avisos_de(otra, medio)) == 3
+        assert [m.split(":")[0] for m in await avisos_de(otra, medio)] == ["Lanzar", "Lanzar"]
+
+        # El Cierre lo carga Valentina a mano, como cualquier tarea, con la fecha que elija.
+        r = await cv.post(f"/calendario/barras/{medio}/tareas", json={
+            "id": f"ta-cierre-{d.sufijo}", "titulo": "Cierre", "vence": (desde - timedelta(days=20)).isoformat()})
+        assert r.status_code == 201, r.text
+        tareas, avisos = await de(medio)
+        assert tareas["Cierre"].vence == desde - timedelta(days=20) and avisos == [("lanzar", 30), ("lanzar", 60)]
 
         # 4. Bombas (semanal) y Tienda Inglesa: sin controles.
         bombas = f"br-rx-b-{d.sufijo}"
@@ -2799,12 +2804,11 @@ def test_redexpres_nace_con_lanzar_y_cierre_y_le_avisa_a_todo_el_equipo():
     correr(prueba)
 
 
-def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
-    """Ivan (18/11/2026): los Super FDS llevan Cierre FDS (14 días antes) y,
-    una vez por mes, Lanzar FDS (10 días antes del primero del mes). Si cambia
-    cuál es el primero, Lanzar FDS pasa al nuevo."""
+def test_un_super_fds_no_lleva_controles():
+    """Ivan (20/11/2026): "FDS no va a existir más". Un Super FDS (de los que
+    quedaron hasta noviembre) no lleva tareas ni avisos automáticos, ni al
+    crearlo ni al moverlo."""
     async def prueba(d):
-        hoy = d.hoy
         async with d.Sesion() as s:
             valen = User(
                 email=f"valen.fds.{d.sufijo}@prueba-redex.test", full_name="Valen FDS", hashed_password=_clave(),
@@ -2816,71 +2820,18 @@ def test_super_fds_cierre_en_cada_uno_y_lanzar_en_el_primero_del_mes():
             s.add(valen)
             await s.commit()
         cv = Cliente(d.http, valen)
-        # Un mes sin Super FDS cargados: el cuarto desde hoy.
-        mes = (hoy.replace(day=1) + timedelta(days=130)).replace(day=1)
-        siguiente = (mes + timedelta(days=40)).replace(day=1)
-
-        async def crear(id_, desde):
-            r = await cv.post("/calendario/barras", json={
-                "id": id_, "mundo": "redexpres", "seccion": "comercial", "banda": "Super FDS", "nombre": "Super FDS",
-                "desde": desde.isoformat(), "hasta": (desde + timedelta(days=3)).isoformat(),
-            })
-            assert r.status_code == 201, r.text
-            return r
-
-        async def controles(barra_id):
-            async with d.Sesion() as s:
-                tareas = sorted(t.titulo for t in (await s.execute(
-                    select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id))).scalars())
-                avisos = sorted((a.control, a.dias_antes) for a in (await s.execute(
-                    select(CalendarioAviso).where(CalendarioAviso.barra_id == barra_id))).scalars())
-            return tareas, avisos
-
-        con_lanzar = (["Cierre FDS", "Lanzar FDS"], [("cierre_fds", 14), ("lanzar_fds", 10)])
-        sin_lanzar = (["Cierre FDS"], [("cierre_fds", 14)])
-
-        # El primero del mes lleva Lanzar FDS.
-        uno, dos = f"br-fds-1-{d.sufijo}", f"br-fds-2-{d.sufijo}"
-        assert (await crear(uno, mes + timedelta(days=14))).json().get("recargar") is True
-        assert await controles(uno) == con_lanzar
+        fds = f"br-fds-{d.sufijo}"
+        desde = d.hoy + timedelta(days=90)
+        r = await cv.post("/calendario/barras", json={
+            "id": fds, "mundo": "redexpres", "seccion": "comercial", "banda": "Super FDS", "nombre": "Super FDS",
+            "desde": desde.isoformat(), "hasta": (desde + timedelta(days=3)).isoformat()})
+        assert r.status_code == 201 and "recargar" not in r.json(), r.text
+        r = await cv.patch(f"/calendario/barras/{fds}", json={
+            "desde": (desde + timedelta(days=7)).isoformat(), "hasta": (desde + timedelta(days=10)).isoformat()})
+        assert r.status_code == 200 and "recargar" not in r.json(), r.text
         async with d.Sesion() as s:
-            t = (await s.execute(select(CalendarioTarea).where(
-                CalendarioTarea.barra_id == uno, CalendarioTarea.titulo == "Cierre FDS"))).scalar_one()
-            assert t.vence == mes + timedelta(days=0) and t.ancla == "inicio" and t.ancla_dias == -14
-
-        # Se carga otro antes en el mes: pasa a ser el primero y se lleva Lanzar FDS.
-        await crear(dos, mes + timedelta(days=7))
-        assert await controles(dos) == con_lanzar
-        assert await controles(uno) == sin_lanzar
-
-        # Se mueve al mes siguiente: el de este mes vuelve a ser el primero.
-        r = await cv.patch(f"/calendario/barras/{dos}", json={
-            "desde": (siguiente + timedelta(days=7)).isoformat(), "hasta": (siguiente + timedelta(days=10)).isoformat()})
-        assert r.status_code == 200 and r.json().get("recargar") is True, r.text
-        assert await controles(uno) == con_lanzar
-        assert await controles(dos) == con_lanzar  # es el primero del mes siguiente
-
-        # Se pasa de fila: deja de llevar los de FDS (y lleva Lanzar y Cierre).
-        r = await cv.patch(f"/calendario/barras/{dos}", json={"banda": "ESPECIAL - CM"})
-        assert r.status_code == 200, r.text
-        assert await controles(dos) == (["Cierre", "Lanzar"], [("cierre", 28), ("lanzar", 30), ("lanzar", 60)])
-
-        # Se borra el único del mes: no queda nada colgando, y no rompe.
-        tres = f"br-fds-3-{d.sufijo}"
-        await crear(tres, mes + timedelta(days=21))
-        assert await controles(tres) == sin_lanzar
-        r = await cv.delete(f"/calendario/barras/{uno}")
-        assert r.status_code == 200 and r.json().get("recargar") is True, r.text
-        assert await controles(tres) == con_lanzar
-
-        # Cargado tarde: Cierre FDS sale en el momento.
-        tarde = f"br-fds-t-{d.sufijo}"
-        await crear(tarde, hoy + timedelta(days=5))
-        async with d.Sesion() as s:
-            mensajes = [n.mensaje for n in (await s.execute(select(Notificacion).where(
-                Notificacion.user_id == valen.id, Notificacion.origen_ref.startswith(f"{tarde}:"),
-            ))).scalars()]
-        assert any(m.startswith("Cierre FDS: ") for m in mensajes), mensajes
+            assert (await s.execute(select(CalendarioTarea).where(CalendarioTarea.barra_id == fds))).first() is None
+            assert (await s.execute(select(CalendarioAviso).where(CalendarioAviso.barra_id == fds))).first() is None
     correr(prueba)
 
 

@@ -231,17 +231,17 @@ export type Aviso = {
   /** Ids de usuario de la plataforma. */
   destinatarios: number[]
   creadoPor: number | null
-  /** Lanzar o Cierre (18/11/2026): los trae sola cada accion de Redexpres y le
-   *  llegan a todo el equipo del mundo, ademas de `destinatarios`. Los Super
-   *  FDS traen los suyos: Cierre FDS y, el primero del mes, Lanzar FDS. */
+  /** Lanzar (18/11/2026): lo trae sola cada accion de Redexpres y le llega a
+   *  todo el equipo del mundo, ademas de `destinatarios`. Cierre y los de los
+   *  Super FDS se sacaron el 20/11/2026 (el Cierre lo crea Valentina a mano). */
   control?: ControlDeAviso
 }
 
-export type ControlDeAviso = 'lanzar' | 'cierre' | 'lanzar_fds' | 'cierre_fds'
+export type ControlDeAviso = 'lanzar'
 
 /** Como se llama cada control en la ficha y en la campanita. */
 export const NOMBRE_DEL_CONTROL: Record<ControlDeAviso, string> = {
-  lanzar: 'Lanzar', cierre: 'Cierre', lanzar_fds: 'Lanzar FDS', cierre_fds: 'Cierre FDS',
+  lanzar: 'Lanzar',
 }
 
 /** Las anticipaciones que se ofrecen, de la mas larga a la mas corta. */

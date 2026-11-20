@@ -787,7 +787,7 @@ async def crear_barra(
     )
     db.add(barra)
     await db.flush()
-    # Redexpres: nace con sus tareas Lanzar y Cierre y sus avisos (0077).
+    # Redexpres: nace con su tarea Lanzar y sus avisos (0077).
     controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, payload.mundo)
     await db.commit()
@@ -819,9 +819,6 @@ async def cambiar_barra(
     if cambio_la_fecha or cambio_el_fin:
         _exigir_en_su_alcance(current_user, cambios.get("desde", barra.desde), cambios.get("hasta", barra.hasta))
     nombre_anterior = barra.nombre
-    # Para reacomodar Lanzar FDS si un Super FDS cambia de mes o de fila.
-    era_fds = controles_redexpres.es_fds(barra)
-    mes_anterior = (barra.desde.year, barra.desde.month)
     for campo, valor in cambios.items():
         setattr(barra, campo, valor)
     barra.actualizado_por_id = current_user.id
@@ -853,27 +850,16 @@ async def cambiar_barra(
             if t.id in nuevas:
                 t.vence = nuevas[t.id]
         movidas = len(nuevas)
-    # Pasada a una fila que lleva Lanzar y Cierre (de "BOMBAS" a "ESPECIAL -
+    # Pasada a una fila que lleva Lanzar (de "BOMBAS" a "ESPECIAL -
     # CM", por ejemplo): se le suman (0077).
     controles = 0
-    hoy = alcance.hoy_en_uruguay()
     if "banda" in cambios:
-        controles = await controles_redexpres.agregar(db, barra, current_user.id, hoy)
-        if era_fds and not controles_redexpres.es_fds(barra):
-            await controles_redexpres.dejo_de_ser_fds(db, barra)
-    # Un Super FDS que se movió (o entró o salió de la fila): Lanzar FDS lo
-    # lleva el primero de cada mes, que puede haber cambiado.
-    fds_reordenado = (cambio_la_fecha or "banda" in cambios) and (era_fds or controles_redexpres.es_fds(barra))
-    if fds_reordenado:
-        meses = {mes_anterior, (barra.desde.year, barra.desde.month)}
-        controles += await controles_redexpres.ordenar_lanzar_fds(db, meses, current_user.id, hoy)
-        controles = controles or 1  # aunque solo haya sacado: que la pantalla recargue
+        controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     if cambio_la_fecha or controles:
         # Un aviso que con la fecha nueva ya tendría que haber salido, sale ya.
-        # Con Lanzar FDS reacomodado, puede ser el de otro Super FDS: se miran todos.
-        await _avisar_sin_romper(db, None if fds_reordenado else barra_id)
+        await _avisar_sin_romper(db, barra_id)
     out = {"id": barra_id, "rev": _rev_para(current_user, rev), "tareasMovidas": movidas}
     if controles:
         out["recargar"] = True
@@ -924,20 +910,10 @@ async def borrar_barra(
             Notificacion.origen_tipo.in_(ORIGENES_DEL_LOCAL),
             Notificacion.origen_ref.in_([f"{barra_id}:{i}" for i in locales]),
         ))
-    era_fds = controles_redexpres.es_fds(barra)
-    mes = (barra.desde.year, barra.desde.month)
     await db.delete(barra)
-    if era_fds:
-        # Si era el primer Super FDS del mes, Lanzar FDS pasa al siguiente.
-        await db.flush()
-        await controles_redexpres.ordenar_lanzar_fds(db, {mes}, current_user.id, alcance.hoy_en_uruguay())
     rev = await _nueva_revision(db, mundo)
     await db.commit()
-    out = {"id": barra_id, "borrada": True, "rev": _rev_para(current_user, rev)}
-    if era_fds:
-        out["recargar"] = True
-        await _avisar_sin_romper(db, None)
-    return out
+    return {"id": barra_id, "borrada": True, "rev": _rev_para(current_user, rev)}
 
 
 # ---------------------------------------------------------------------------
@@ -2475,7 +2451,7 @@ async def copiar_barra(
     for f in copiadas_tareas.filas:
         if f.get("tipo") and f.get("titulo") == tipos_de_tarea.nombre_de_tarjeta(origen.nombre, f["tipo"]):
             f["titulo"] = tipos_de_tarea.nombre_de_tarjeta(nombre, f["tipo"])
-    # Lanzar y Cierre no se copian: la copia trae los suyos (0077).
+    # Los avisos de Lanzar no se copian: la copia trae los suyos (0077).
     copiados_avisos = copiar_avisos(
         [a for a in avisos if not a.control], payload.id, corrimiento, validos, current_user.id,
     )
@@ -2512,7 +2488,7 @@ async def copiar_barra(
     db.add_all(nuevas_piezas)
     db.add_all(nuevas_tareas)
     db.add_all(nuevos_avisos)
-    # Copiada a Redexpres: con sus Lanzar y Cierre, los de su fecha nueva.
+    # Copiada a Redexpres: con su Lanzar, el de su fecha nueva.
     # Las tareas copiadas que ya se llaman así cuentan como que ya están.
     await db.flush()
     controles = await controles_redexpres.agregar(db, barra, current_user.id, alcance.hoy_en_uruguay())

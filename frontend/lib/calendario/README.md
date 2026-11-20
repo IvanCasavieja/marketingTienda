@@ -243,16 +243,16 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   una decisión) vuelve a mandar. La agencia sigue con sus reglas.
 - **"Lo que se pidió"** en la tarjeta va como lista: cada opción con su
   medida y los datos aparte, sin repetir el pedido en el detalle.
-- **Lanzar y Cierre (0077), solo en Redexpres.** Cada acción nace con dos
-  tareas: Lanzar (60 días antes) y Cierre (4 semanas antes), ancladas a la
-  acción. Y con tres avisos a todo el equipo del mundo: Lanzar a los 60 y a los
-  30 días y Cierre a los 28. Si se carga tarde, el aviso sale en el momento,
-  una sola vez. No van en "Super FDS" ni en "BOMBAS", que son semanales. Ver
+- **Lanzar (0077), solo en Redexpres.** Cada acción nace con la tarea Lanzar
+  (60 días antes, anclada a la acción) y dos avisos a todo el equipo del
+  mundo, a los 60 y a los 30 días. Si se carga tarde, el aviso sale en el
+  momento, una sola vez. No va en "BOMBAS". Ver
   `backend/app/services/controles_redexpres.py`.
-- **Lanzar FDS y Cierre FDS (0078).** Cada Super FDS lleva Cierre FDS (tarea
-  y aviso, 14 días antes); Lanzar FDS va una vez por mes, en el primer Super
-  FDS del mes, 10 días antes. Si cambia cuál es el primero (se carga uno
-  antes, se mueve o se borra), Lanzar FDS pasa al nuevo.
+- **Sin Cierre automático ni Super FDS (0083, 20/11/2026).** El Cierre lo crea
+  Valentina a mano ("tema fechas es muy complejo"). Los Super FDS se dejaron
+  de hacer: su fila se ve hasta noviembre de 2026 (`bandasRetiradas` en
+  `lib/mundos.ts`) y ya no se ofrece para acciones nuevas; Lanzar FDS y Cierre
+  FDS (0078) se sacaron.
 - **Piezas de Redexpres:** Imprenta, Video monitores, Bases escribana y
   Afiche bombas se ofrecen solo en sus acciones (`mundos` en el catálogo).
 - **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),
