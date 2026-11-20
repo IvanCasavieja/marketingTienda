@@ -838,6 +838,24 @@ export default function AdminPage() {
     }
   }
 
+  // Eliminar una cuenta (Ivan, 20/11/2026). No se deshace: se pregunta con
+  // el nombre y se recuerda que desactivar alcanza si solo no tiene que entrar.
+  async function handleDeleteUser(user: AdminUser) {
+    const quien = user.full_name || user.email;
+    if (!confirm(
+      `¿Eliminar a ${quien}?\n\n` +
+      "Se borra la cuenta y no se puede deshacer. Lo que hizo (tareas, entregas, comentarios) queda, sin su nombre.\n\n" +
+      "Si solo querés que no entre más, desactivala.",
+    )) return;
+    try {
+      await api.delete(`/admin/users/${user.id}`);
+      setUsers((prev) => prev.filter((u) => u.id !== user.id));
+      toast.success(`Listo: ${quien} se eliminó.`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail ?? "No se pudo eliminar la cuenta");
+    }
+  }
+
   async function handleDeleteRole(role: RoleItem) {
     if (!confirm(t("admin.deleteRoleConfirm", { name: role.name }))) return;
     try {
@@ -1180,6 +1198,15 @@ export default function AdminPage() {
                   }`}>
                   {u.is_active ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
                 </button>
+
+                {/* Ni la propia ni la del Super Admin (lo mismo exige el servidor). */}
+                {!u.is_superuser && u.id !== yo?.id && (
+                  <button onClick={() => handleDeleteUser(u)}
+                    title="Eliminar la cuenta" aria-label={`Eliminar la cuenta de ${u.full_name || u.email}`}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all">
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
