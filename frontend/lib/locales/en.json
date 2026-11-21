@@ -80,6 +80,7 @@
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in...",
+    "wakingUp": "The server is waking up: the first time it can take up to a minute.",
     "wrongCredentials": "Incorrect email or password. After 5 failed attempts the account is locked for 15 minutes.",
     "tooManyAttempts": "Too many attempts from this connection. Wait a minute and try again.",
     "serverDown": "Can't reach the server. Try again in a moment.",

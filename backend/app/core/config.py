@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     # propone resumir o archivar. Nunca cambia lo que ya se decidió.
     CENEFAS_CURADURIA: bool = True
 
+    # Que el servidor no se duerma (21/11/2026, app/services/despierto.py):
+    # cada tantos minutos se pide a sí mismo /health por su dirección pública
+    # (Render lo duerme a los 15 sin pedidos de afuera; /health además toca la
+    # base, y así Supabase no pausa el proyecto). 0 = no. URL_PUBLICA: la
+    # dirección, si no es Render (Render la da sola en RENDER_EXTERNAL_URL).
+    MANTENER_DESPIERTO_MIN: int = 10
+    URL_PUBLICA: str = ""
+
     # Retención de archivos de cenefas (0 = desactivada). El PPTX de una
     # corrida SIN verificar se borra a los N días; el número de la corrida
     # queda para siempre, y el archivo de una corrida VERIFICADA también.

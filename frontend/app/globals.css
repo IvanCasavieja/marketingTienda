@@ -55,6 +55,14 @@
     transition-duration: .01ms !important;
     scroll-behavior: auto !important;
   }
+  /* Menos el circulito de carga: es lo único que dice "está trabajando". Con
+     las animaciones de Windows apagadas quedaba quieto y parecía colgado
+     (Ivan, 21/11/2026, en el login con el servidor dormido). Girar despacio
+     no es el movimiento que molesta. */
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 @layer components {

@@ -16,6 +16,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd]   = useState(false);
   const [loading, setLoading]   = useState(false);
+  // El servidor gratis se duerme: el primer pedido tarda hasta un minuto en
+  // contestar. Si tarda más de unos segundos, se dice por qué (21/11/2026).
+  const [despertando, setDespertando] = useState(false);
 
   const features = [
     { icon: BarChart3,   label: t("login.features.realtime"), desc: t("login.features.realtimeDesc") },
@@ -31,6 +34,7 @@ export default function LoginPage() {
     const emailVal    = (form.elements.namedItem("email")    as HTMLInputElement).value;
     const passwordVal = (form.elements.namedItem("password") as HTMLInputElement).value;
     setLoading(true);
+    const reloj = setTimeout(() => setDespertando(true), 4000);
     try {
       await authApi.login(emailVal, passwordVal);
       // Quien entra a más de un mundo primero elige en cuál va a trabajar.
@@ -64,6 +68,8 @@ export default function LoginPage() {
         toast.error(t("login.serverDown"));
       }
     } finally {
+      clearTimeout(reloj);
+      setDespertando(false);
       setLoading(false);
     }
   }
@@ -181,6 +187,11 @@ export default function LoginPage() {
                 ? <><Loader2 size={16} className="animate-spin" /> {t("login.signingIn")}</>
                 : t("login.signIn")}
             </button>
+            {despertando && (
+              <p role="status" className="text-center text-sm text-slate-600 dark:text-slate-300">
+                {t("login.wakingUp")}
+              </p>
+            )}
 
             <div className="text-center pt-1">
               <Link

@@ -183,10 +183,29 @@ async def lifespan(app: FastAPI):
         curaduria_task = asyncio.create_task(run_curaduria_loop())
         logger.info("cenefas_curaduria: loop iniciado (diario)")
 
+    # Que Render no lo duerma y Supabase no pause la base (21/11/2026): cada
+    # MANTENER_DESPIERTO_MIN minutos se pide /health a sí mismo por la
+    # dirección pública. Ver app/services/despierto.py.
+    despierto_task = None
+    if mantenimiento and settings.MANTENER_DESPIERTO_MIN > 0:
+        from app.services.despierto import direccion_publica, run_despierto_loop
+        direccion = direccion_publica(settings.URL_PUBLICA)
+        if direccion:
+            despierto_task = asyncio.create_task(run_despierto_loop(direccion, settings.MANTENER_DESPIERTO_MIN))
+        else:
+            logger.warning("despierto: sin RENDER_EXTERNAL_URL ni URL_PUBLICA, el servidor se puede dormir")
+
     # La retención de archivos de cenefas (purga) NO arranca acá: la lanza
     # _run_migrations cuando la base ya está migrada. Ver el comentario ahí.
 
     yield
+
+    if despierto_task:
+        despierto_task.cancel()
+        try:
+            await despierto_task
+        except asyncio.CancelledError:
+            pass
 
     if sync_task:
         sync_task.cancel()
