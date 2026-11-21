@@ -248,7 +248,8 @@ def ids_de_personas(valores: Iterable[Any]) -> list[int]:
 @dataclass
 class AvisosCopiados:
     filas: list[dict[str, Any]] = field(default_factory=list)
-    # Personas sacadas de algún aviso porque ya no pueden abrir el mundo.
+    # Personas sacadas de algún aviso porque ya no pueden abrir el mundo, o
+    # porque ahora son de una agencia (21/11/2026).
     destinatarios_quitados: int = 0
     # Avisos que se quedaron sin nadie y por eso no se copiaron.
     sin_nadie: int = 0
@@ -259,20 +260,30 @@ def copiar_avisos(
     destinatarios_validos: set[int], creado_por: int | None,
     hacer_id: Callable[[str], str] = nuevo_id,
     piezas_copiadas: dict[str, str] | None = None,
+    *, de_agencias: Iterable[int] = (),
 ) -> AvisosCopiados:
     """Los avisos, con los mismos días antes (el aviso guarda la anticipación,
     no la fecha: se corre solo con la acción). Quien ya no puede ver el mundo
     sale de la lista; un aviso que se queda sin nadie no se copia, porque no
     le llegaría a nadie (y al configurarlo a mano tampoco se puede).
 
+    `de_agencias`: las cuentas externas (Publicis, Another Monday,
+    Diseñadores... agencias de afuera de Tienda). Los avisos son internos: al
+    configurarlos no se puede elegir una, y a una que ya estaba no le salen
+    (calendario_avisos.puede_recibir_el_aviso). Pero quien estaba en un aviso
+    y después pasó a ser de una agencia sigue abriendo el mundo, y la copia
+    la dejaba en el aviso nuevo: ahora sale, y se cuenta con los demás que
+    salen (revisión del 19/11/2026, arreglado el 21/11/2026).
+
     Un aviso contado desde un envío (0084) pasa a contarse desde el envío de
     la copia: `piezas_copiadas` dice qué pieza nueva es cada vieja. Sin ella
     (o si el envío no se copió), se cuenta desde que arranca la acción."""
     piezas_copiadas = piezas_copiadas or {}
+    externas = set(de_agencias)
     out = AvisosCopiados()
     for a in avisos:
         pedidos = ids_de_personas(a.destinatarios)
-        quedan = [u for u in pedidos if u in destinatarios_validos]
+        quedan = [u for u in pedidos if u in destinatarios_validos and u not in externas]
         out.destinatarios_quitados += len(pedidos) - len(quedan)
         if not quedan:
             out.sin_nadie += 1

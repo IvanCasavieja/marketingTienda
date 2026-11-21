@@ -371,6 +371,21 @@ def test_un_aviso_que_se_queda_sin_nadie_no_se_copia():
     assert (copia.sin_nadie, copia.destinatarios_quitados) == (1, 1)
 
 
+def test_una_cuenta_de_una_agencia_sale_del_aviso():
+    """Revisión del 19/11/2026: los avisos son internos (al configurarlos no se
+    puede elegir una cuenta externa), pero quien estaba en uno y después pasó
+    a ser de una agencia (8, de Diseñadores, una agencia externa) se copiaba
+    en el aviso de la acción nueva aunque todavía abra el mundo. Sale, y se
+    cuenta con los demás que salen; el aviso que se queda sin nadie no se
+    copia."""
+    copia = copiar_avisos(
+        [_aviso("a", destinatarios=(1, 8)), _aviso("b", destinatarios=(8,))], "br-2026", UN_ANIO, {1, 8}, 42,
+        de_agencias={8},
+    )
+    assert [f["destinatarios"] for f in copia.filas] == [[1]]
+    assert (copia.destinatarios_quitados, copia.sin_nadie) == (2, 1)
+
+
 def test_los_destinatarios_se_leen_con_cuidado():
     assert ids_de_personas([3, "4", 3, None, "x", 5.0]) == [3, 4, 5]
 

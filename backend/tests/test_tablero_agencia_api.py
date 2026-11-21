@@ -2915,6 +2915,40 @@ def test_copiar_la_accion_no_le_deja_una_tarea_de_tienda_a_alguien_de_una_agenci
     correr(prueba)
 
 
+def test_copiar_la_accion_saca_de_los_avisos_a_quien_ahora_es_de_una_agencia():
+    """Revisión del 19/11/2026: los avisos son internos (al configurarlos no
+    se puede elegir una cuenta externa), pero quien estaba en uno y después
+    pasó a ser de una agencia (Diseñadores, una agencia externa) seguía
+    abriendo el mundo y se copiaba en el aviso de la acción nueva. Ahora sale,
+    y la respuesta lo cuenta con los demás que salen de los avisos. El aviso
+    que se queda sin nadie no se copia."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        for aviso_id, destinatarios in ((f"av-cx1-{d.sufijo}", [d.aprob2.id, d.lucia.id]),
+                                        (f"av-cx2-{d.sufijo}", [d.aprob2.id])):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/avisos", json={
+                "id": aviso_id, "diasAntes": 10, "destinatarios": destinatarios})
+            assert r.status_code == 201, r.text
+        # La persona de los avisos se pasa a Diseñadores: sigue abriendo el mundo.
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Diseñadores"})
+        assert r.status_code == 200, r.text
+
+        copia = f"br-cav-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        assert (r.json()["destinatariosQuitados"], r.json()["avisosSinNadie"]) == (2, 1), r.json()
+        assert r.json()["copiadas"]["avisos"] == 1
+        async with d.Sesion() as s:
+            avisos = (await s.execute(select(CalendarioAviso).where(CalendarioAviso.barra_id == copia))).scalars().all()
+        assert [a.destinatarios for a in avisos] == [[d.lucia.id]]
+        # Los de la acción original quedan como estaban: la copia no los toca.
+        async with d.Sesion() as s:
+            original = await s.get(CalendarioAviso, f"av-cx1-{d.sufijo}")
+        assert original.destinatarios == [d.aprob2.id, d.lucia.id]
+    correr(prueba)
+
+
 # ---------------------------------------------------------------------------
 # Mi agenda (0074): el calendario de cada persona, solo para ella
 # ---------------------------------------------------------------------------
