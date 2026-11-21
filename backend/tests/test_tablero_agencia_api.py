@@ -1850,7 +1850,10 @@ def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
     """Revisión del 19/11/2026: mandarle a la base un ZIP de 40 MB arma copias
     en memoria (unos 120 MB más), y dos entregas grandes a la vez no entran en
     los 512 MB del servidor. El INSERT del ZIP sale con el semáforo tomado, y
-    adentro no pasa nada más (no espera candados de la base: no se traba)."""
+    adentro no pasa nada más (no espera candados de la base: no se traba).
+    Desde el 21/11/2026 también va adentro, justo antes, el control del tope
+    (ver test_dos_entregas_con_zip_a_la_vez_no_pasan_el_tope_de_los_zip): dos
+    lecturas, que tampoco esperan candados."""
     from sqlalchemy import event
     from sqlalchemy.engine import Engine
 
@@ -1892,7 +1895,13 @@ def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
         correr(prueba)
     finally:
         event.remove(Engine, "before_cursor_execute", anotar)
-    assert adentro == ["INSERT INTO calendario_version_zips"]
+    assert adentro == [
+        "SELECT coalesce(sum(calendario_version_zips.tamano), $1::INTEGER)",  # el tope de los ZIP
+        "SELECT pg_database_size(current_database())",                        # y el de la base
+        "INSERT INTO calendario_version_zips",
+    ]
+    # Lo que reservó la entrega para el tope se soltó al confirmarla.
+    assert rutas_de_entregas._zips_sin_confirmar == 0
 
 
 def test_un_zip_con_solo_un_pdf_alcanza_y_sus_paginas_se_ven_y_se_marcan(monkeypatch):
@@ -2040,6 +2049,137 @@ def test_con_el_tope_de_los_zip_lleno_no_se_guarda_la_entrega_sigue_y_no_se_borr
         assert (await lider.get(f"/calendario/versiones/{v3}/zip")).content == segundo
         assert await _zips_guardados(d) == ocupado + len(segundo)
     correr(prueba)
+
+
+def test_dos_entregas_con_zip_a_la_vez_no_pasan_el_tope_de_los_zip(monkeypatch):
+    """Revisión del 19/11/2026: dos entregas con un ZIP grande casi a la vez
+    pasaban las dos el control del tope (ZIP_TOPE_MB) antes de que ninguna
+    guardara, y lo dejaban pasado por hasta 40 MB. Con lugar para uno solo,
+    entra uno solo: el control va adentro del candado con el que se guarda
+    el ZIP de a uno, y cuenta también el ZIP que otra entrega ya mandó y
+    todavía no confirmó (arreglado el 21/11/2026).
+
+    Esta corre como el servidor: cada pedido con su conexión y su
+    transacción, confirmada de verdad (otra entrega no ve lo que esta no
+    confirmó). Lo que crea lo borra al final."""
+    from sqlalchemy import delete, text
+
+    from app.core.config import settings
+    from app.models.audit_log import AuditLog
+
+    _espiar_la_ia(monkeypatch)
+    # Que las dos lleguen al control antes de que alguna guarde, si pueden
+    # (hasta un segundo): con el control afuera del candado, llegaban las dos
+    # y entraban las dos. Adentro, la segunda espera su turno.
+    control = rutas_de_entregas._hay_lugar_para_el_zip
+    llegaron: list[int] = []
+
+    async def a_la_vez(db, peso, bytes_imagenes):
+        llegaron.append(peso)
+        for _ in range(100):
+            if len(llegaron) >= 2:
+                break
+            await asyncio.sleep(0.01)
+        return await control(db, peso, bytes_imagenes)
+
+    monkeypatch.setattr(rutas_de_entregas, "_hay_lugar_para_el_zip", a_la_vez)
+
+    async def prueba():
+        engine = create_async_engine(URL, poolclass=NullPool, connect_args={"statement_cache_size": 0})
+        Sesion = async_sessionmaker(engine, expire_on_commit=False)
+
+        async def get_db_de_prueba():
+            async with Sesion() as s:
+                try:
+                    yield s
+                    await s.commit()
+                except Exception:
+                    await s.rollback()
+                    raise
+
+        app.dependency_overrides[get_db] = get_db_de_prueba
+        limite_antes = limiter.enabled
+        limiter.enabled = False
+        d = None
+        try:
+            async with Sesion() as s:
+                d = await _sembrar(s)
+                await s.commit()
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://prueba") as http:
+                d.http, d.Sesion = http, Sesion
+                uno, _ = await _pedir_banners(d, d.lider)
+                otro, _ = await _pedir_banners(d, d.lider)
+                mb = 1024 * 1024
+                async with Sesion() as s:
+                    tamano = (await s.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+                # La base, con lugar de sobra: lo que frena es el tope de los ZIP.
+                monkeypatch.setattr(settings, "BASE_TOPE_MB", -(-tamano // mb) + 200)
+                zip_ = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad(), "fuente.otf": os.urandom(3 * mb)})
+                ocupado = await _zips_guardados(d)
+                # Lugar para uno solo.
+                monkeypatch.setattr(settings, "ZIP_TOPE_MB", -(-(ocupado + len(zip_)) // mb))
+                assert ocupado + 2 * len(zip_) > settings.ZIP_TOPE_MB * mb
+
+                a1 = Cliente(http, d.a1)
+                r1, r2 = await asyncio.gather(
+                    _entregar(a1, uno, f"ve-par1-{d.sufijo}", imagenes=1, zip_=("uno.zip", zip_), ya_subidas="[0]"),
+                    _entregar(a1, otro, f"ve-par2-{d.sufijo}", imagenes=1, zip_=("otro.zip", zip_), ya_subidas="[0]"),
+                )
+                assert r1.status_code == 201 and r2.status_code == 201, (r1.text, r2.text)
+                assert len(llegaron) == 2
+                # Entra uno solo; el otro hace la entrega igual, sin guardar el ZIP.
+                assert sorted([r1.json()["zip"]["guardado"], r2.json()["zip"]["guardado"]]) == [False, True]
+                assert await _zips_guardados(d) == ocupado + len(zip_) <= settings.ZIP_TOPE_MB * mb
+                # Confirmadas las dos, no queda nada reservado.
+                assert rutas_de_entregas._zips_sin_confirmar == 0
+        finally:
+            limiter.enabled = limite_antes
+            app.dependency_overrides.pop(get_db, None)
+            if d is not None:
+                # Lo que se creó: las acciones (con sus tareas, entregas,
+                # versiones y ZIP, en cascada) y las cuentas (con sus avisos).
+                personas = [u.id for u in (d.promo, d.lucia, d.lider, d.aprob2, d.limitado, d.sin_cal,
+                                           d.a1, d.a2, d.b1)]
+                async with Sesion() as s:
+                    await s.execute(delete(CalendarioBarra).where(
+                        CalendarioBarra.id.in_([b.id for b in (d.ciber, d.ahora, d.viejo, d.lejos)])))
+                    await s.execute(delete(AuditLog).where(AuditLog.user_id.in_(personas)))
+                    await s.execute(delete(User).where(User.id.in_(personas)))
+                    await s.commit()
+            await engine.dispose()
+
+    asyncio.run(prueba())
+
+
+def test_si_la_entrega_no_se_confirma_su_zip_deja_de_contar_para_el_tope(monkeypatch):
+    """Lo que un ZIP reserva en el tope mientras la entrega no se confirma
+    (`_zips_sin_confirmar`) se suelta también si la entrega falla: si no, el
+    tope se iría llenando de ZIP que nunca quedaron guardados."""
+    class Base:
+        def add(self, fila):
+            self.fila = fila
+
+        async def flush(self):
+            pass
+
+    async def hay_lugar(db, peso, bytes_imagenes):
+        return True
+
+    monkeypatch.setattr(rutas_de_entregas, "_hay_lugar_para_el_zip", hay_lugar)
+
+    async def prueba():
+        base = Base()
+        with pytest.raises(RuntimeError):
+            async with rutas_de_entregas._guardar_el_zip(base, "ve-x", "x.zip", b"z" * 10, 0) as guardado:
+                assert guardado and rutas_de_entregas._zips_sin_confirmar == 10
+                raise RuntimeError("se cortó el commit")
+        assert rutas_de_entregas._zips_sin_confirmar == 0
+        assert base.fila.datos == b"z" * 10
+        # Sin ZIP no reserva nada ni toca la base.
+        async with rutas_de_entregas._guardar_el_zip(Base(), "ve-y", None, None, 0) as guardado:
+            assert guardado is False and rutas_de_entregas._zips_sin_confirmar == 0
+
+    asyncio.run(prueba())
 
 
 def test_con_la_base_llena_el_zip_no_se_guarda_la_entrega_sigue_y_no_se_borra_nada(monkeypatch, caplog):
