@@ -728,8 +728,9 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         tarea_id, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
         assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
 
+        # «Sí, pasarlas» (desde el 21/11/2026 el panel pregunta antes).
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
-            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         # La respuesta dice cuántas pasaron al nombre nuevo.
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 0)
@@ -982,8 +983,9 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
                 {"id": "t2", "titulo": "Retirar carteles", "ancla": "fin", "dias": 1},
             ]})
         assert r.status_code == 200, r.text
+        # «Sí, pasarlas» (desde el 21/11/2026 el panel pregunta antes).
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
-            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 1)
         async with d.Sesion() as s:
@@ -1015,9 +1017,10 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
     después vuelve. Eso se tomaba como «le corrigieron el nombre a la
     agencia»: se llevaba a Publicis todas las tarjetas y las plantillas de
     Diseñadores, y al volver se traía las de Publicis. Un tablero no se
-    renombra: cada tarjeta y cada plantilla se queda en el suyo. Corregir el
-    nombre de una agencia que no es un tablero («Publisis» -> «Publicis») las
-    sigue pasando, y la respuesta dice cuántas."""
+    renombra: cada tarjeta y cada plantilla se queda en el suyo, aunque se
+    pida pasarlas. Corregir el nombre de una agencia que no es un tablero
+    («Publisis» -> «Publicis») las sigue pasando si se pide (desde el
+    21/11/2026 el panel pregunta antes), y la respuesta dice cuántas."""
     async def prueba(d):
         lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
         fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
@@ -1043,9 +1046,10 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
                 tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
             assert [t["agencia"] for t in tareas] == ["Diseñadores", "Publicis"]
 
-        # Ida y vuelta.
+        # Ida y vuelta, aunque se pida pasarlas.
         for empresa in ("Publicis", "Diseñadores"):
-            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": empresa})
+            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+                "es_externo": True, "empresa": empresa, "pasar_tarjetas": True})
             assert r.status_code == 200, r.text
             assert r.json()["empresa"] == empresa
             assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
@@ -1059,13 +1063,15 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
         async with d.Sesion() as s:
             (await s.get(User, fer.id)).empresa = "DISENADORES"
             await s.commit()
-        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": "Another Monday"})
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+            "es_externo": True, "empresa": "Another Monday", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
         await cada_una_en_su_tablero()
 
         # «Publisis» no es un tablero: es Publicis mal escrito. Su única
-        # cuenta pasa a Publicis y se lleva su tarjeta y su plantilla.
+        # cuenta pasa a Publicis y, si se pide («Sí, pasarlas»), se lleva su
+        # tarjeta y su plantilla.
         publisis = await _persona(d, "Pato Publisis", externo=True, empresa=f"Publisis {d.sufijo}")
         mal_escrita = f"ta-vm-{d.sufijo}"
         r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
@@ -1076,13 +1082,101 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
                 {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}",
                  "ancla": "inicio", "dias": -3}]})
         assert r.status_code == 200, r.text
-        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={
+            "es_externo": True, "empresa": "Publicis", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
         async with d.Sesion() as s:
             assert (await s.get(CalendarioTarea, mal_escrita)).agencia == "Publicis"
             assert (await s.get(CalendarioPlantilla, f"{plantilla}-m")).tareas[0]["agencia"] == "Publicis"
         await cada_una_en_su_tablero()
+    correr(prueba)
+
+
+def test_cambiar_de_agencia_a_la_unica_cuenta_no_se_lleva_nada_si_no_se_pide():
+    """Revisión del 19/11/2026: Bruno es la única cuenta de «Estudio Sur» (una
+    agencia que no es un tablero) y se lo pasa a Publicis porque se eligió mal
+    en la lista. Eso se tomaba como «le corrigieron el nombre a la agencia»:
+    se llevaba a Publicis las tarjetas y las plantillas de Estudio Sur sin
+    preguntar, y el panel avisaba después. Desde el 21/11/2026 pasan solo si
+    el pedido lo dice (`pasar_tarjetas`); el panel pregunta antes, con lo que
+    contesta GET /admin/users/{id}/pase-de-agencia. Los tres tableros siguen
+    sin pasar nada nunca."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        sur = f"Estudio Sur {d.sufijo}"
+        tarea_id, _ = await _pedir_banners(d, d.lider, agencia=sur)
+        plantilla = f"pl-pase-{d.sufijo}"
+        r = await lider.put(f"/calendario/plantillas/{plantilla}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": sur,
+                 "ancla": "inicio", "dias": -3}]})
+        assert r.status_code == 200, r.text
+
+        async def de_estudio_sur():
+            async with d.Sesion() as s:
+                return ((await s.get(CalendarioTarea, tarea_id)).agencia,
+                        (await s.get(CalendarioPlantilla, plantilla)).tareas[0]["agencia"])
+
+        # Antes de guardar, el panel pregunta qué se llevaría: «Bruno es la
+        # única cuenta de «Estudio Sur», que tiene 1 tarjeta y 1 plantilla».
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": "publicis"})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"de": sur, "a": "Publicis", "tarjetas": 1, "plantillas": 1}
+
+        # «No, dejarlas en Estudio Sur»: sin la marca no pasa nada.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert r.json()["empresa"] == "Publicis"
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        assert await de_estudio_sur() == (sur, sur)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is None
+        # Fue un error: vuelve a Estudio Sur y lo de ahí sigue siendo suyo. A
+        # Publicis (un tablero) no se le lleva nada aunque se pida.
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": sur})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": sur, "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["empresa"], r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (sur, 0, 0)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+
+        # Cómo se escribe (sin tildes ni mayúsculas) no es otra agencia: nada que preguntar.
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": f"estudio súr {d.sufijo}"})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        # Pampa tiene dos cuentas: lo suyo se queda con la otra, nada que preguntar.
+        r = await promo.get(f"/admin/users/{d.a1.id}/pase-de-agencia", params={"empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+
+        # «Sí, pasarlas»: con la marca, pasan, y la respuesta dice cuántas.
+        nuevo = f"Estudio del Sur {d.sufijo}"
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": nuevo})
+        assert r.json() == {"de": sur, "a": nuevo, "tarjetas": 1, "plantillas": 1}
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": nuevo, "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
+        assert await de_estudio_sur() == (nuevo, nuevo)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+
+        # La única cuenta de un tablero (Diseñadores, una agencia externa):
+        # nada que preguntar, y aunque se pida no se lleva nada.
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        de_dis, _ = await _pedir_banners(d, d.lider, agencia="Diseñadores")
+        r = await promo.get(f"/admin/users/{fer.id}/pase-de-agencia", params={"empresa": "Another Monday"})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+            "es_externo": True, "empresa": "Another Monday", "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, de_dis)).agencia == "Diseñadores"
+
+        # Solo quien administra usuarios; y una cuenta que no existe, 404.
+        r = await Cliente(d.http, d.lucia).get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": "Publicis"})
+        assert r.status_code == 403
+        assert (await promo.get("/admin/users/999999999/pase-de-agencia", params={"empresa": "Publicis"})).status_code == 404
     correr(prueba)
 
 
