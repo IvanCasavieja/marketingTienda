@@ -2052,8 +2052,14 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
             assert "- Marca 1, en la imagen 2, abajo en el centro (50% del ancho, 90% del alto): Falta la tilde" in texto
             # La nota interna no va: es del equipo, no algo que se le pidió a la agencia.
             assert "comercial" not in texto
-            # La primera ronda no tiene nada antes.
-            assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+            # La primera ronda no tiene ronda antes: desde el 21/11/2026 lo que
+            # se controla es el pedido inicial (lo que dice la tarjeta), no
+            # una ronda anterior. Antes acá se esperaba None.
+            primera = (await revision_ia.cargar_version(s, v1))[0].ronda_anterior
+            assert primera.inicial and primera.miniaturas == ()
+            assert [(m.marca_id, m.texto) for m in primera.marcas] == [
+                ("pedido-1", "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"),
+                ("pedido-2", "CTA: Ver ofertas")]
             # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
             assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
             # Una que no está (la purga de antes del 19/11/2026 vació algunas)
@@ -2159,11 +2165,12 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         versiones = f"/calendario/tareas/{tarea_id}/versiones"
         v1, v2, v3 = (f"ve-cp{i}-{d.sufijo}" for i in (1, 2, 3))
 
-        # Primera ronda: no hay cambios pedidos que controlar; la IA ni se entera.
-        r = await a1.post(control, files=solo_imagenes)
-        assert r.status_code == 200 and r.json() == {"estado": "sin-pedido", "cambios": [], "controlId": None}, r.text
+        # Primera ronda, sin pasar por el control: corre la revisión de siempre.
+        # Hasta el 21/11/2026 acá el control decía 'sin-pedido'; ahora en la
+        # primera ronda controla el pedido inicial, y eso se prueba aparte
+        # (test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial).
         assert (await a1.post(versiones, data={"versionId": v1}, files=dos)).status_code == 201
-        assert en_segundo_plano == [v1]  # la revisión de siempre
+        assert en_segundo_plano == [v1]
         det = await _detalle(lider, tarea_id)
         im1, im2 = [i["id"] for i in det["fases"][0]["versiones"][0]["imagenes"]]
         r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
@@ -2179,7 +2186,7 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         r = await a1.post(control, data={"comentario": "Corregí la tilde"}, files=solo_imagenes)
         assert r.status_code == 200, r.text
         cuerpo = r.json()
-        assert cuerpo["estado"] == "listo" and cuerpo["controlId"]
+        assert cuerpo["estado"] == "listo" and cuerpo["controlId"] and cuerpo["inicial"] is False
         assert cuerpo["cambios"] == [
             {"numero": 1, "texto": "Falta la tilde en «Válido»", "veredicto": "falta",
              "nota": "Sigue diciendo «Valido», sin tilde."},
@@ -2230,7 +2237,8 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         # Si la IA falla (acá, se niega), 'no-disponible' y queda anotado.
         api.respuestas.append(sim.mensaje([sim.texto("")], stop_reason="refusal", entrada=900, salida=10))
         r = await a1.post(control, files=solo_imagenes)
-        assert r.status_code == 200 and r.json() == {"estado": "no-disponible", "cambios": [], "controlId": None}, r.text
+        assert r.status_code == 200 and r.json() == {
+            "estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False}, r.text
         async with d.Sesion() as s:
             # Todo corre en una transacción: created_at es igual en todas; se
             # busca por descarte de los dos de antes.
@@ -2297,6 +2305,113 @@ def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
     correr(prueba)
 
 
+def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
+    """Ivan (21/11/2026): "No lo hace en la primera entrega, eso está mal. La
+    primera entrega debería compararse contra lo pedido inicialmente". Con la
+    base de verdad y la IA simulada (la del servidor de prueba: el punto 1
+    hecho, el 2 falta, el resto dudoso): antes de mandar la primera ronda, la
+    agencia ve punto por punto lo que dice la tarjeta; si entrega esas mismas
+    imágenes, la revisión del aprobador sale de ahí sin otra llamada, y quien
+    aprueba no ve los puntos (no son marcas). La fase que se abre devolviendo
+    la pieza aprobada controla primero lo que se pidió cambiar. Con el pedido
+    vacío, 'sin-pedido' y la IA ni se entera."""
+    import json
+
+    import ia_simulada as sim
+
+    from app.core.config import settings
+    from app.models.revision_ia import CalendarioControlPrevio
+    from app.services import ia_cliente, revision_ia
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+    monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+    en_segundo_plano = []
+
+    async def espia(version_id, **kw):
+        en_segundo_plano.append(version_id)
+
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    simulador, pedidos = sim.SimuladorDeDonTino(), []
+
+    def responder(cuerpo):
+        pedidos.append(cuerpo)
+        return simulador(cuerpo)
+
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: sim.cliente_con(responder))
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        # Una tarjeta del tablero: lo tildado con sus medidas, el CTA y la descripción.
+        tarea_id, _ = await _pedir_banners(d, d.lider, opciones=["Header", "Checkout"],
+                                           descripcion="Que se vea bien el logo.\n- Fondo rojo")
+        imagenes = [("imagenes", ("i.jpg", _jpeg_de_verdad(1600, 347), "image/jpeg")),
+                    ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 14), "image/jpeg"))]
+        solo = [imagenes[0]]
+        control = f"/calendario/tareas/{tarea_id}/control-previo"
+        v1 = f"ve-pi1-{d.sufijo}"
+        cabecera = "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"
+
+        # Antes de mandar la primera ronda: punto por punto, lo que dice la tarjeta.
+        r = await a1.post(control, files=solo)
+        assert r.status_code == 200, r.text
+        cuerpo = r.json()
+        assert cuerpo["estado"] == "listo" and cuerpo["inicial"] is True and cuerpo["controlId"]
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in cuerpo["cambios"]] == [
+            (1, cabecera, "hecho"), (2, "CTA: Ver ofertas", "falta"),
+            (3, "Que se vea bien el logo.", "dudoso"), (4, "Fondo rojo", "dudoso"),
+        ]
+        assert cuerpo["cambios"][1]["nota"] == "No se ve en la pieza."
+        # A la agencia, solo eso: la observación de ortografía es del equipo.
+        assert "OFERTA" not in json.dumps(cuerpo, ensure_ascii=False)
+        assert len(pedidos) == 1
+        texto = pedidos[0]["messages"][0]["content"][-1]["text"]
+        assert "Es la primera entrega" in texto and "- Punto 2: CTA: Ver ofertas" in texto and "- Marca" not in texto
+
+        # Entrega esas mismas: la revisión sale del control, sin otra llamada.
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=imagenes)
+        assert r.status_code == 201, r.text
+        assert en_segundo_plano == [] and len(pedidos) == 1
+        r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
+        assert r.status_code == 200, r.text
+        revision = r.json()
+        assert revision["estado"] == "lista" and [o["tipo"] for o in revision["observaciones"]] == ["ortografia"]
+        # Quien aprueba no ve los puntos: no son marcas, su pantalla no cambia.
+        assert revision["cambiosPedidos"] == []
+        assert (await a1.get(f"/calendario/versiones/{v1}/revision-ia")).status_code == 403
+        async with d.Sesion() as s:
+            # Quedan guardados con la revisión.
+            assert [(c["marcaId"], c["veredicto"]) for c in (await s.get(CalendarioRevisionIA, v1)).cambios_pedidos] == [
+                ("pedido-1", "hecho"), ("pedido-2", "falta"), ("pedido-3", "dudoso"), ("pedido-4", "dudoso")]
+            assert (await s.get(CalendarioControlPrevio, cuerpo["controlId"])).usado_en_version_id == v1
+            # La revisión de siempre (si no se hubiera reusado) controla lo mismo.
+            contexto, _ = await revision_ia.cargar_version(s, v1)
+            assert contexto.ronda_anterior.inicial
+            assert [m.texto for m in contexto.ronda_anterior.marcas] == [c["texto"] for c in cuerpo["cambios"]]
+
+        # Se aprueba y se devuelve con lo que hay que cambiar (17/11/2026): se
+        # abre otra fase, y su primera entrega controla primero eso.
+        assert (await _decidir(lider, v1, "aprobada")).status_code == 200
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver",
+                             json={"comentario": "- Fondo verde\n- Sacar el logo viejo"})
+        assert r.status_code == 200, r.text
+        r = await a1.post(control, files=solo)
+        assert r.status_code == 200 and r.json()["estado"] == "listo" and r.json()["inicial"] is True, r.text
+        assert [c["texto"] for c in r.json()["cambios"]][:3] == ["Fondo verde", "Sacar el logo viejo", cabecera]
+        assert len(pedidos) == 2
+
+        # Con el pedido vacío no hay nada que controlar: 'sin-pedido', sin llamar a la IA.
+        otra, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{otra}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        r = await a1.post(f"/calendario/tareas/{otra}/control-previo", files=solo)
+        assert r.status_code == 200 and r.json() == {
+            "estado": "sin-pedido", "cambios": [], "controlId": None, "inicial": False}, r.text
+        assert len(pedidos) == 2
+    correr(prueba)
+
+
 def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
     """Revisión del 19/11/2026: lo que se pidió cuenta solo dentro de la misma
     fase. El Boceto vuelve con cambios y una marca, su ronda 2 se aprueba y
@@ -2327,7 +2442,9 @@ def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
         assert (await _entregar(a1, tarea_id, b2, imagenes=1)).status_code == 201
         assert (await _decidir(lider, b2, "aprobada")).status_code == 200
 
-        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que controlar.
+        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que
+        # controlar: el pedido quedó vacío al configurar las fases (con un
+        # pedido cargado, sería el pedido inicial, 21/11/2026).
         assert (await _entregar(a1, tarea_id, f1, imagenes=1, color="black")).status_code == 201
         async with d.Sesion() as s:
             contexto, _ = await revision_ia.cargar_version(s, f1)

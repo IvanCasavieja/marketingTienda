@@ -365,12 +365,20 @@ class SimuladorDeDonTino:
         """Lo que dice de cada marca pedida en la ronda anterior (19/11/2026),
         DE EJEMPLO: no mira la imagen. La primera, hecha; la segunda, que
         falta; las demás, dudosas. Así se ven las tres en la pantalla de quien
-        aprueba. Sin cambios pedidos (una primera ronda), la lista va vacía."""
+        aprueba. Sin cambios pedidos, la lista va vacía. En la primera entrega
+        (21/11/2026) hace lo mismo con cada punto del pedido inicial ("-
+        Punto N:"), con otras notas; y también con los pedidos del
+        comentario ("- Marca N (pedida en el comentario…"), que antes se
+        salteaba."""
         bloque = re.search(r"<cambios_pedidos>\n(.*?)\n</cambios_pedidos>", pedido, re.S)
         if not bloque:
             return []
-        ejemplos = [("hecho", "Se ve el cambio que se pidió."), ("falta", "Sigue igual que en la ronda anterior."),
-                    ("dudoso", "No se llega a ver si se cambió.")]
-        numeros = [int(n) for n in re.findall(r"^- Marca (\d+),", bloque.group(1), re.M)]
+        if bloque.group(1).startswith("Es la primera entrega"):
+            ejemplos = [("hecho", "Se ve cumplido lo que se pidió."), ("falta", "No se ve en la pieza."),
+                        ("dudoso", "No se llega a ver si está.")]
+        else:
+            ejemplos = [("hecho", "Se ve el cambio que se pidió."), ("falta", "Sigue igual que en la ronda anterior."),
+                        ("dudoso", "No se llega a ver si se cambió.")]
+        numeros = [int(n) for n in re.findall(r"^- (?:Marca|Punto) (\d+)\b", bloque.group(1), re.M)]
         return [{"numero": n, "veredicto": ejemplos[min(i, 2)][0], "nota": ejemplos[min(i, 2)][1]}
                 for i, n in enumerate(numeros)]

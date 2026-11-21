@@ -4,7 +4,8 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
-  POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ven hechos los cambios pedidos? (la IA)
+  POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ve hecho lo pedido? (la IA; los cambios
+                                                  o, en la primera ronda, el pedido inicial)
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
@@ -964,16 +965,20 @@ async def control_previo(
 ):
     """Antes de entregar, la IA mira si se hicieron los cambios pedidos (Ivan,
     20/11/2026: "que a la agencia, cuando va a subir los archivos, la IA le
-    diga 'che, pará, acá faltan estas cositas de los cambios'").
+    diga 'che, pará, acá faltan estas cositas de los cambios'") o, en la
+    primera ronda de la fase, si la pieza cumple el pedido inicial (Ivan,
+    21/11/2026: "La primera entrega debería compararse contra lo pedido
+    inicialmente").
 
     Recibe las mismas imágenes que se van a entregar (sin las miniaturas: no
     se guarda nada de ellas) y no crea ninguna versión. Contesta
-    {estado, cambios, controlId}: 'sin-pedido' si no hay una ronda anterior
-    de la fase en curso que haya vuelto con marcas (o si ahora no se podría
-    entregar: eso lo dice la entrega), 'listo' con cada marca pedida
-    [{numero, texto, veredicto, nota}], o 'no-disponible' (sin IA, tope,
-    falla, demora): la pantalla manda igual. Nunca traba la entrega. Solo
-    quien la hace (`puede_entregar`). Ver
+    {estado, cambios, controlId, inicial}: 'sin-pedido' si no hay nada que
+    controlar (la primera ronda con el pedido vacío, o la anterior volvió sin
+    marcas ni comentario; o si ahora no se podría entregar: eso lo dice la
+    entrega), 'listo' con cada marca o punto pedido [{numero, texto,
+    veredicto, nota}], o 'no-disponible' (sin IA, tope, falla, demora): la
+    pantalla manda igual. `inicial`: si lo controlado es el pedido inicial.
+    Nunca traba la entrega. Solo quien la hace (`puede_entregar`). Ver
     revision_ia.controlar_antes_de_entregar."""
     imagenes = imagenes or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
@@ -1193,7 +1198,8 @@ async def entregar(
     await reglas.recalcular(db, entrega, tarea)
     # Si la IA ya miró exactamente estas imágenes en el control previo (Ivan,
     # 20/11/2026), la revisión de la versión sale de ahí y no se le paga dos
-    # veces. Con link o ZIP no: eso lo mira al entregar.
+    # veces; desde el 21/11/2026, también en la primera ronda (el control del
+    # pedido inicial). Con link o ZIP no: eso lo mira al entregar.
     del_control = bool(leidas) and await revision_ia.reusar_control(
         db, tarea_id=tarea_id, usuario_id=current_user.id, fase_id=fase.id, ronda=ronda,
         huella=revision_ia.huella_de([g for g, _, _, _ in leidas]), con_link=bool(link_ok),
