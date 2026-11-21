@@ -3,20 +3,26 @@
  * cuando va a subir los archivos, la IA le diga 'che, pará, acá faltan estas
  * cositas de los cambios'").
  *
- * En una ronda que vuelve después de un pedido de cambios, al tocar
- * "Entregar" el navegador manda primero las mismas imágenes a
+ * Al tocar "Entregar" con imágenes, el navegador manda primero esas mismas a
  * POST /calendario/tareas/{id}/control-previo. Si la IA ve algo que falta (o
  * que no se ve claro), se le muestra a quien entrega, que elige "Corregir" o
  * "Mandar igual"; si no, se manda solo. Nunca traba: si la IA no está o
- * tarda, se manda igual. A la agencia le llega solo lo de los cambios
- * pedidos (ver app/services/revision_ia.py, controlar_antes_de_entregar).
+ * tarda, se manda igual. A la agencia le llega solo lo de lo pedido (ver
+ * app/services/revision_ia.py, controlar_antes_de_entregar).
+ *
+ * Hasta el 21/11/2026 era solo en una ronda que volvía con cambios. Ivan: "No
+ * lo hace en la primera entrega, eso está mal. La primera entrega debería
+ * compararse contra lo pedido inicialmente". Ahora se pregunta siempre que
+ * haya imágenes: en la primera ronda de la fase la IA mira el pedido inicial
+ * (`inicial`), en las que vuelven, los cambios pedidos. Si no hay nada que
+ * controlar, el servidor contesta 'sin-pedido' sin llamar a la IA.
  */
 
 export type VeredictoIA = 'hecho' | 'falta' | 'dudoso'
 
 export type CambioControlado = {
   numero: number
-  /** Lo que se pidió en la marca. */
+  /** Lo que se pidió en la marca (o el punto del pedido inicial). */
   texto: string
   veredicto: VeredictoIA
   /** Lo que vio la IA, en una frase. */
@@ -27,6 +33,8 @@ export type ControlPrevio = {
   estado: 'sin-pedido' | 'listo' | 'no-disponible'
   cambios: CambioControlado[]
   controlId: string | null
+  /** Si lo controlado es el pedido inicial (la primera entrega de la fase). */
+  inicial?: boolean
 }
 
 export const ETIQUETA_DEL_VEREDICTO: Record<VeredictoIA, string> = {
@@ -35,10 +43,23 @@ export const ETIQUETA_DEL_VEREDICTO: Record<VeredictoIA, string> = {
   dudoso: 'No se ve claro',
 }
 
-/** Si antes de mandar hay que preguntarle a la IA: solo en una ronda que
- *  volvió con cambios y con imágenes para mirar. Pura. */
-export function hayQueControlar(volvioConCambios: boolean, imagenes: number): boolean {
-  return volvioConCambios && imagenes > 0
+/** Si antes de mandar hay que preguntarle a la IA: siempre que haya imágenes
+ *  para mirar, también en la primera entrega (21/11/2026). Si no hay nada
+ *  que controlar, el servidor contesta 'sin-pedido' y se manda. Pura. */
+export function hayQueControlar(imagenes: number): boolean {
+  return imagenes > 0
+}
+
+/** Lo que dice la pantalla mientras la IA mira y si ve que falta algo: en la
+ *  primera entrega de la fase, del pedido inicial; en una ronda que volvió,
+ *  de los cambios pedidos (los textos de antes del 21/11/2026). Pura. */
+export function textosDelControl(inicial: boolean): { mirando: string; falta: string } {
+  return inicial
+    ? { mirando: 'La IA está mirando si la pieza cumple lo que se pidió…', falta: 'Ojo: parece que falta algo del pedido' }
+    : {
+        mirando: 'La IA está mirando si se hicieron los cambios que se pidieron…',
+        falta: 'Ojo: parece que falta algo de lo que se pidió',
+      }
 }
 
 /** Lo que hay que avisarle a quien entrega antes de mandar: lo que falta

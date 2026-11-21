@@ -3,7 +3,7 @@
  *
  *     npm run test:calendario
  */
-import { hayQueControlar, mismasImagenes, paraAvisar, type ControlPrevio } from './control-previo'
+import { hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type ControlPrevio } from './control-previo'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -13,9 +13,20 @@ function igual<T>(nombre: string, obtenido: T, esperado: T) {
 }
 
 console.log('Cuándo se pregunta')
-igual('una ronda que volvió con cambios e imágenes', hayQueControlar(true, 2), true)
-igual('una primera ronda, no', hayQueControlar(false, 2), false)
-igual('solo con un link, no (no hay imágenes que mirar)', hayQueControlar(true, 0), false)
+// Desde el 21/11/2026 también en la primera entrega (Ivan: "No lo hace en la
+// primera entrega, eso está mal"): siempre que haya imágenes. Si no hay nada
+// que controlar, el servidor contesta 'sin-pedido' y se manda.
+igual('con imágenes, sí (la primera entrega o una ronda que volvió)', hayQueControlar(2), true)
+igual('solo con un link, no (no hay imágenes que mirar)', hayQueControlar(0), false)
+
+console.log('Qué dice la pantalla')
+igual('en la primera entrega, mientras mira: el pedido', textosDelControl(true).mirando,
+  'La IA está mirando si la pieza cumple lo que se pidió…')
+igual('en la primera entrega, si falta algo', textosDelControl(true).falta, 'Ojo: parece que falta algo del pedido')
+igual('en una ronda que volvió, mientras mira: los cambios (como antes)', textosDelControl(false).mirando,
+  'La IA está mirando si se hicieron los cambios que se pidieron…')
+igual('en una ronda que volvió, si falta algo (como antes)', textosDelControl(false).falta,
+  'Ojo: parece que falta algo de lo que se pidió')
 
 console.log('Qué se le avisa')
 const control = (cambios: ControlPrevio['cambios'], estado: ControlPrevio['estado'] = 'listo'): ControlPrevio =>
@@ -26,6 +37,8 @@ igual('lo que falta primero, después lo dudoso, en el orden de las marcas',
 igual('todo hecho: nada (se manda solo)', paraAvisar(control([c(1, 'hecho'), c(2, 'hecho')])), [])
 igual('sin pedido: nada', paraAvisar(control([], 'sin-pedido')), [])
 igual('si la IA no estuvo: nada (se manda igual)', paraAvisar(control([c(1, 'falta')], 'no-disponible')), [])
+igual('del pedido inicial: igual, punto por punto',
+  paraAvisar({ ...control([c(1, 'hecho'), c(2, 'falta'), c(3, 'dudoso')]), inicial: true }).map(x => x.numero), [2, 3])
 igual('sin respuesta: nada', paraAvisar(null), [])
 
 console.log('Las mismas imágenes')
