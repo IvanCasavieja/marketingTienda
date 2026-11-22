@@ -18,7 +18,8 @@
 //
 // Si falta algo, el formulario de entrega lo avisa antes de mandar (con lo
 // que vea la IA, si vio algo) y deja escribir por qué; lo que falta y el
-// porqué viajan con la ronda y los ven quien aprueba y la agencia.
+// porqué viajan con la ronda y los ven quien aprueba y la agencia. Cómo se
+// muestra, abajo (los chips, desde el 21/11/2026).
 //
 // Este archivo es puro (sin React ni '@/') a propósito: se prueba con
 // piezas.test.ts.
@@ -91,25 +92,72 @@ export function faltanEnLaEntrega(
   return piezasQueFaltan(piezas, imagenes as Medidas[])
 }
 
-/** El título del aviso antes de mandar: «Faltan estas piezas del pedido:
- *  Header (mobile) 640×260, Checkout 412×157». Pura. */
-export function tituloDeLoQueFalta(faltan: readonly Pieza[]): string {
-  const lista = faltan.map(textoDePieza).join(', ')
-  return faltan.length === 1 ? `Falta esta pieza del pedido: ${lista}` : `Faltan estas piezas del pedido: ${lista}`
+// ---------------------------------------------------------------------------
+// Cómo se muestra (21/11/2026)
+// ---------------------------------------------------------------------------
+// Ivan: "las correcciones de la IA están súper mezcladas, no tiene un formato
+// bonito de ver ni nada". Antes, lo que faltaba iba en un renglón con todas
+// las piezas seguidas por comas («Faltan estas piezas del pedido: Header
+// (web) 1920×416, Slider fila (normal) (mobile) 640×260, …»), que con diez
+// piezas era un párrafo y en la ficha se salía de la pantalla. Ahora cada
+// pieza es un chip: en el aviso antes de mandar, con el nombre arriba y la
+// medida abajo; en la ficha y al revisar, solo el nombre (es lo que viaja con
+// la ronda). Si son muchas, se ven las primeras.
+
+/** La medida de una pieza, abajo de su nombre en el aviso: «1920×416». De las
+ *  de proporción importa solo eso, y ya está en el nombre («Redes 4:5»):
+ *  «cualquier tamaño». Pura. */
+export function medidaDePieza(p: Pieza): string {
+  return p.proporcion ? 'cualquier tamaño' : `${p.ancho}×${p.alto}`
 }
 
-/** La línea de la ronda, arriba al revisar y en su ficha: «Faltan 2 piezas
- *  del pedido: Header (mobile), Checkout · La agencia dice: «Es el KV, para
- *  aprobarlo antes»». `quien`: quién la entregó («La agencia» o, si la hace
- *  alguien de Tienda, su nombre). Null si no faltaba nada. Pura. */
-export function lineaDeLoQueFalta(
+/** Cuántas piezas se ven de entrada (Ivan: "si son más de 6, se ven 6 y «Ver
+ *  las otras 4»"). */
+export const PIEZAS_A_LA_VISTA = 6
+
+/**
+ * Las primeras de una lista larga y cuántas quedan para «Ver las otras N».
+ * Se corta solo si quedan afuera al menos dos: un botón para mostrar una sola
+ * ocupa lo mismo que mostrarla, así que con 7 se ven las 7. Pura.
+ */
+export function primeras<T>(lista: readonly T[], tope = PIEZAS_A_LA_VISTA): { vistas: T[]; resto: number } {
+  if (lista.length <= tope + 1) return { vistas: [...lista], resto: 0 }
+  return { vistas: lista.slice(0, tope), resto: lista.length - tope }
+}
+
+/** El subtítulo de las piezas en el aviso antes de mandar: «Piezas que
+ *  faltan», y al lado, en gris, la cantidad. Pura. */
+export function tituloDeLasPiezas(faltan: readonly Pieza[]): string {
+  return faltan.length === 1 ? 'Pieza que falta' : 'Piezas que faltan'
+}
+
+/** Lo que faltaba en una ronda, en su ficha y al revisarla. */
+export type LoQueFaltaba = {
+  /** «Faltan 10 piezas del pedido». */
+  titulo: string
+  /** Los nombres, como viajaron con la ronda («Header (web)»). */
+  piezas: string[]
+  /** Quién lo dice: «La agencia» o, si la hace alguien de Tienda, su nombre. */
+  quien: string
+  /** Por qué no iba todo, como lo escribió (null si no escribió nada). */
+  porQue: string | null
+}
+
+/** Lo que faltaba en una ronda: el título con la cantidad, las piezas y, en
+ *  otro renglón, por qué («La agencia dice: «Es el KV, para aprobarlo
+ *  antes»»). `quien`: quién la entregó. Null si no faltaba nada (o es una
+ *  ronda de antes del 21/11/2026). Pura. */
+export function loQueFaltaba(
   faltan: readonly string[] | null | undefined, porQue: string | null | undefined, quien = 'La agencia',
-): string | null {
+): LoQueFaltaba | null {
   if (!faltan?.length) return null
   const n = faltan.length
-  const que = `${n === 1 ? 'Falta 1 pieza' : `Faltan ${n} piezas`} del pedido: ${faltan.join(', ')}`
-  const dice = (porQue ?? '').trim()
-  return dice ? `${que} · ${quien} dice: «${dice}»` : que
+  return {
+    titulo: `${n === 1 ? 'Falta 1 pieza' : `Faltan ${n} piezas`} del pedido`,
+    piezas: [...faltan],
+    quien,
+    porQue: (porQue ?? '').trim() || null,
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -4,8 +4,8 @@
  *     npm run test:calendario
  */
 import {
-  cubre, faltanEnLaEntrega, lineaDeLoQueFalta, medidasDeImagen, piezasQueFaltan, textoDePieza, tituloDeLoQueFalta,
-  type Medidas, type Pieza,
+  PIEZAS_A_LA_VISTA, cubre, faltanEnLaEntrega, loQueFaltaba, medidaDePieza, medidasDeImagen, piezasQueFaltan, primeras,
+  textoDePieza, tituloDeLasPiezas, type Medidas, type Pieza,
 } from './piezas'
 import { jpegArmado, pngArmado, webpArmado } from './imagenes-de-prueba'
 
@@ -95,17 +95,34 @@ igual('un ZIP que acá no se lee: no se dice nada', faltanEnLaEntrega(banners, n
 igual('sin imágenes (solo el link o un PDF): no se dice nada', faltanEnLaEntrega(banners, []), [])
 igual('un servidor de antes (sin piezas): nada', [faltanEnLaEntrega(undefined, [im(1, 1)]), faltanEnLaEntrega(null, [im(1, 1)])], [[], []])
 
-console.log('\nLo que se dice')
-igual('el aviso, con las medidas', tituloDeLoQueFalta([headerMobile, checkout]),
-  'Faltan estas piezas del pedido: Header (mobile) 640×260, Checkout 412×157')
-igual('el aviso, de una', tituloDeLoQueFalta([checkout]), 'Falta esta pieza del pedido: Checkout 412×157')
-igual('la línea de la ronda, con lo que dice la agencia',
-  lineaDeLoQueFalta(['Header (mobile)', 'Checkout'], 'Es el KV, para aprobarlo antes'),
-  'Faltan 2 piezas del pedido: Header (mobile), Checkout · La agencia dice: «Es el KV, para aprobarlo antes»')
-igual('la línea, de una y sin porqué', lineaDeLoQueFalta(['Checkout'], '  '), 'Falta 1 pieza del pedido: Checkout')
-igual('la línea, si la hizo alguien de Tienda', lineaDeLoQueFalta(['Checkout'], 'Mañana', 'Lucía'),
-  'Falta 1 pieza del pedido: Checkout · Lucía dice: «Mañana»')
-igual('no faltaba nada (o es de antes): nada', [lineaDeLoQueFalta([], 'x'), lineaDeLoQueFalta(undefined, null)], [null, null])
+console.log('\nLo que se dice (los chips, 21/11/2026)')
+// Ivan: "las correcciones de la IA están súper mezcladas". Antes iba todo en
+// un renglón, seguido por comas; ahora cada pieza es un chip.
+igual('el subtítulo del aviso (la cantidad va aparte, en gris)',
+  [tituloDeLasPiezas([headerMobile, checkout]), tituloDeLasPiezas([checkout])], ['Piezas que faltan', 'Pieza que falta'])
+igual('la medida, abajo del nombre', [medidaDePieza(headerWeb), medidaDePieza(checkout)], ['1920×416', '412×157'])
+igual('las de proporción: la proporción ya está en el nombre', medidaDePieza(prop('Redes 4:5', 4, 5)), 'cualquier tamaño')
+// El pedido de la captura de Ivan: diez piezas que faltan.
+const diez = ['Header (web)', 'Slider fila (normal) (mobile)', 'Carrito', 'Checkout', 'Menú principal', 'Dobles (web)',
+  'Dobles (mobile)', 'Quíntuples', 'Séxtuples', 'Óctuples']
+igual('se ven 6', PIEZAS_A_LA_VISTA, 6)
+igual('con 10, las primeras 6 y «Ver las otras 4»', primeras(diez), { vistas: diez.slice(0, 6), resto: 4 })
+igual('con 8, las primeras 6 y «Ver las otras 2»', primeras(diez.slice(0, 8)).resto, 2)
+igual('con 7, las 7: un botón para una sola ocupa lo mismo que mostrarla', primeras(diez.slice(0, 7)),
+  { vistas: diez.slice(0, 7), resto: 0 })
+igual('con 6 o menos, todas', [primeras(diez.slice(0, 6)).resto, primeras(diez.slice(0, 1)).resto, primeras([]).resto], [0, 0, 0])
+igual('con otro tope', primeras(diez, 3), { vistas: diez.slice(0, 3), resto: 7 })
+const lista = ['Header (web)']
+primeras(lista).vistas.push('otra')
+igual('no toca la lista de entrada', lista, ['Header (web)'])
+igual('lo que faltaba en la ronda, con lo que dice la agencia aparte',
+  loQueFaltaba(['Header (mobile)', 'Checkout'], '  Es el KV, para aprobarlo antes '),
+  { titulo: 'Faltan 2 piezas del pedido', piezas: ['Header (mobile)', 'Checkout'], quien: 'La agencia',
+    porQue: 'Es el KV, para aprobarlo antes' })
+igual('de una y sin porqué', loQueFaltaba(['Checkout'], '  '),
+  { titulo: 'Falta 1 pieza del pedido', piezas: ['Checkout'], quien: 'La agencia', porQue: null })
+igual('si la hizo alguien de Tienda, lo dice esa persona', loQueFaltaba(['Checkout'], 'Mañana', 'Lucía')?.quien, 'Lucía')
+igual('no faltaba nada (o es de antes): nada', [loQueFaltaba([], 'x'), loQueFaltaba(undefined, null)], [null, null])
 
 console.log('\nEl tamaño, del encabezado')
 igual('JPG', medidasDeImagen(jpegArmado(1920, 416)), { ancho: 1920, alto: 416 })

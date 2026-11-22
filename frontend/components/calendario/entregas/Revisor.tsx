@@ -364,9 +364,6 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             <p className="text-sm text-slate-600 dark:text-slate-400">
               La subió {nombre(version.subidaPor)} · {fechaYHora(version.fecha)}
             </p>
-            {/* Las piezas del pedido que no vinieron en esta ronda, y por qué
-                (21/11/2026): una línea discreta, para revisar sabiéndolo. */}
-            <LoQueFalta detalle={detalle} version={version} className="mt-1" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {hayIA && (
@@ -396,6 +393,11 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             )}
           </div>
         </div>
+
+        {/* Las piezas del pedido que no vinieron en esta ronda, y por qué
+            (21/11/2026), para revisar sabiéndolo. Un renglón entero, abajo
+            del título: al lado, con muchas piezas, apretaba los botones. */}
+        <LoQueFalta detalle={detalle} version={version} />
 
         {respaldoDe != null && (
           <p className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
