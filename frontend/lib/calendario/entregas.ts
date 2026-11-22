@@ -17,6 +17,8 @@
 // pedido según el tipo de pieza y la compresión de las imágenes.
 // ---------------------------------------------------------------------------
 
+import type { Pieza } from './piezas'
+
 export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
 /** Las columnas del tablero: le toca a la agencia, a un aprobador, volvió, terminó. */
 export type MomentoEntrega = 'produccion' | 'revision' | 'cambios' | 'aprobada'
@@ -100,6 +102,11 @@ export type Version = {
   imagenes: ImagenDeVersion[]
   /** Si la ronda vino con un ZIP (un servidor de antes no lo manda). */
   zip?: ZipDeVersion | null
+  /** Las piezas del pedido que no venían en la ronda (21/11/2026): sus
+   *  nombres ("Header (mobile)"), y lo que escribió quien entrega en «¿Por
+   *  qué no va todo?». Vacío o sin mandar: no faltaba nada, o es de antes. */
+  faltan?: string[]
+  porQueFaltan?: string | null
   decisiones: Decision[]
   marcas: Marca[]
 }
@@ -132,6 +139,9 @@ export type DetalleEntregas = {
     tipo?: string | null; opciones?: string[]; detalles?: Record<string, string | number>
     /** Lo pedido con sus medidas: "Banners: Header (web 1920×416 · mobile 640×260)". */
     pedido?: string | null
+    /** Lo pedido, una pieza por medida (21/11/2026): con esto el formulario
+     *  de entrega ve solo si falta alguna (lib/calendario/piezas.ts). */
+    piezas?: Pieza[]
     quienLaHace?: QuienLaHace
   }
   accion: AccionDeTarjeta & { seccion: string }
@@ -522,7 +532,9 @@ function aJpeg(img: HTMLImageElement, lado: number, calidad: number): Promise<Bl
   })
 }
 
-export type ImagenLista = { grande: Blob; mini: Blob; vista: string; nombre: string }
+/** `ancho` y `alto`: el tamaño ORIGINAL, de antes de achicarla (21/11/2026:
+ *  con eso se ve si falta alguna pieza del pedido, ver piezas.ts). */
+export type ImagenLista = { grande: Blob; mini: Blob; vista: string; nombre: string; ancho: number; alto: number }
 
 /** La imagen lista para subir: la grande y la miniatura, en JPEG. */
 export async function prepararImagen(archivo: File): Promise<ImagenLista> {
@@ -530,5 +542,8 @@ export async function prepararImagen(archivo: File): Promise<ImagenLista> {
   const img = await cargar(archivo)
   const [grande, mini] = await Promise.all([aJpeg(img, LADO_MAYOR, CALIDAD), aJpeg(img, LADO_MINIATURA, 0.75)])
   if (grande.size > MAX_BYTES_IMAGEN) throw new Error(`«${archivo.name}» sigue pesando demasiado después de achicarla`)
-  return { grande, mini, vista: URL.createObjectURL(mini), nombre: archivo.name }
+  // El tamaño como lo muestra el navegador (ya derecha, según su EXIF).
+  return {
+    grande, mini, vista: URL.createObjectURL(mini), nombre: archivo.name, ancho: img.naturalWidth, alto: img.naturalHeight,
+  }
 }

@@ -6,10 +6,11 @@
  */
 import * as zlib from 'zlib'
 import {
-  abrirEntrada, avisoZipSinGuardar, detalleDelZip, esBasura, esperaDeEntrega, leerIndiceZip, nombreCorto, pendientesDelZip,
-  pesoDelFormulario, pesoLegible, tipoDeImagen, zipSumaImagenes, zipYaResueltas, ZipRaro, MAX_ARCHIVOS_ZIP,
+  abrirEntrada, avisoZipSinGuardar, detalleDelZip, esBasura, esperaDeEntrega, leerIndiceZip, medidasDeEntrada, nombreCorto,
+  pendientesDelZip, pesoDelFormulario, pesoLegible, tipoDeImagen, zipSumaImagenes, zipYaResueltas, ZipRaro, MAX_ARCHIVOS_ZIP,
   type EstadoDelZip,
 } from './zip'
+import { jpegArmado, pngArmado, webpArmado } from './imagenes-de-prueba'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -177,6 +178,31 @@ async function main() {
     'El ZIP no se guardó porque no había lugar en la base: pedile el link a quien la hace.')
   igual('sin guardar, a quien la hizo', avisoZipSinGuardar(false, true),
     'El ZIP no se guardó porque no había lugar en la base: pasá el link al original en los comentarios.')
+
+  // -------------------------------------------------------------------------
+  // El tamaño original de las imágenes del ZIP (21/11/2026), para saber si
+  // falta alguna pieza del pedido (piezas.ts): de todas, también las que no
+  // entran en las 4 de la ronda, leyendo solo el principio.
+  // -------------------------------------------------------------------------
+  console.log('\nel tamaño de las imágenes del ZIP')
+  const conPiezas = armarZip([
+    // 300 KB antes del tamaño (como el perfil de color de Photoshop), comprimido: se lee de a partes.
+    { nombre: 'kv/header-web.jpg', datos: jpegArmado(1920, 416, { relleno: 300_000 }), comprimir: true },
+    { nombre: 'kv/header-mobile.png', datos: pngArmado(640, 260) },
+    { nombre: 'kv/checkout.webp', datos: webpArmado(412, 157, 'VP8L'), comprimir: true },
+    { nombre: 'kv/story.jpg', datos: jpegArmado(1920, 1080, { orientacion: 6 }) },
+    { nombre: 'kv/folleto.pdf', datos: new TextEncoder().encode('%PDF-1.7') },
+    { nombre: 'kv/cortada.jpg', datos: bytes(0xff, 0xd8, 0xff), comprimir: true },
+    { nombre: 'kv/no-es.jpg', datos: muchasA, comprimir: true },
+  ])
+  const piezasDelZip = leerIndiceZip(conPiezas)
+  igual('cada imagen con su tamaño; el PDF y lo que no es imagen, sin tamaño',
+    await Promise.all(piezasDelZip.map(e => medidasDeEntrada(conPiezas, e))),
+    [{ ancho: 1920, alto: 416 }, { ancho: 640, alto: 260 }, { ancho: 412, alto: 157 }, { ancho: 1080, alto: 1920 }, null, null, null])
+  igual('con contraseña: no se sabe', await medidasDeEntrada(conPiezas, { ...piezasDelZip[1], cifrado: true }), null)
+  igual('otra compresión: no se sabe', await medidasDeEntrada(conPiezas, { ...piezasDelZip[0], metodo: 12 }), null)
+  const lejos = armarZip([{ nombre: 'lejos.jpg', datos: jpegArmado(10, 10, { relleno: 4_300_000 }), comprimir: true }])
+  igual('el tamaño después de 4 MB: no se sigue abriendo', await medidasDeEntrada(lejos, leerIndiceZip(lejos)[0]), null)
 
   if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
   console.log('\nzip: todo bien')

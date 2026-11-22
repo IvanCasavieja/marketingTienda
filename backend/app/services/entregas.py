@@ -33,6 +33,7 @@ El flujo, en corto:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 from dataclasses import dataclass
@@ -156,6 +157,50 @@ def link_valido(v: str | None) -> str | None:
     if any(ord(c) < 32 for c in v):
         raise ValueError("El link tiene caracteres que no van")
     return v
+
+
+# Las piezas del pedido que no venían en una ronda (0087, 21/11/2026): las
+# calcula la pantalla por las medidas (frontend/lib/calendario/piezas.ts) y
+# viajan con la entrega, con lo que escribió quien entrega en «¿Por qué no va
+# todo?». Un pedido de banners tiene hasta 40 piezas (20 opciones, web y
+# mobile): 40 nombres alcanzan.
+MAX_FALTAN = 40
+LARGO_PIEZA = 120
+LARGO_POR_QUE = 500
+
+
+def faltan_validas(texto: str | None) -> list[str] | None:
+    """La lista de piezas que faltan, como llega en el formulario (JSON): los
+    nombres limpios, sin repetidos, en su orden. None si no falta nada.
+    ValueError con el mensaje para la persona. Pura."""
+    try:
+        lista = json.loads(texto or "[]")
+    except ValueError:
+        lista = None
+    if not isinstance(lista, list) or not all(isinstance(x, str) for x in lista):
+        raise ValueError("La lista de piezas que faltan no tiene la forma esperada")
+    if len(lista) > MAX_FALTAN:
+        raise ValueError(f"Son demasiadas piezas que faltan (hasta {MAX_FALTAN})")
+    limpias: list[str] = []
+    for nombre in lista:
+        nombre = " ".join(nombre.split())
+        if len(nombre) > LARGO_PIEZA:
+            raise ValueError(f"«{nombre[:30]}…» es demasiado largo para el nombre de una pieza")
+        if nombre and nombre not in limpias:
+            limpias.append(nombre)
+    return limpias or None
+
+
+def por_que_faltan_valido(texto: str | None, faltan: list[str] | None) -> str | None:
+    """Lo que escribió quien entrega en «¿Por qué no va todo?», en una línea
+    (se lee arriba al revisar, en una línea discreta). Solo si falta algo:
+    sin piezas que falten, no hay por qué. ValueError si se pasa. Pura."""
+    limpio = " ".join((texto or "").split())
+    if len(limpio) > LARGO_POR_QUE:
+        raise ValueError(f"«¿Por qué no va todo?» es demasiado largo (hasta {LARGO_POR_QUE} letras)")
+    if not faltan:
+        return None
+    return limpio or None
 
 
 def _fecha(v: object, nombre: str) -> str:
