@@ -2291,9 +2291,9 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
             # una ronda anterior. Antes acá se esperaba None.
             primera = (await revision_ia.cargar_version(s, v1))[0].ronda_anterior
             assert primera.inicial and primera.miniaturas == ()
-            assert [(m.marca_id, m.texto) for m in primera.marcas] == [
-                ("pedido-1", "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"),
-                ("pedido-2", "CTA: Ver ofertas")]
+            # Sin lo tildado con sus medidas (21/11/2026): eso lo controla la
+            # plataforma sin IA. El CTA sí.
+            assert [(m.marca_id, m.texto) for m in primera.marcas] == [("pedido-1", "CTA: Ver ofertas")]
             # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
             assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
             # Una que no está (la purga de antes del 19/11/2026 vació algunas)
@@ -2548,7 +2548,12 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
     imágenes, la revisión del aprobador sale de ahí sin otra llamada, y quien
     aprueba no ve los puntos (no son marcas). La fase que se abre devolviendo
     la pieza aprobada controla primero lo que se pidió cambiar. Con el pedido
-    vacío, 'sin-pedido' y la IA ni se entera."""
+    vacío, 'sin-pedido' y la IA ni se entera.
+
+    Sin ruido (21/11/2026, más tarde): lo tildado con sus medidas no es un
+    punto (lo controla la plataforma), un «Gracias!» tampoco, y un plazo
+    («Para el viernes», que la IA simulada contesta "no_aplica") queda
+    guardado pero no le llega a la agencia."""
     import json
 
     import ia_simulada as sim
@@ -2578,7 +2583,7 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
         # Una tarjeta del tablero: lo tildado con sus medidas, el CTA y la descripción.
         tarea_id, _ = await _pedir_banners(d, d.lider, opciones=["Header", "Checkout"],
-                                           descripcion="Que se vea bien el logo.\n- Fondo rojo")
+                                           descripcion="Que se vea bien el logo.\n- Fondo rojo\nPara el viernes\nGracias!")
         imagenes = [("imagenes", ("i.jpg", _jpeg_de_verdad(1600, 347), "image/jpeg")),
                     ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 14), "image/jpeg"))]
         solo = [imagenes[0]]
@@ -2586,21 +2591,24 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         v1 = f"ve-pi1-{d.sufijo}"
         cabecera = "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"
 
-        # Antes de mandar la primera ronda: punto por punto, lo que dice la tarjeta.
+        # Antes de mandar la primera ronda: punto por punto, lo que dice la
+        # tarjeta, sin lo tildado (lo controla la plataforma), sin el
+        # «Gracias!» y sin el plazo, que la IA dijo que no aplica.
         r = await a1.post(control, files=solo)
         assert r.status_code == 200, r.text
         cuerpo = r.json()
         assert cuerpo["estado"] == "listo" and cuerpo["inicial"] is True and cuerpo["controlId"]
         assert [(c["numero"], c["texto"], c["veredicto"]) for c in cuerpo["cambios"]] == [
-            (1, cabecera, "hecho"), (2, "CTA: Ver ofertas", "falta"),
-            (3, "Que se vea bien el logo.", "dudoso"), (4, "Fondo rojo", "dudoso"),
+            (1, "CTA: Ver ofertas", "hecho"), (2, "Que se vea bien el logo.", "falta"), (3, "Fondo rojo", "dudoso"),
         ]
         assert cuerpo["cambios"][1]["nota"] == "No se ve en la pieza."
         # A la agencia, solo eso: la observación de ortografía es del equipo.
         assert "OFERTA" not in json.dumps(cuerpo, ensure_ascii=False)
         assert len(pedidos) == 1
         texto = pedidos[0]["messages"][0]["content"][-1]["text"]
-        assert "Es la primera entrega" in texto and "- Punto 2: CTA: Ver ofertas" in texto and "- Marca" not in texto
+        assert "Es la primera entrega" in texto and "- Punto 1: CTA: Ver ofertas" in texto and "- Marca" not in texto
+        bloque = texto.split("<cambios_pedidos>", 1)[1]
+        assert cabecera not in bloque and "Gracias" not in bloque and "- Punto 4: Para el viernes" in bloque
 
         # Entrega esas mismas: la revisión sale del control, sin otra llamada.
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=imagenes)
@@ -2614,14 +2622,15 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         assert revision["cambiosPedidos"] == []
         assert (await a1.get(f"/calendario/versiones/{v1}/revision-ia")).status_code == 403
         async with d.Sesion() as s:
-            # Quedan guardados con la revisión.
+            # Quedan guardados con la revisión, también el que no aplica.
             assert [(c["marcaId"], c["veredicto"]) for c in (await s.get(CalendarioRevisionIA, v1)).cambios_pedidos] == [
-                ("pedido-1", "hecho"), ("pedido-2", "falta"), ("pedido-3", "dudoso"), ("pedido-4", "dudoso")]
+                ("pedido-1", "hecho"), ("pedido-2", "falta"), ("pedido-3", "dudoso"), ("pedido-4", "no_aplica")]
             assert (await s.get(CalendarioControlPrevio, cuerpo["controlId"])).usado_en_version_id == v1
             # La revisión de siempre (si no se hubiera reusado) controla lo mismo.
             contexto, _ = await revision_ia.cargar_version(s, v1)
             assert contexto.ronda_anterior.inicial
-            assert [m.texto for m in contexto.ronda_anterior.marcas] == [c["texto"] for c in cuerpo["cambios"]]
+            assert [m.texto for m in contexto.ronda_anterior.marcas] == [
+                *(c["texto"] for c in cuerpo["cambios"]), "Para el viernes"]
 
         # Se aprueba y se devuelve con lo que hay que cambiar (17/11/2026): se
         # abre otra fase, y su primera entrega controla primero eso.
@@ -2631,7 +2640,7 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         assert r.status_code == 200, r.text
         r = await a1.post(control, files=solo)
         assert r.status_code == 200 and r.json()["estado"] == "listo" and r.json()["inicial"] is True, r.text
-        assert [c["texto"] for c in r.json()["cambios"]][:3] == ["Fondo verde", "Sacar el logo viejo", cabecera]
+        assert [c["texto"] for c in r.json()["cambios"]][:3] == ["Fondo verde", "Sacar el logo viejo", "CTA: Ver ofertas"]
         assert len(pedidos) == 2
 
         # Con el pedido vacío no hay nada que controlar: 'sin-pedido', sin llamar a la IA.

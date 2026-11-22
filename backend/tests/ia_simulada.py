@@ -369,7 +369,12 @@ class SimuladorDeDonTino:
         (21/11/2026) hace lo mismo con cada punto del pedido inicial ("-
         Punto N:"), con otras notas; y también con los pedidos del
         comentario ("- Marca N (pedida en el comentario…"), que antes se
-        salteaba."""
+        salteaba.
+
+        Un punto o una marca que no es un pedido sobre la pieza (21/11/2026:
+        un plazo como «Para el viernes», un saludo, un «Cualquier duda…»)
+        va "no_aplica", como le piden las instrucciones al modelo de verdad;
+        los demás siguen con su lugar en la lista."""
         bloque = re.search(r"<cambios_pedidos>\n(.*?)\n</cambios_pedidos>", pedido, re.S)
         if not bloque:
             return []
@@ -379,6 +384,12 @@ class SimuladorDeDonTino:
         else:
             ejemplos = [("hecho", "Se ve el cambio que se pidió."), ("falta", "Sigue igual que en la ronda anterior."),
                         ("dudoso", "No se llega a ver si se cambió.")]
-        numeros = [int(n) for n in re.findall(r"^- (?:Marca|Punto) (\d+)\b", bloque.group(1), re.M)]
-        return [{"numero": n, "veredicto": ejemplos[min(i, 2)][0], "nota": ejemplos[min(i, 2)][1]}
-                for i, n in enumerate(numeros)]
+        cambios = []
+        renglones = re.findall(r"^- (?:Marca|Punto) (\d+)[^:\n]*: (.*)$", bloque.group(1), re.M)
+        for i, (n, que) in enumerate(renglones):
+            veredicto, nota = ejemplos[min(i, 2)]
+            if re.match(r"(para (el|la|este|esta|manana|hoy)\b|cualquier (duda|cosa|consulta)|saludos|gracias)",
+                        _norm(que)):
+                veredicto, nota = "no_aplica", "No es un pedido sobre la pieza."
+            cambios.append({"numero": int(n), "veredicto": veredicto, "nota": nota})
+        return cambios
