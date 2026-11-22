@@ -547,6 +547,9 @@ async def ver_entregas(
             "subidaPor": v.subida_por_id, "fecha": v.created_at.isoformat() if v.created_at else None,
             "decididaEl": v.decidida_at.isoformat() if v.decidida_at else None,
             "comentario": v.comentario, "link": v.link, "corregidas": list(v.corregidas or []),
+            # Las piezas del pedido que no venían en esta ronda y por qué
+            # (0087, 21/11/2026): lo ven quien aprueba y la agencia.
+            "faltan": list(v.faltan or []), "porQueFaltan": v.por_que_faltan,
             "imagenes": [
                 {"id": im.id, "orden": im.orden, "purgada": im.purgada_at is not None}
                 for im in imagenes.get(v.id, [])
@@ -588,6 +591,10 @@ async def ver_entregas(
             # Lo que se pidió con sus medidas ("Banners: Header (web 1920×416 ·
             # mobile 640×260)"), así quien la hace lo ve sin buscarlo.
             "pedido": tipos_de_tarea.descripcion_del_pedido(tarea.tipo, list(tarea.opciones or []), tarea.detalles),
+            # Lo pedido, una pieza por medida ("Header (mobile)" 640×260): con
+            # esto la pantalla dice sola, antes de mandar, si falta alguna
+            # (21/11/2026, ver tipos_de_tarea.piezas_del_pedido).
+            "piezas": tipos_de_tarea.piezas_del_pedido(tarea.tipo, list(tarea.opciones or [])),
             "quienLaHace": quien_la_hace(tarea, nombres),
         },
         "accion": {
@@ -1072,6 +1079,8 @@ async def entregar(
     miniaturas: list[UploadFile] | None = File(None),
     archivo_zip: UploadFile | None = File(None, alias="zip"),
     zipYaSubidas: str = Form("[]", max_length=2000),
+    faltan: str = Form("[]", max_length=20_000),
+    porQueFaltan: str = Form("", max_length=5000),
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1099,7 +1108,13 @@ async def entregar(
       abrir y páginas de los PDF (materiales.imagenes_para_la_ronda). Así un
       ZIP solo alcanza para entregar si de él sale al menos una imagen.
     - La IA lo revisa en segundo plano, sin mirar dos veces lo que ya es
-      imagen de la ronda."""
+      imagen de la ronda.
+
+    Desde el 21/11/2026 pueden venir `faltan` (JSON: los nombres de las
+    piezas del pedido que la pantalla vio que no venían, por las medidas) y
+    `porQueFaltan` (lo que escribió quien entrega: "Es el KV, para aprobarlo
+    antes"). Se guardan con la ronda tal cual, con sus topes
+    (reglas.faltan_validas): no traban la entrega."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -1170,6 +1185,11 @@ async def entregar(
         pedidas = None
     if not isinstance(pedidas, list) or not all(isinstance(x, str) for x in pedidas):
         raise HTTPException(status_code=422, detail="La lista de marcas corregidas no tiene la forma esperada")
+    try:
+        piezas_que_faltan = reglas.faltan_validas(faltan)
+        por_que_faltan = reglas.por_que_faltan_valido(porQueFaltan, piezas_que_faltan)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
     leidas = []
     for i, (grande, mini) in enumerate(zip(imagenes, miniaturas), 1):
@@ -1223,6 +1243,7 @@ async def entregar(
         id=versionId, fase_id=fase.id, tarea_id=tarea_id, ronda=ronda, subida_por_id=current_user.id,
         comentario=(comentario or "").strip() or None, link=link_ok,
         corregidas=[m.id for m in marcas], estado="revision",
+        faltan=piezas_que_faltan, por_que_faltan=por_que_faltan,
     ))
     # La versión tiene que existir antes que sus imágenes (FK): se manda ya.
     await db.flush()

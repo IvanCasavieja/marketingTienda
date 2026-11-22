@@ -38,7 +38,8 @@ if URL:
         CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioPlantilla, CalendarioTarea,
     )
     from app.models.entregas import (
-        CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioVersionImagen, CalendarioVersionZip,
+        CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioVersion, CalendarioVersionImagen,
+        CalendarioVersionZip,
     )
     from app.models.notificacion import Notificacion
     from app.models.revision_ia import CalendarioRevisionIA
@@ -3788,4 +3789,65 @@ def test_los_avisos_salen_por_mail_a_quien_los_quiere(monkeypatch):
         r = await d.http.patch(f"{API}/auth/me/preferencias", json={"avisosPorMail": False}, headers=c.headers)
         assert r.status_code == 200 and r.json() == {"avisosPorMail": False}, r.text
         assert (await c.get("/auth/me")).json()["avisos_por_mail"] is False
+    correr(prueba)
+
+
+
+def test_lo_que_falta_del_pedido_viaja_con_la_entrega_y_lo_ven_quien_aprueba_y_la_agencia():
+    """Ivan, 21/11/2026: "si yo pido 4 banners y me pasan uno (...) tiene que
+    analizar y decir 'che, pará, acá faltan también los banners X o Y'. Y
+    quizás estaría bueno que le des el espacio a la agencia ahí de escribir
+    por qué no los manda" (0087). La tarjeta trae las piezas del pedido, la
+    pantalla ve cuáles faltan y, si se manda igual, viajan con la ronda."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)  # Header y Checkout
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        mover = lambda c, desde, a, **kw: c.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": desde, "a": a, **kw})  # noqa: E731
+
+        # Las piezas del pedido, una por medida, en el detalle de la tarjeta.
+        for c in (a1, lucia):
+            piezas = (await _detalle(c, tarea_id))["tarea"]["piezas"]
+            assert [(p["nombre"], p["ancho"], p["alto"], p["proporcion"]) for p in piezas] == [
+                ("Header (web)", 1920, 416, False), ("Header (mobile)", 640, 260, False), ("Checkout", 412, 157, False),
+            ]
+
+        url = f"/calendario/tareas/{tarea_id}/versiones"
+        archivos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        # Con algo fuera de los topes no se entrega nada (422, con el mensaje para la persona).
+        for datos, dice in (
+            ({"faltan": json.dumps([f"Pieza {i}" for i in range(41)])}, "hasta 40"),
+            ({"faltan": json.dumps(["x" * 121])}, "demasiado largo"),
+            ({"faltan": "{"}, "forma esperada"),
+            ({"faltan": json.dumps([3])}, "forma esperada"),
+            ({"faltan": json.dumps(["Checkout"]), "porQueFaltan": "a" * 501}, "hasta 500"),
+        ):
+            r = await a1.post(url, data={"versionId": f"ve-x-{uuid.uuid4().hex[:8]}", **datos}, files=archivos)
+            assert r.status_code == 422 and dice in r.json()["detail"], (datos, r.text)
+        assert (await _detalle(a1, tarea_id))["fases"][0]["versiones"] == []
+
+        # La agencia manda el KV para aprobarlo antes: faltan dos y dice por qué.
+        r = await a1.post(url, data={
+            "versionId": f"ve-1-{d.sufijo}", "faltan": json.dumps(["Header (mobile)", "Checkout", "Checkout"]),
+            "porQueFaltan": "  Es el KV,  para aprobarlo antes ",
+        }, files=archivos)
+        assert r.status_code == 201, r.text
+        for c in (a1, lucia):
+            v = (await _detalle(c, tarea_id))["fases"][0]["versiones"][0]
+            assert v["faltan"] == ["Header (mobile)", "Checkout"], v
+            assert v["porQueFaltan"] == "Es el KV, para aprobarlo antes"
+
+        # Vuelve con cambios y la ronda 2 trae todo: no falta nada (y un «por
+        # qué» sin piezas que falten no se guarda).
+        assert (await mover(lucia, "esperando", "en-proceso", comentario="Dale, hacé el resto")).status_code == 200
+        r = await a1.post(url, data={"versionId": f"ve-2-{d.sufijo}", "porQueFaltan": "nada"}, files=archivos)
+        assert r.status_code == 201, r.text
+        v2 = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][1]
+        assert v2["faltan"] == [] and v2["porQueFaltan"] is None
+        async with d.Sesion() as s:
+            # NULL de la base, no el null de JSON: "no faltaba nada".
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
+                CalendarioVersion.id == f"ve-2-{d.sufijo}", CalendarioVersion.faltan.is_(None),
+            ))).scalar_one() == 1
+            v1 = await s.get(CalendarioVersion, f"ve-1-{d.sufijo}")
+            assert v1.faltan == ["Header (mobile)", "Checkout"] and v1.por_que_faltan == "Es el KV, para aprobarlo antes"
     correr(prueba)

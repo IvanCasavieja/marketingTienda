@@ -190,6 +190,14 @@ class CalendarioVersion(Base):
     estado: Mapped[str] = mapped_column(String(20), nullable=False, default="revision")
     decidida_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Las piezas del pedido que no venían en la ronda (0087, 21/11/2026): la
+    # lista de nombres ("Header (mobile)", "Checkout") que vio la plataforma
+    # por las medidas, y lo que escribió quien entrega en «¿Por qué no va
+    # todo?» ("Es el KV, para aprobarlo antes"). NULL: no faltaba nada, o es
+    # de antes. Lo ven quien aprueba y la agencia. `none_as_null`: un None se
+    # guarda como NULL de la base y no como el `null` de JSON.
+    faltan: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    por_que_faltan: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class CalendarioVersionImagen(Base):

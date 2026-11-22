@@ -28,6 +28,10 @@ Cada tipo:
 - `pieza`: el tipo de pieza de las entregas (TIPOS_DE_PIEZA en
   app/services/entregas.py) con el que nace: decide qué campos trae
   "Más opciones".
+- `px` (del tipo entero, WhatsApp), `web`/`mobile` (de un banner) y
+  `proporcion` (de redes): la medida en números, para saber sola, sin la
+  IA, si en una entrega falta alguna pieza (21/11/2026, ver
+  `piezas_del_pedido`). No viajan a la pantalla con el catálogo.
 """
 from __future__ import annotations
 
@@ -43,11 +47,14 @@ def _px(ancho: int, alto: int) -> str:
 def banner(nombre: str, web: tuple[int, int], mobile: tuple[int, int] | None = None) -> dict:
     """Una medida de banner: web ancho×alto y, si hay, mobile ancho×alto."""
     medida = f"web {_px(*web)}" + (f" · mobile {_px(*mobile)}" if mobile else "")
-    return {"nombre": nombre, "medida": medida}
+    return {"nombre": nombre, "medida": medida, "web": web, "mobile": mobile}
 
 
-def opcion(nombre: str, medida: str | None = None) -> dict:
-    return {"nombre": nombre, "medida": medida}
+def opcion(nombre: str, medida: str | None = None, *, proporcion: tuple[int, int] | None = None) -> dict:
+    o = {"nombre": nombre, "medida": medida}
+    if proporcion:
+        o["proporcion"] = proporcion
+    return o
 
 
 TIPOS_DE_TAREA: list[dict] = [
@@ -97,7 +104,10 @@ TIPOS_DE_TAREA: list[dict] = [
         # Redes sociales (Ivan, 17/11/2026): se pide por proporción, "1:1,
         # 4:5, 9:16, 16:9". Sin medida en px: lo que se pide es la proporción.
         "clave": "redes", "nombre": "Redes sociales", "pieza": "redes", "otras": False,
-        "opciones": [opcion("1:1"), opcion("4:5"), opcion("9:16"), opcion("16:9")],
+        # Cómo se nombra cada pieza que se pide ("Redes 4:5", ver piezas_del_pedido).
+        "corto": "Redes",
+        "opciones": [opcion("1:1", proporcion=(1, 1)), opcion("4:5", proporcion=(4, 5)),
+                     opcion("9:16", proporcion=(9, 16)), opcion("16:9", proporcion=(16, 9))],
     },
     {
         # El folleto o catálogo de ofertas ("DECO NAVIDAD 16 PAG", "CATÁLOGO
@@ -121,7 +131,7 @@ TIPOS_DE_TAREA: list[dict] = [
     },
     {
         "clave": "whatsapp", "nombre": "Envío WhatsApp", "pieza": "otro", "otras": False,
-        "opciones": [], "medida": "imagen de 1080×1350 px · 4:5 vertical",
+        "opciones": [], "medida": "imagen de 1080×1350 px · 4:5 vertical", "px": (1080, 1350),
     },
     {
         # Push (17/11/2026): faltaba entre las piezas que pide el equipo. Sin
@@ -217,7 +227,10 @@ def para_la_pantalla() -> list[dict]:
     el mismo que pondría el servidor."""
     return [
         {
-            "clave": t["clave"], "nombre": t["nombre"], "opciones": t["opciones"], "otras": t["otras"],
+            "clave": t["clave"], "nombre": t["nombre"], "otras": t["otras"],
+            # Cada opción con su nombre y su medida para leer, como siempre:
+            # los números (`web`, `proporcion`...) son para piezas_del_pedido.
+            "opciones": [{"nombre": o["nombre"], "medida": o.get("medida")} for o in t["opciones"]],
             "medida": t.get("medida"), "campos": t.get("campos", []), "bajada": t.get("bajada"),
             "pieza": t.get("pieza"),
             # Solo en esos mundos (los de Redexpres); sin esto, en todos.
@@ -371,6 +384,47 @@ def descripcion_del_pedido(clave: str | None, opciones: list[str] | None, detall
         if valor not in (None, ""):
             lineas.append(f"{campo['nombre']}: {valor_para_leer(campo, valor)}")
     return "\n".join(lineas) or None
+
+
+def piezas_del_pedido(clave: str | None, opciones: list[str] | None) -> list[dict]:
+    """Las piezas que se pidieron, una por medida, para que la plataforma diga
+    sola (sin la IA, y siempre igual) si en una entrega falta alguna. Ivan,
+    21/11/2026: "si yo pido 4 banners y me pasan uno, puede ser que lo
+    primero que estén haciendo sea pasarme un KV (...) pero cuando son todos
+    los banners ahí es donde tiene que analizar y decir 'che, pará, acá
+    faltan también los banners X o Y'". La pantalla la compara con las
+    medidas de lo que se entrega (frontend/lib/calendario/piezas.ts).
+
+    Cada una es {nombre, ancho, alto, proporcion}: "Header (web)" 1920×416 y
+    "Header (mobile)" 640×260 (un banner con mobile da dos piezas; uno sin
+    mobile, una sola y sin "(web)": "Checkout"), "Redes 4:5" (de redes
+    importa solo la proporción: `proporcion` en True) y el envío de WhatsApp
+    1080×1350. Lo que no tiene medida en px ni proporción no entra: las
+    opciones escritas a mano, el EMM (600 de ancho y el alto libre), el
+    mailing impreso y las cenefas (en milímetros, y se entregan en PDF).
+    En el orden de lo tildado. Pura."""
+    t = tipo_de(clave)
+    if t is None:
+        return []
+
+    def pieza(nombre: str, medida: tuple[int, int], proporcion: bool = False) -> dict:
+        return {"nombre": nombre, "ancho": medida[0], "alto": medida[1], "proporcion": proporcion}
+
+    piezas: list[dict] = []
+    if t.get("px"):
+        piezas.append(pieza(t["nombre"], t["px"]))
+    del_catalogo = {o["nombre"].casefold(): o for o in t["opciones"]}
+    for elegida in opciones or []:
+        o = del_catalogo.get(" ".join(str(elegida).split()).casefold())
+        if o is None:
+            continue
+        if o.get("web") and o.get("mobile"):
+            piezas += [pieza(f"{o['nombre']} (web)", o["web"]), pieza(f"{o['nombre']} (mobile)", o["mobile"])]
+        elif o.get("web"):
+            piezas.append(pieza(o["nombre"], o["web"]))
+        elif o.get("proporcion"):
+            piezas.append(pieza(f"{t.get('corto', t['nombre'])} {o['nombre']}", o["proporcion"], proporcion=True))
+    return piezas
 
 
 def sin_tildes(texto: str | None) -> str:
