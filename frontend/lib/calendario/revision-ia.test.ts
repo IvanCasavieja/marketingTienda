@@ -5,9 +5,9 @@
  *     npm run test:calendario
  */
 import {
-  VEREDICTO_IA, archivoDe, cambiosPorMarca, marcaDesdeObservacion, ordenarObservaciones, textoConArchivo, textoRevisados,
-  tieneLugar, tituloRevisionIA,
-  type CambioPedidoIA, type ObservacionIA, type RevisionIA,
+  VEREDICTO_IA, archivoDe, cambiosPorMarca, marcaDesdeObservacion, ordenarObservaciones, puntosParaMostrar,
+  textoConArchivo, textoRevisados, tieneLugar, tituloRevisionIA,
+  type CambioPedidoIA, type ObservacionIA, type PuntosPedidosIA, type RevisionIA,
 } from './revision-ia'
 
 let fallos = 0
@@ -106,6 +106,35 @@ igual('con lo de la ronda anterior, sin observaciones dice que no hay nada nuevo
   'La IA no encontró nada nuevo para marcar', 'La IA no encontró nada para marcar',
   'La IA no encontró nada para marcar', 'La IA encontró 1 cosa para mirar',
 ])
+
+// Lo que se pidió sin marcas (21/11/2026, la prueba de Ivan con Publicis): el
+// pedido inicial o lo escrito en el comentario, como lo vio la agencia.
+const cta = { numero: 1, texto: 'CTA: Ver ofertas', veredicto: 'falta' as const, nota: 'En las dos piezas el botón dice «Ver oferta».' }
+const menu = { numero: 2, texto: 'En el banner menú quiero CTA ver más', veredicto: 'dudoso' as const, nota: 'No se ve ningún banner de menú.' }
+const fondo = { numero: 3, texto: 'Fondo rojo', veredicto: 'hecho' as const, nota: 'Se ve rojo.' }
+const conPuntos = (puntosPedidos: unknown, estado: RevisionIA['estado'] = 'lista'): RevisionIA =>
+  ({ estado, observaciones: [], puntosPedidos: puntosPedidos as PuntosPedidosIA | null })
+igual('los puntos del pedido inicial, lo que falta primero y lo hecho al final',
+  puntosParaMostrar(conPuntos({ inicial: true, puntos: [fondo, menu, cta] })), { inicial: true, puntos: [cta, menu, fondo] })
+igual('los del comentario no son del pedido inicial',
+  puntosParaMostrar(conPuntos({ inicial: false, puntos: [cta] })), { inicial: false, puntos: [cta] })
+igual('mientras la IA mira, o si no se pudo, nada', [
+  puntosParaMostrar(conPuntos({ inicial: true, puntos: [cta] }, 'pendiente')),
+  puntosParaMostrar(conPuntos({ inicial: true, puntos: [cta] }, 'nada')),
+], [null, null])
+igual('sin puntos (se controlaron marcas), de antes o sin revisión: nada', [
+  puntosParaMostrar(conPuntos(null)), puntosParaMostrar(conPuntos(undefined)), puntosParaMostrar(lista([falta])),
+  puntosParaMostrar(null), puntosParaMostrar(conPuntos({ inicial: true, puntos: [] })),
+  puntosParaMostrar(conPuntos({ inicial: true, puntos: 'raro' })),
+], [null, null, null, null, null, null])
+igual('lo que no tiene la forma esperada no se muestra', puntosParaMostrar(conPuntos({ inicial: true, puntos: [
+  null, { ...cta, veredicto: 'no_aplica' }, { ...cta, veredicto: 'toString' }, { ...cta, texto: '  ' }, { ...cta, numero: '1' },
+  { ...cta, nota: null }, menu,
+] })), { inicial: true, puntos: [menu] })
+// Con los puntos, el título del panel tampoco dice «no encontró nada».
+igual('con puntos y sin observaciones, «nada nuevo»',
+  tituloRevisionIA([], puntosParaMostrar(conPuntos({ inicial: true, puntos: [cta] })) != null),
+  'La IA no encontró nada nuevo para marcar')
 
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nrevision-ia: todo bien')

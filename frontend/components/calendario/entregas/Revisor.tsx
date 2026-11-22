@@ -10,11 +10,12 @@ import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
-  VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, textoConArchivo, tieneLugar,
+  VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, puntosParaMostrar, textoConArchivo, tieneLugar,
   type ObservacionIA, type RevisionIA, type VeredictoIA,
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { LoQueFalta } from './LoQueFalta'
+import { LoQueVioLaIA } from './LoQueVioLaIA'
 import { PanelRevisionIA } from './PanelRevisionIA'
 
 /** Una marca que se está poniendo. `observacionIA`: si salió de lo que vio la IA. */
@@ -86,6 +87,15 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * la ronda N», si se ve hecho lo que pedía cada marca (19/11/2026, Ivan:
  * "debería de hacerlo"): una etiqueta chica al lado de cada una, con la nota
  * abajo. Es justo el control que hace quien aprueba.
+ *
+ * Y, desde el 21/11/2026, lo mismo de lo que se pidió sin marcas: en la
+ * primera ronda, cada punto del pedido inicial («Lo que se pidió»); si los
+ * cambios se pidieron solo con texto, cada pedido del comentario. Ivan, con
+ * su prueba de Publicis: a la agencia el control le dijo dos cosas y a quien
+ * aprobaba ninguna ("estaría bueno que se reconozcan los mismos"). Se ve con
+ * el mismo diseño que el aviso de la agencia (LoQueVioLaIA), más lo que la
+ * IA ve hecho. Si la agencia entregó las mismas imágenes que controló, la
+ * revisión sale de ese control: es lo mismo que vio ella.
  */
 export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -191,6 +201,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // Y lo que ve la IA de cada una (vacío si esta persona no ve la revisión:
   // entonces no se la pide).
   const iaDeCadaMarca = cambiosPorMarca(revisionIA)
+  // Lo que se pidió sin marcas (el pedido inicial o el comentario) y lo que
+  // vio la IA de cada cosa (21/11/2026).
+  const puntos = puntosParaMostrar(revisionIA)
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
   // El botón que abre lo de la IA: qué dice según cómo viene la revisión.
   const hayIA = verIA && !!revisionIA && revisionIA.estado !== 'nada'
@@ -479,6 +492,28 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               </a>
             )}
           </div>
+        )}
+
+        {/* Lo que se pidió sin marcas y lo que vio la IA de cada cosa
+            (21/11/2026): en la primera ronda, el pedido inicial; si los
+            cambios se pidieron solo escritos, cada pedido del comentario.
+            Con el mismo diseño que el aviso de la agencia antes de mandar.
+            Sin revisión de la IA (o mientras mira) no hay nada que mostrar:
+            los puntos vienen con ella. */}
+        {puntos && (
+          <section aria-labelledby="lo-que-se-pidio" className="rounded-xl border border-slate-300 px-3 pt-3 dark:border-slate-700">
+            <h4 id="lo-que-se-pidio" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+              {puntos.inicial || !anterior ? 'Lo que se pidió' : `Lo que se pidió en la ronda ${anterior.ronda}`}
+            </h4>
+            {/* No se dice "lo que vio la agencia": si mandó sin esperar a la
+                IA, o con un ZIP o un link, la revisión corrió después. */}
+            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+              Lo que vio la IA en cada punto. Es una ayuda y se puede equivocar.
+            </p>
+            <div className="mt-1">
+              <LoQueVioLaIA cambios={puntos.puntos} />
+            </div>
+          </section>
         )}
 
         {/* Lo que se pidió en la ronda anterior, para controlar que esté.

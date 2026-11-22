@@ -16,6 +16,12 @@
  * haya imágenes: en la primera ronda de la fase la IA mira el pedido inicial
  * (`inicial`), en las que vuelven, los cambios pedidos. Si no hay nada que
  * controlar, el servidor contesta 'sin-pedido' sin llamar a la IA.
+ *
+ * Desde la prueba de Ivan del 21/11/2026 quien aprueba ve lo que dijo la IA
+ * de cada cosa pedida, con el mismo diseño
+ * (components/calendario/entregas/LoQueVioLaIA.tsx), más lo que ve hecho. Si
+ * la agencia entregó las imágenes que controló, la revisión sale de este
+ * control: es lo mismo que vio ella.
  */
 
 export type VeredictoIA = 'hecho' | 'falta' | 'dudoso'

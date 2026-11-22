@@ -14,7 +14,15 @@
 // Desde el 19/11/2026 dice además, de cada marca de la ronda anterior, si en
 // la pieza nueva se ve hecho (Ivan: "debería de hacerlo"): va al lado de cada
 // marca, en «Lo que se pidió en la ronda N» del Revisor (`cambiosPorMarca`).
+//
+// Y desde el 21/11/2026, lo que se pidió sin marcas (los puntos del pedido
+// inicial, o lo escrito en el comentario al pedir cambios), con el mismo
+// diseño que el aviso de la agencia antes de mandar (`puntosParaMostrar`): si
+// entregó las imágenes que controló, es lo mismo que vio ella. Ivan, con su
+// prueba de Publicis: "estaría bueno que se reconozcan los mismos".
 // ---------------------------------------------------------------------------
+
+import { ETIQUETA_DEL_VEREDICTO, enOrden, type CambioControlado } from './control-previo'
 
 export type TipoObservacionIA = 'ortografia' | 'marca' | 'legal' | 'precio_vigencia' | 'codigo' | 'otro'
 
@@ -58,11 +66,20 @@ export type RevisionIA = {
   /** Lo que venía en el ZIP sin ser imagen ni PDF (un PSD, una fuente). */
   ignorados?: string[]
   /** Si se ve hecho lo que pedía cada marca de la ronda anterior (19/11/2026).
-   *  Vacío si no había nada que controlar (una primera ronda, o la anterior
-   *  volvió sin marcas), si la IA no llegó a mirar y en las revisiones de
-   *  antes. */
+   *  Vacío si no había marcas que controlar, si la IA no llegó a mirar y en
+   *  las revisiones de antes. */
   cambiosPedidos?: CambioPedidoIA[]
+  /** Lo que se pidió sin marcas y lo que vio la IA de cada cosa (21/11/2026).
+   *  null si no hay (se controlaron marcas, o nada) y en las revisiones de
+   *  antes. */
+  puntosPedidos?: PuntosPedidosIA | null
 }
+
+/** En la primera ronda de una fase, los puntos del pedido inicial
+ *  (`inicial`); en una que vuelve después de cambios pedidos solo con texto,
+ *  cada pedido del comentario. Cada uno como lo vio la agencia antes de
+ *  mandar: lo pedido, el veredicto y lo que vio la IA. */
+export type PuntosPedidosIA = { inicial: boolean; puntos: CambioControlado[] }
 
 export type MaterialRevisado = { nombre: string; origen: OrigenIA; paginas: number | null }
 
@@ -180,4 +197,21 @@ export function cambiosPorMarca(revision: RevisionIA | null | undefined): Map<st
     if (!porMarca.has(c.marcaId)) porMarca.set(c.marcaId, c)
   }
   return porMarca
+}
+
+/**
+ * Lo que se pidió sin marcas y lo que vio la IA de cada cosa, para la caja
+ * «Lo que se pidió» del Revisor (21/11/2026): en el orden del aviso de la
+ * agencia (lo que falta, lo que no se ve claro y al final lo hecho). Solo con
+ * la revisión lista. Lo que no tenga la forma esperada no se muestra; null si
+ * no queda nada. Pura.
+ */
+export function puntosParaMostrar(revision: RevisionIA | null | undefined): PuntosPedidosIA | null {
+  if (!revision || revision.estado !== 'lista' || !revision.puntosPedidos) return null
+  const crudos: unknown = revision.puntosPedidos.puntos
+  if (!Array.isArray(crudos)) return null
+  const puntos = crudos.filter((c): c is CambioControlado =>
+    !!c && typeof c === 'object' && typeof c.numero === 'number' && typeof c.texto === 'string' && c.texto.trim() !== ''
+    && typeof c.nota === 'string' && Object.prototype.hasOwnProperty.call(ETIQUETA_DEL_VEREDICTO, c.veredicto))
+  return puntos.length ? { inicial: revision.puntosPedidos.inicial === true, puntos: enOrden(puntos) } : null
 }
