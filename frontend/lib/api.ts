@@ -2080,9 +2080,11 @@ export type CalendarioCopia = CalendarioEscrito & {
   copiadas?: { piezas: number; tareas: number; avisos: number };
   /** Tareas que no se copiaron porque quien copió no puede cargar tareas. */
   tareasSinPermiso?: number;
-  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo. */
+  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo, o
+   *  ahora es de una agencia y la tarea es de Tienda (19/11/2026). */
   sinResponsable?: number;
-  /** Personas sacadas de los avisos, por lo mismo. */
+  /** Personas sacadas de los avisos, por lo mismo: ya no abren ese mundo, o
+   *  ahora son de una agencia (21/11/2026: los avisos son internos). */
   destinatariosQuitados?: number;
   /** Avisos que no se copiaron porque se quedaban sin nadie. */
   avisosSinNadie?: number;

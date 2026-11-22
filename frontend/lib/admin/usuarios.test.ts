@@ -3,7 +3,10 @@
  *
  *     npm run test:usuarios
  */
-import { alfabetico, alternarTodas, filtrarPorRol, rolDe, seleccionable, type UsuarioDeLaLista } from './usuarios'
+import {
+  alfabetico, alternarTodas, filtrarPorRol, hayQueMirarElPase, preguntaDelPase, rolDe, seleccionable,
+  type UsuarioDeLaLista,
+} from './usuarios'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -43,6 +46,35 @@ igual('seleccionar todo', [...alternarTodas(new Set([9]), [1, 2])].sort(), [1, 2
 igual('con todas ya elegidas, las saca', [...alternarTodas(new Set([1, 2, 9]), [1, 2])], [9])
 igual('con algunas elegidas, completa', [...alternarTodas(new Set([1]), [1, 2])].sort(), [1, 2])
 igual('una lista vacía no hace nada', [...alternarTodas(new Set([3]), [])], [3])
+
+// 21/11/2026: cambiarle la agencia a la única cuenta de una agencia que no es
+// un tablero ya no se lleva sus tarjetas y plantillas sin preguntar.
+console.log('Cambiar de agencia')
+const fer = { es_externo: true, empresa: 'Estudio Sur' }
+igual('una externa que cambia de agencia: se mira qué se llevaría', hayQueMirarElPase(fer, true, 'Publicis'), true)
+igual('la misma agencia: nada que mirar', hayQueMirarElPase(fer, true, ' Estudio Sur '), false)
+igual('deja de ser externa: nada que mirar', hayQueMirarElPase(fer, false, ''), false)
+igual('pasa a externa: no tenía agencia', hayQueMirarElPase({ es_externo: false, empresa: null }, true, 'Publicis'), false)
+igual('sin agencia elegida todavía', hayQueMirarElPase(fer, true, '  '), false)
+igual('lo que pide el pedido de la revisión',
+  preguntaDelPase('Fer', { de: 'Estudio Sur', a: 'Publicis', tarjetas: 3, plantillas: 1 }),
+  {
+    texto: 'Fer es la única cuenta de «Estudio Sur», que tiene 3 tarjetas y 1 plantilla. ¿Pasarlas también a «Publicis»?',
+    si: 'Sí, pasarlas',
+    no: 'No, dejarlas en «Estudio Sur»',
+  })
+igual('con una sola, en singular',
+  preguntaDelPase('Fer', { de: 'Estudio Sur', a: 'Publicis', tarjetas: 1, plantillas: 0 }),
+  {
+    texto: 'Fer es la única cuenta de «Estudio Sur», que tiene 1 tarjeta. ¿Pasarla también a «Publicis»?',
+    si: 'Sí, pasarla',
+    no: 'No, dejarla en «Estudio Sur»',
+  })
+igual('solo plantillas',
+  preguntaDelPase('Fer', { de: 'Estudio Sur', a: 'Publicis', tarjetas: 0, plantillas: 2 })?.texto,
+  'Fer es la única cuenta de «Estudio Sur», que tiene 2 plantillas. ¿Pasarlas también a «Publicis»?')
+igual('sin nada que pasar (o un tablero), no se pregunta',
+  preguntaDelPase('Fer', { de: 'Diseñadores', a: 'Publicis', tarjetas: 0, plantillas: 0 }), null)
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

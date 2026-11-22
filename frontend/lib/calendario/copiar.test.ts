@@ -94,6 +94,18 @@ igual('una tarea de Tienda no sigue a nombre de alguien de una agencia',
   queSeCopia(conAgencia, new Set([5, 9]), true, new Set([9])).sinResponsable, 1)
 igual('sin saber quién es de una agencia, como antes',
   queSeCopia(conAgencia, new Set([5, 9]), true).sinResponsable, 0)
+// 21/11/2026: los avisos son internos. Quien estaba en uno y ahora es de una
+// agencia (9) sale de la copia, aunque siga entrando al calendario, como en
+// el servidor; el aviso que se queda sin nadie no se copia.
+const avisosConAgencia = accion({
+  avisos: [
+    { id: 'x', diasAntes: 10, destinatarios: [5, 9], creadoPor: 1 },
+    { id: 'y', diasAntes: 3, destinatarios: [9], creadoPor: 1 },
+  ],
+})
+const r = queSeCopia(avisosConAgencia, new Set([5, 9]), true, new Set([9]))
+igual('quien ahora es de una agencia sale de los avisos',
+  [r.avisos, r.destinatariosQuitados, r.avisosSinNadie], [1, 2, 1])
 
 console.log('\nlistas')
 igual('una', enLista(['3 piezas']), '3 piezas')

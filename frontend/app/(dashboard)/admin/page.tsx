@@ -14,7 +14,8 @@ import { useTranslation } from "react-i18next";
 import { ALCANCES, alcanceDe, nombreDeAlcance, type Alcance } from "@/lib/alcance";
 import { agenciaElegida } from "@/lib/calendario/tipos";
 import {
-  FILTROS_DE_ROL, alfabetico, alternarTodas, filtrarPorRol, seleccionable, type FiltroDeRol,
+  FILTROS_DE_ROL, alfabetico, alternarTodas, filtrarPorRol, hayQueMirarElPase, preguntaDelPase, seleccionable,
+  type FiltroDeRol, type PaseDeAgencia, type PreguntaDelPase,
 } from "@/lib/admin/usuarios";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
@@ -234,6 +235,9 @@ function UserEditorModal({
   const yo = useCurrentUserStore((s) => s.user);
   const puedoDar = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
   const [saving,   setSaving]   = useState(false);
+  // «¿Pasarlas también a «Publicis»?» (21/11/2026): mientras está, no se
+  // guardó nada todavía. null = nada que preguntar.
+  const [pregunta, setPregunta] = useState<PreguntaDelPase | null>(null);
 
   function toggleMundo(clave: string) {
     setMundos((prev) => {
@@ -281,6 +285,33 @@ function UserEditorModal({
     if (!fullName.trim()) { toast.error(t("admin.userEditor.nameRequired")); return; }
     if (!esSucursal && !email.trim()) { toast.error(t("admin.userEditor.emailRequired")); return; }
     if (externo && !empresa.trim()) { toast.error("Elegí de qué agencia es la cuenta externa."); return; }
+    // Antes de guardar nada (21/11/2026): si es la única cuenta de una agencia
+    // que tiene tarjetas o plantillas y se le cambia la agencia, se pregunta
+    // si se las lleva. Antes pasaban solas y el panel avisaba después: con
+    // «Estudio Sur» -> Publicis elegida por error, Publicis se quedaba con
+    // todo lo de Estudio Sur. Si es la única y lo demás lo dice el servidor.
+    if (hayQueMirarElPase(user, externo, empresa)) {
+      setSaving(true);
+      let pase: PaseDeAgencia;
+      try {
+        ({ data: pase } = await api.get<PaseDeAgencia>(
+          `/admin/users/${user.id}/pase-de-agencia`, { params: { empresa: empresa.trim() } }));
+      } catch (err: any) {
+        // Sin saberlo no se guarda: no se puede preguntar.
+        toast.error(err?.response?.data?.detail ?? `No se pudo ver qué tiene «${user.empresa}». Probá de nuevo.`);
+        setSaving(false);
+        return;
+      }
+      setSaving(false);
+      const p = preguntaDelPase(fullName.trim(), pase);
+      if (p) { setPregunta(p); return; }
+    }
+    await guardar(false);
+  }
+
+  /** Guarda todo. `pasarTarjetas`: la respuesta a la pregunta de arriba. */
+  async function guardar(pasarTarjetas: boolean) {
+    setPregunta(null);
     setSaving(true);
     try {
       await api.patch(`/admin/users/${user.id}`, esSucursal ? { full_name: fullName } : { full_name: fullName, email });
@@ -288,11 +319,11 @@ function UserEditorModal({
       // servidor le saca lo que no le corresponde.
       if (externo !== !!user.es_externo || (externo && empresa.trim() !== (user.empresa ?? ""))) {
         const { data } = await api.patch<{ empresa: string | null; tarjetas_pasadas?: number; plantillas_pasadas?: number }>(
-          `/admin/users/${user.id}/externo`, { es_externo: externo, empresa: externo ? empresa.trim() : null });
-        // Si era la única cuenta de una agencia que no es un tablero y se le
-        // corrigió el nombre («Publisis» -> «Publicis»), sus tarjetas y
-        // plantillas pasaron al nombre nuevo: que quien administra lo sepa
-        // (19/11/2026). Las de un tablero no se mueven nunca.
+          `/admin/users/${user.id}/externo`,
+          { es_externo: externo, empresa: externo ? empresa.trim() : null, pasar_tarjetas: pasarTarjetas });
+        // Si se dijo «Sí, pasarlas», cuántas pasaron a la agencia nueva: que
+        // quien administra lo vea hecho (19/11/2026). Las de un tablero no
+        // se mueven nunca.
         const contar = (n: number | undefined, una: string, varias: string) => (n ? `${n} ${n === 1 ? una : varias}` : "");
         const pasadas = [
           contar(data.tarjetas_pasadas, "tarjeta", "tarjetas"), contar(data.plantillas_pasadas, "plantilla", "plantillas"),
@@ -432,6 +463,7 @@ function UserEditorModal({
                   onChange={(e) => {
                     const v = e.target.checked;
                     setExterno(v);
+                    setPregunta(null);
                     // El selector de abajo muestra lo que va a quedar: una
                     // cuenta que pasa a externa arranca sin calendario.
                     setAlcance(v && !user.es_externo ? "nada" : alcanceInicial);
@@ -451,7 +483,10 @@ function UserEditorModal({
               {externo && (
                 <div className="mt-2.5">
                   <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Agencia</span>
-                  <ElegirAgencia valor={empresa} agencias={agencias} actual={user.empresa} onCambiar={setEmpresa} />
+                  <ElegirAgencia
+                    valor={empresa} agencias={agencias} actual={user.empresa}
+                    onCambiar={(v) => { setEmpresa(v); setPregunta(null); }}
+                  />
                 </div>
               )}
             </div>
@@ -530,14 +565,36 @@ function UserEditorModal({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-slate-800">
-          <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">{t("common.cancel")}</button>
-          <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
-            {saving && <Loader2 size={13} className="animate-spin" />}
-            {t("common.save")}
-          </button>
-        </div>
+        {/* Footer. Con la pregunta de las tarjetas de su agencia (21/11/2026),
+            la pregunta va acá, donde se iba a tocar «Guardar»: todavía no se
+            guardó nada, y «Volver» deja seguir editando. */}
+        {pregunta ? (
+          <div role="alertdialog" aria-labelledby="pregunta-del-pase"
+            className="space-y-3 border-t border-amber-200 bg-amber-50 px-6 py-4 dark:border-amber-500/25 dark:bg-amber-500/10">
+            <p id="pregunta-del-pase" className="text-sm font-medium text-slate-800 dark:text-slate-100">{pregunta.texto}</p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button onClick={() => setPregunta(null)} disabled={saving} className="btn-secondary text-sm px-4 py-2">
+                Volver
+              </button>
+              <button onClick={() => guardar(false)} disabled={saving} className="btn-secondary text-sm px-4 py-2">
+                {pregunta.no}
+              </button>
+              <button onClick={() => guardar(true)} disabled={saving}
+                className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+                {saving && <Loader2 size={13} className="animate-spin" />}
+                {pregunta.si}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-slate-800">
+            <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">{t("common.cancel")}</button>
+            <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+              {saving && <Loader2 size={13} className="animate-spin" />}
+              {t("common.save")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

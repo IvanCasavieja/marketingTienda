@@ -85,7 +85,10 @@ export type ResumenDeCopia = {
    */
   sinResponsable: number
   avisos: number
-  /** Personas que salen de algún aviso porque ya no ven el mundo. */
+  /**
+   * Personas que salen de algún aviso: ya no ven el mundo, o ahora son de una
+   * agencia (21/11/2026: los avisos son internos).
+   */
   destinatariosQuitados: number
   /** Avisos que no se copian porque se quedan sin nadie. */
   avisosSinNadie: number
@@ -97,7 +100,8 @@ export type ResumenDeCopia = {
  * mundo); sin ella (todavía no llegó) no se adivina a quién se saca, y el
  * servidor lo dice después. `deAgencias`, los de esa lista que son de una
  * agencia (cuentas externas): una tarea que no es para la agencia se copia
- * sin ellos, como hace el servidor (19/11/2026).
+ * sin ellos (19/11/2026), y salen de los avisos, que son internos
+ * (21/11/2026), como hace el servidor.
  */
 export function queSeCopia(
   accion: BarraGuardada, queVen: Set<number> | null, cargaTareas: boolean, deAgencias: Set<number> = new Set(),
@@ -107,7 +111,9 @@ export function queSeCopia(
   let destinatariosQuitados = 0
   let avisosSinNadie = 0
   for (const a of accion.avisos ?? []) {
-    const quedan = queVen ? a.destinatarios.filter(u => queVen.has(u)).length : a.destinatarios.length
+    const quedan = queVen
+      ? a.destinatarios.filter(u => queVen.has(u) && !deAgencias.has(u)).length
+      : a.destinatarios.length
     destinatariosQuitados += a.destinatarios.length - quedan
     if (quedan === 0) avisosSinNadie++
   }
