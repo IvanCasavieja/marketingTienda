@@ -65,3 +65,61 @@ export function alternarTodas(elegidas: Set<number>, visibles: number[]): Set<nu
   }
   return out
 }
+
+// ---------------------------------------------------------------------------
+// Cambiarle la agencia a una cuenta externa (21/11/2026)
+// ---------------------------------------------------------------------------
+// Revisión del 19/11/2026: pasar a la única cuenta de «Estudio Sur» (una
+// agencia que no es un tablero) a Publicis, elegida por error en la lista, se
+// tomaba como una corrección del nombre y se llevaba sus tarjetas y
+// plantillas sin preguntar; el panel avisaba después. Ahora el servidor las
+// pasa solo si se le pide (`pasar_tarjetas`), y el panel pregunta antes de
+// guardar. Si es la única, si la vieja es uno de los tres tableros (Publicis,
+// Another Monday, Diseñadores: agencias externas, que nunca pasan nada) o si
+// es la misma escrita de otra forma, lo decide el servidor
+// (GET /admin/users/{id}/pase-de-agencia).
+
+/** Lo que contesta GET /admin/users/{id}/pase-de-agencia. */
+export type PaseDeAgencia = {
+  /** La agencia que tiene hoy la cuenta. */
+  de: string | null
+  /** La nueva, escrita como la va a guardar el servidor. */
+  a: string | null
+  /** Lo que se llevaría: 0 y 0 si no hay nada que preguntar. */
+  tarjetas: number
+  plantillas: number
+}
+
+/** Si al guardar hay que preguntarle al servidor qué se llevaría la cuenta:
+ *  ya era externa, sigue siéndolo y se le cambia la agencia. Pura. */
+export function hayQueMirarElPase(
+  antes: { es_externo?: boolean; empresa?: string | null }, externo: boolean, empresa: string,
+): boolean {
+  const vieja = (antes.empresa ?? '').trim()
+  const nueva = empresa.trim()
+  return !!antes.es_externo && externo && vieja !== '' && nueva !== '' && nueva !== vieja
+}
+
+export type PreguntaDelPase = { texto: string; si: string; no: string }
+
+const contar = (n: number, una: string, varias: string) => (n > 0 ? `${n} ${n === 1 ? una : varias}` : '')
+
+/**
+ * La pregunta antes de guardar, en palabras simples: «Fer es la única cuenta
+ * de «Estudio Sur», que tiene 3 tarjetas y 1 plantilla. ¿Pasarlas también a
+ * «Publicis»?», con «Sí, pasarlas» / «No, dejarlas en «Estudio Sur»». null
+ * si no hay nada que preguntar. Pura.
+ */
+export function preguntaDelPase(nombre: string, pase: PaseDeAgencia): PreguntaDelPase | null {
+  const total = pase.tarjetas + pase.plantillas
+  if (total <= 0 || !pase.de || !pase.a) return null
+  const tiene = [contar(pase.tarjetas, 'tarjeta', 'tarjetas'), contar(pase.plantillas, 'plantilla', 'plantillas')]
+    .filter(Boolean).join(' y ')
+  // Tarjeta y plantilla son femeninas: «pasarla» si es una, «pasarlas» si son más.
+  const las = total === 1 ? 'la' : 'las'
+  return {
+    texto: `${nombre} es la única cuenta de «${pase.de}», que tiene ${tiene}. ¿Pasar${las} también a «${pase.a}»?`,
+    si: `Sí, pasar${las}`,
+    no: `No, dejar${las} en «${pase.de}»`,
+  }
+}

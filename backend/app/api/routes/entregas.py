@@ -4,7 +4,8 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
-  POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ven hechos los cambios pedidos? (la IA)
+  POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ve hecho lo pedido? (la IA; los cambios
+                                                  o, en la primera ronda, el pedido inicial)
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
@@ -62,8 +63,10 @@ pudo mostrar de adentro (las páginas de un PDF) el servidor lo pasa a
 imágenes de la ronda al entregar: ver `entregar`.
 """
 import asyncio
+import hashlib
 import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 from urllib.parse import quote
@@ -447,6 +450,7 @@ def _puede_decidir(usuario: User, tarea: CalendarioTarea, entrega: CalendarioEnt
 @router.get("/tareas/{tarea_id}/entregas")
 async def ver_entregas(
     tarea_id: str,
+    huella: str | None = None,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -463,6 +467,12 @@ async def ver_entregas(
     entrega = await db.get(CalendarioEntrega, tarea_id)
     if entrega is None:
         raise HTTPException(status_code=404, detail=_NO_LLEVA)
+    # La tarjeta abierta pregunta cada tanto si cambió (Ivan, 20/11/2026: "si
+    # se completa una tarea o una entrega y tengo abierta la tarjeta, su estado
+    # no se actualiza solo"). Si no cambió nada, la respuesta es una línea.
+    actual_huella = await _huella_de_la_tarjeta(db, tarea, barra)
+    if huella is not None and huella == actual_huella:
+        return {"huella": actual_huella, "sinCambios": True}
 
     fases = (await db.execute(
         select(CalendarioFase).where(CalendarioFase.tarea_id == tarea_id).order_by(CalendarioFase.orden)
@@ -568,6 +578,7 @@ async def ver_entregas(
     quien = _quien_mueve(current_user, tarea, entrega, puede_decidir)
     columna = reglas.columna_de_entrega(entrega)
     return {
+        "huella": actual_huella,
         "tarea": {
             "id": tarea.id, "titulo": tarea.titulo, "descripcion": tarea.descripcion, "estado": tarea.estado,
             "asignadoA": tarea.asignado_a_id, "vence": tarea.vence.isoformat() if tarea.vence else None,
@@ -624,6 +635,43 @@ async def ver_entregas(
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
     }
+
+
+def huella_de(*valores) -> str:
+    """Un resumen corto de unos valores: cambia si cambia cualquiera. Pura."""
+    return hashlib.sha1(repr(valores).encode("utf-8")).hexdigest()[:16]
+
+
+async def _huella_de_la_tarjeta(db: AsyncSession, tarea, barra) -> str:
+    """Lo que, si cambia, cambia lo que se ve en la tarjeta: la tarea (estado,
+    nombre, vencimiento, responsable), la acción, la entrega (cada movimiento
+    le toca `updated_at`: entregar, decidir, mover, archivar) y cuántas rondas,
+    decisiones, marcas y comentarios hay, con la última de cada una. Una sola
+    consulta chica: es lo que se pregunta cada pocos segundos mientras la
+    tarjeta está abierta, en vez de traerla entera."""
+    t = tarea.id
+    def cuantos_y_ultimo(modelo, columna):
+        return (
+            select(func.count()).select_from(modelo).where(modelo.tarea_id == t).scalar_subquery(),
+            select(func.max(columna)).where(modelo.tarea_id == t).scalar_subquery(),
+        )
+    decisiones = (
+        select(func.count(CalendarioDecision.id), func.max(CalendarioDecision.id))
+        .join(CalendarioVersion, CalendarioVersion.id == CalendarioDecision.version_id)
+        .where(CalendarioVersion.tarea_id == t)
+    ).subquery()
+    fila = (await db.execute(select(
+        select(CalendarioEntrega.updated_at).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
+        select(CalendarioEntrega.momento).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
+        *cuantos_y_ultimo(CalendarioVersion, CalendarioVersion.created_at),
+        *cuantos_y_ultimo(CalendarioComentario, CalendarioComentario.created_at),
+        *cuantos_y_ultimo(CalendarioMarca, CalendarioMarca.created_at),
+        *decisiones.c,
+    ))).one()
+    return huella_de(
+        tuple(fila), tarea.estado, tarea.titulo, tarea.vence, tarea.asignado_a_id, tarea.descripcion,
+        barra.nombre, barra.desde, barra.hasta, barra.color,
+    )
 
 
 def _comentario_json(c: CalendarioComentario, usuario: User, nombres: dict) -> dict:
@@ -873,11 +921,15 @@ async def _hay_lugar_para_el_zip(db: AsyncSession, peso: int, bytes_imagenes: in
     la ronda (`hay_lugar` de siempre). Revisión del 19/11/2026: antes era
     una reserva debajo del tope de la base, que dejaba a los ZIP llegar a
     350 de los 400 MB; ver ZIP_TOPE_MB en app/core/config.py. Si no hay
-    lugar, deja un error en el log para quien administra: no se borra nada."""
+    lugar, deja un error en el log para quien administra: no se borra nada.
+
+    Se llama adentro de _UN_ZIP_POR_VEZ, justo antes de guardar (ver
+    _guardar_el_zip): a los guardados se les suman los que otra entrega ya
+    mandó y todavía no confirmó (`_zips_sin_confirmar`)."""
     guardados = (await db.execute(
         select(func.coalesce(func.sum(CalendarioVersionZip.tamano), 0))
         .where(CalendarioVersionZip.datos.isnot(None))
-    )).scalar_one()
+    )).scalar_one() + _zips_sin_confirmar
     if not entra(guardados, peso, settings.ZIP_TOPE_MB):
         logger.error(
             "entregas: los ZIP guardados ocupan %.1f MB y su tope es %d MB (ZIP_TOPE_MB): el de %.1f MB "
@@ -891,9 +943,55 @@ async def _hay_lugar_para_el_zip(db: AsyncSession, peso: int, bytes_imagenes: in
 # Guardar el ZIP de una entrega, de a uno en todo el proceso (revisión del
 # 19/11/2026): mandarle a la base un ZIP de 40 MB arma copias del pedido en
 # memoria (el pico sube unos 120 MB además del ZIP), y dos entregas grandes a
-# la vez no entran en los 512 MB del servidor. Adentro solo se manda el ZIP:
-# no se espera ningún candado de la base, así que no se traba con otra entrega.
+# la vez no entran en los 512 MB del servidor. Adentro solo se mira si hay
+# lugar (dos lecturas) y se manda el ZIP: no se espera ningún candado de la
+# base, así que no se traba con otra entrega.
 _UN_ZIP_POR_VEZ = asyncio.Semaphore(1)
+
+# Los bytes de los ZIP que ya se mandaron a la base y todavía no se
+# confirmaron (commit). Otra entrega no los ve en la suma de los guardados
+# hasta el commit, así que el control del tope los suma de acá. Sin esto,
+# mirar el tope adentro del candado no alcanzaba: la segunda entrega lo
+# miraba cuando la primera ya había guardado su ZIP pero no lo había
+# confirmado, y entraban las dos (revisión del 19/11/2026). Es por proceso,
+# como el candado: el servidor corre en uno solo.
+_zips_sin_confirmar = 0
+
+
+@asynccontextmanager
+async def _guardar_el_zip(db: AsyncSession, version_id: str, nombre: str | None, datos: bytes | None,
+                          bytes_imagenes: int):
+    """El ZIP original de una ronda: se mira si hay lugar y se guarda, juntos
+    y de a uno en todo el proceso (_UN_ZIP_POR_VEZ). Antes el control del
+    tope iba afuera del candado: dos entregas con un ZIP grande casi a la vez
+    lo pasaban las dos antes de que ninguna guardara, y dejaban el tope
+    pasado por hasta 40 MB (revisión del 19/11/2026, arreglado el
+    21/11/2026).
+
+    Si no hay lugar (el tope propio de los ZIP o la base), queda la fila sin
+    los bytes, para que la ficha diga que no se guardó; la entrega sigue
+    igual (no es un 507) y nada se borra. Da si se guardó.
+
+    Lo que guarda cuenta en `_zips_sin_confirmar` hasta que termina el
+    bloque: adentro va el commit de la entrega."""
+    global _zips_sin_confirmar
+    if datos is None:
+        yield False
+        return
+    # Lo pendiente de la entrega se manda antes: adentro, solo esto.
+    await db.flush()
+    async with _UN_ZIP_POR_VEZ:
+        guardado = await _hay_lugar_para_el_zip(db, len(datos), bytes_imagenes)
+        db.add(CalendarioVersionZip(
+            version_id=version_id, nombre=nombre, tamano=len(datos), datos=datos if guardado else None,
+        ))
+        await db.flush()
+        reservado = len(datos) if guardado else 0
+        _zips_sin_confirmar += reservado
+    try:
+        yield guardado
+    finally:
+        _zips_sin_confirmar -= reservado
 
 
 async def _leer(archivo: UploadFile, maximo: int, que: str) -> tuple[bytes, str]:
@@ -918,16 +1016,20 @@ async def control_previo(
 ):
     """Antes de entregar, la IA mira si se hicieron los cambios pedidos (Ivan,
     20/11/2026: "que a la agencia, cuando va a subir los archivos, la IA le
-    diga 'che, pará, acá faltan estas cositas de los cambios'").
+    diga 'che, pará, acá faltan estas cositas de los cambios'") o, en la
+    primera ronda de la fase, si la pieza cumple el pedido inicial (Ivan,
+    21/11/2026: "La primera entrega debería compararse contra lo pedido
+    inicialmente").
 
     Recibe las mismas imágenes que se van a entregar (sin las miniaturas: no
     se guarda nada de ellas) y no crea ninguna versión. Contesta
-    {estado, cambios, controlId}: 'sin-pedido' si no hay una ronda anterior
-    de la fase en curso que haya vuelto con marcas (o si ahora no se podría
-    entregar: eso lo dice la entrega), 'listo' con cada marca pedida
-    [{numero, texto, veredicto, nota}], o 'no-disponible' (sin IA, tope,
-    falla, demora): la pantalla manda igual. Nunca traba la entrega. Solo
-    quien la hace (`puede_entregar`). Ver
+    {estado, cambios, controlId, inicial}: 'sin-pedido' si no hay nada que
+    controlar (la primera ronda con el pedido vacío, o la anterior volvió sin
+    marcas ni comentario; o si ahora no se podría entregar: eso lo dice la
+    entrega), 'listo' con cada marca o punto pedido [{numero, texto,
+    veredicto, nota}], o 'no-disponible' (sin IA, tope, falla, demora): la
+    pantalla manda igual. `inicial`: si lo controlado es el pedido inicial.
+    Nunca traba la entrega. Solo quien la hace (`puede_entregar`). Ver
     revision_ia.controlar_antes_de_entregar."""
     imagenes = imagenes or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
@@ -986,7 +1088,9 @@ async def entregar(
       zips), en la misma transacción. Si no hay lugar (el tope propio de los
       ZIP, ZIP_TOPE_MB, o la base: `_hay_lugar_para_el_zip`), la entrega se
       hace igual sin guardarlo y queda anotado (la fila sin los bytes): la
-      ficha lo dice. Nunca se borra nada para hacerle lugar.
+      ficha lo dice. Nunca se borra nada para hacerle lugar. El control y el
+      guardado van juntos y de a uno (`_guardar_el_zip`, 21/11/2026): dos
+      entregas a la vez no pasan el tope.
     - Las imágenes de adentro las saca el navegador y las sube como imágenes
       de la ronda. `zipYaSubidas` dice cuáles (su lugar en el índice del
       ZIP), junto con las que la persona sacó de la ronda a propósito: esas
@@ -1102,10 +1206,8 @@ async def entregar(
     bytes_imagenes = sum(len(g) + len(m) for g, _, m, _ in leidas)
     if leidas:
         await exigir_lugar(db, bytes_imagenes)
-    # El ZIP original, solo si entra en el tope de los ZIP y en la base. Si
-    # no, la entrega sigue igual sin él (no es un 507): queda la fila sin los
-    # bytes, para que la ficha diga que no se guardó. Nada se borra.
-    zip_guardado = zip_datos is not None and await _hay_lugar_para_el_zip(db, len(zip_datos), bytes_imagenes)
+    # El ZIP original se guarda al final, solo si entra en el tope de los ZIP
+    # y en la base: ver _guardar_el_zip.
 
     ronda = (ultima.ronda if ultima else 0) + 1
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo
@@ -1136,18 +1238,11 @@ async def entregar(
         m.corregida_en_version_id = versionId
         m.corregida_at = ahora
     await db.flush()
-    if zip_datos is not None:
-        db.add(CalendarioVersionZip(
-            version_id=versionId, nombre=zip_nombre, tamano=len(zip_datos),
-            datos=zip_datos if zip_guardado else None,
-        ))
-        # El ZIP va solo a la base, y de a uno en todo el proceso (ver _UN_ZIP_POR_VEZ).
-        async with _UN_ZIP_POR_VEZ:
-            await db.flush()
     await reglas.recalcular(db, entrega, tarea)
     # Si la IA ya miró exactamente estas imágenes en el control previo (Ivan,
     # 20/11/2026), la revisión de la versión sale de ahí y no se le paga dos
-    # veces. Con link o ZIP no: eso lo mira al entregar.
+    # veces; desde el 21/11/2026, también en la primera ronda (el control del
+    # pedido inicial). Con link o ZIP no: eso lo mira al entregar.
     del_control = bool(leidas) and await revision_ia.reusar_control(
         db, tarea_id=tarea_id, usuario_id=current_user.id, fase_id=fase.id, ronda=ronda,
         huella=revision_ia.huella_de([g for g, _, _, _ in leidas]), con_link=bool(link_ok),
@@ -1175,8 +1270,12 @@ async def entregar(
         ):
             avisados += 1
     resumen = await _resumen(db, tarea_id)
-    rev = await _nueva_revision(db, barra.mundo)
-    await db.commit()
+    # El ZIP original, al final y antes de la revisión del calendario (su
+    # fila es una sola para todos: no se la tiene tomada mientras se espera
+    # el turno del ZIP). Lo que guarda cuenta para el tope hasta el commit.
+    async with _guardar_el_zip(db, versionId, zip_nombre, zip_datos, bytes_imagenes) as zip_guardado:
+        rev = await _nueva_revision(db, barra.mundo)
+        await db.commit()
     # La IA la revisa en segundo plano: arranca después de contestar (y ya
     # con la versión guardada, por el commit de arriba), abre su propia
     # sesión y no levanta nunca. Si falla, la entrega queda igual. El ZIP va

@@ -2080,9 +2080,11 @@ export type CalendarioCopia = CalendarioEscrito & {
   copiadas?: { piezas: number; tareas: number; avisos: number };
   /** Tareas que no se copiaron porque quien copió no puede cargar tareas. */
   tareasSinPermiso?: number;
-  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo. */
+  /** Tareas copiadas sin responsable: esa persona ya no abre ese mundo, o
+   *  ahora es de una agencia y la tarea es de Tienda (19/11/2026). */
   sinResponsable?: number;
-  /** Personas sacadas de los avisos, por lo mismo. */
+  /** Personas sacadas de los avisos, por lo mismo: ya no abren ese mundo, o
+   *  ahora son de una agencia (21/11/2026: los avisos son internos). */
   destinatariosQuitados?: number;
   /** Avisos que no se copiaron porque se quedaban sin nadie. */
   avisosSinNadie?: number;
@@ -2333,6 +2335,11 @@ export const entregasApi = {
     api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
   detalle: (tareaId: string) =>
     api.get<DetalleEntregas>(`/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, ESPERA),
+  /** Lo mismo, pero si la tarjeta no cambió desde `huella` vuelve solo
+   *  `{ sinCambios: true }` (la tarjeta abierta pregunta cada tanto). */
+  detalleSiCambio: (tareaId: string, huella: string) =>
+    api.get<DetalleEntregas | { huella: string; sinCambios: true }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, { ...ESPERA, params: { huella } }),
   /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
    *  vino un ZIP, `zip.guardado` dice si se guardó (sin lugar, no) y
    *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor.

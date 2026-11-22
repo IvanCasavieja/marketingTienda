@@ -80,6 +80,7 @@
     "password": "Contraseña",
     "signIn": "Ingresar",
     "signingIn": "Ingresando...",
+    "wakingUp": "El servidor se está despertando: la primera vez puede tardar hasta un minuto.",
     "wrongCredentials": "Email o contraseña incorrectos. A los 5 intentos fallidos la cuenta se bloquea 15 minutos.",
     "tooManyAttempts": "Demasiados intentos seguidos desde esta conexión. Esperá un minuto y probá de nuevo.",
     "serverDown": "No hay conexión con el servidor. Probá de nuevo en un momento.",

@@ -16,7 +16,10 @@ es una de mentira que usa la misma regla de reclamo que la de Postgres
 - lo que se pidió en la ronda anterior (19/11/2026): va como datos, con las
   miniaturas de esa ronda para comparar (lo que la IA marque en ellas se
   descarta); la IA dice marca por marca si se ve hecho, y lo que venga mal se
-  descarta sin tirar la revisión.
+  descarta sin tirar la revisión;
+- el pedido inicial (21/11/2026): en la primera entrega de una fase, los
+  puntos de lo pedido al principio, que la IA controla punto por punto y que
+  quien aprueba no ve (no son marcas).
 
 Lo que hace la consulta de Postgres de verdad (el reclamo con su candado,
 cargar la versión, guardar y registrar el uso) se probó contra una copia
@@ -1025,7 +1028,7 @@ def test_revisar_version_guarda_lo_que_dijo_de_cada_marca(ia_prendida):
     base = BaseFalsa(["ve-2"], ronda_anterior=RONDA_1)
     assert _revisar("ve-2", base, sim.ApiGrabada([_respuesta(cambios=[_cambio(7)])])) == "lista"
     assert base.filas["ve-2"]["cambios_pedidos"] == []
-    # En una primera ronda queda en null: no había nada que controlar.
+    # Sin nada que controlar (una primera ronda con el pedido vacío) queda en null.
     base = BaseFalsa(["ve-1"])
     assert _revisar("ve-1", base, sim.ApiGrabada([_respuesta()])) == "lista"
     assert base.filas["ve-1"]["cambios_pedidos"] is None
@@ -1290,7 +1293,7 @@ def test_el_control_previo_nunca_levanta(monkeypatch):
         BaseRota(), tarea=SimpleNamespace(id="ta-1"), entrega=None, barra=None, fase=fase, ronda=2, usuario_id=7,
         imagenes=[(b"x", "image/jpeg")], comentario=None,
     ))
-    assert r.para_la_agencia() == {"estado": "no-disponible", "cambios": [], "controlId": None}
+    assert r.para_la_agencia() == {"estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False}
     # Apagada: ni se mira la base.
     monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", False)
     r = asyncio.run(rv.controlar_antes_de_entregar(
@@ -1298,3 +1301,208 @@ def test_el_control_previo_nunca_levanta(monkeypatch):
         imagenes=[(b"x", "image/jpeg")], comentario=None,
     ))
     assert r.estado == "no-disponible"
+
+
+# ---------------------------------------------------------------------------
+# Cambios pedidos solo con texto (20/11/2026)
+# ---------------------------------------------------------------------------
+
+def test_los_pedidos_salen_de_cada_renglon_del_comentario():
+    # La agencia no veía el control de la IA cuando se pedían cambios sin
+    # marcas ("¿Qué hay que cambiar?" en el tablero): cada renglón es un pedido.
+    comentario = "\n".join([
+        "Dos cosas:", "- Cambiar el precio a $199", "• Sacar el logo viejo", "2) Más grande el 2x1", "",
+        "- Sacar el logo viejo",
+    ])
+    assert rv.pedidos_del_comentario([comentario, None, "  "]) == [
+        "Dos cosas:", "Cambiar el precio a $199", "Sacar el logo viejo", "Más grande el 2x1",
+    ]
+    assert rv.pedidos_del_comentario(["Un solo párrafo. Con dos oraciones."]) == ["Un solo párrafo. Con dos oraciones."]
+    muchos = "\n".join(f"- pedido {i}" for i in range(30))
+    assert len(rv.pedidos_del_comentario([muchos])) == rv.MAX_PEDIDOS_DEL_COMENTARIO
+    assert rv.pedidos_del_comentario([]) == []
+
+
+def test_un_pedido_del_comentario_va_sin_lugar_en_la_imagen():
+    r = rv.RondaAnterior(ronda=1, imagenes=1, marcas=(
+        rv.MarcaPedida("comentario-1", 1, "Cambiar el precio a $199", None, None, None),
+    ), comentarios=(), miniaturas=())
+    lineas = rv.lineas_de_los_cambios_pedidos(r)
+    assert lineas[1] == "- Marca 1 (pedida en el comentario, sin lugar en la imagen): Cambiar el precio a $199"
+    assert not any("Comentario de quien" in l for l in lineas)
+
+
+
+def test_una_vineta_necesita_un_espacio():
+    # Sin el espacio no es viñeta (21/11/2026): "-40%" o "2.500" son datos.
+    assert rv.pedidos_del_comentario(["-40% en vinos\n2.500 puntos\n- Sacar el logo\n1. Header\n3)\n-"]) == [
+        "-40% en vinos", "2.500 puntos", "Sacar el logo", "Header",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# El pedido inicial: la primera entrega (21/11/2026)
+# ---------------------------------------------------------------------------
+# Ivan: "No lo hace en la primera entrega, eso está mal. La primera entrega
+# debería compararse contra lo pedido inicialmente."
+
+def test_una_tarjeta_del_tablero_se_controla_renglon_por_renglon():
+    from app.services.entregas import config_por_defecto
+
+    # Como nace una tarjeta del tablero: lo tildado con sus medidas, el CTA y
+    # la descripción escrita, todo en "Qué se necesita".
+    config = config_por_defecto(
+        1, "Que se vea bien el logo.\n\n- Fondo rojo\n• CTA: Ver ofertas", "banners", ["Header", "Checkout"],
+        {"cta": "Ver ofertas"},
+    )
+    assert config["tipo_pieza"] == "banner"
+    assert rv.pedidos_del_pedido_inicial("banner", config["brief"]) == [
+        "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)",
+        "CTA: Ver ofertas",
+        "Que se vea bien el logo.",
+        "Fondo rojo",  # sin la viñeta, sin el renglón vacío y sin el CTA repetido
+    ]
+
+
+def test_del_formulario_largo_van_precio_vigencia_y_legales_enteros():
+    brief = {**CONTEXTO.brief, "cantidad": 40, "legales": "Válido hasta agotar stock.\nNo acumulable.",
+             "detalle": "Cenefa de vinos\n- 2x1 en tintos"}
+    assert rv.pedidos_del_pedido_inicial("cenefa", brief) == [
+        "Medidas: A4 apaisada", "Precio: $ 199", "Vigencia: del 28/11/2026 al 30/11/2026",
+        # Los legales, enteros y en un solo punto (no un punto por renglón).
+        "Legales: Válido hasta agotar stock. No acumulable.",
+        "Cenefa de vinos", "2x1 en tintos",
+    ]
+    # Una vigencia con una sola fecha va igual, como en el pedido.
+    assert rv.pedidos_del_pedido_inicial("cenefa", {"vigenciaHasta": "2026-11-30"}) == ["Vigencia: del ? al 30/11/2026"]
+    # Redes y mailing: el formato, el copy y el llamado a la acción, con su etiqueta.
+    assert rv.pedidos_del_pedido_inicial("redes", {"formato": "Story", "copy": "¡Llegó\nel Ciberlunes!",
+                                                   "fecha": "2026-12-01"}) == [
+        "Formato: Story", "Copy: ¡Llegó el Ciberlunes!"]
+    assert rv.pedidos_del_pedido_inicial("mailing", {"asunto": "Ofertas", "segmento": "Clientes Club",
+                                                     "fechaEnvio": "2026-12-01", "llamado": "Comprá ya"}) == [
+        "Llamado a la acción: Comprá ya"]
+
+
+def test_lo_que_no_se_ve_en_la_pieza_no_va():
+    # El link y las fechas en que está publicado un banner; la cantidad de
+    # cenefas; el asunto, el segmento y la fecha de envío de un mail; la
+    # fecha de publicación de redes.
+    assert rv.pedido_inicial("banner", {"link": "https://x.uy", "desde": "2026-11-01", "hasta": "2026-11-05"}) is None
+    assert rv.pedido_inicial("cenefa", {"cantidad": 40}) is None
+    assert rv.pedido_inicial("mailing", {"asunto": "Ofertas", "segmento": "Club", "fechaEnvio": "2026-12-01"}) is None
+    assert rv.pedido_inicial("redes", {"fecha": "2026-12-01"}) is None
+
+
+def test_lo_que_se_pidio_al_devolver_la_pieza_va_primero():
+    # Una fase que se abrió devolviendo una pieza aprobada (17/11/2026):
+    # primero lo que se pidió cambiar, después el pedido de siempre.
+    puntos = rv.pedidos_del_pedido_inicial(
+        "cenefa", {"precio": "$ 199", "detalle": "Fondo verde"}, "- Fondo verde\n- Sacar el logo viejo\n",
+    )
+    assert puntos == ["Fondo verde", "Sacar el logo viejo", "Precio: $ 199"]
+
+
+def test_sin_nada_que_controlar_no_hay_pedido_inicial():
+    assert rv.pedidos_del_pedido_inicial("otro", {}) == []
+    assert rv.pedido_inicial("otro", {}) is None
+    assert rv.pedido_inicial("otro", None, None) is None
+    assert rv.pedido_inicial("otro", {"detalle": " \n - \n"}, "   ") is None
+
+
+def test_el_pedido_inicial_tiene_un_tope_y_lo_primero_es_lo_que_queda():
+    detalle = "\n".join(f"Renglón {i}" for i in range(1, 31))
+    assert len(rv.pedidos_del_pedido_inicial("otro", {"detalle": detalle})) == rv.MAX_PEDIDOS_DEL_COMENTARIO == 12
+    puntos = rv.pedidos_del_pedido_inicial("cenefa", {"precio": "$ 199", "detalle": detalle}, "Cambio 1\nCambio 2")
+    assert puntos[:3] == ["Cambio 1", "Cambio 2", "Precio: $ 199"] and puntos[-1] == "Renglón 9"
+    # Un renglón larguísimo se recorta como una marca (entero está en <pedido>).
+    [largo] = rv.pedidos_del_pedido_inicial("otro", {"detalle": "x" * 900})
+    assert len(largo) == rv.MAX_TEXTO_MARCA and largo.endswith("…")
+
+
+def test_el_pedido_inicial_es_una_ronda_marcada_inicial_sin_imagenes():
+    r = rv.pedido_inicial("cenefa", {"precio": "$ 199", "detalle": "Cenefa de vinos"})
+    assert (r.inicial, r.ronda, r.imagenes, r.comentarios, r.miniaturas) == (True, 0, 0, (), ())
+    assert [(m.marca_id, m.numero, m.texto, m.imagen, m.x, m.y) for m in r.marcas] == [
+        ("pedido-1", 1, "Precio: $ 199", None, None, None), ("pedido-2", 2, "Cenefa de vinos", None, None, None)]
+    # Una ronda que volvió con cambios no es "inicial".
+    assert RONDA_1.inicial is False
+
+
+PRIMERA = Contexto(**{**CONTEXTO.__dict__, "ronda": 1, "comentario": None,
+                      "ronda_anterior": rv.pedido_inicial("cenefa", CONTEXTO.brief)})
+
+
+def test_en_la_primera_entrega_la_ia_recibe_los_puntos_del_pedido_inicial():
+    texto = rv.texto_del_pedido(PRIMERA)
+    bloque = texto.split("<cambios_pedidos>\n", 1)[1].split("\n</cambios_pedidos>", 1)[0]
+    assert bloque.split("\n") == [
+        "Es la primera entrega: estos son los puntos de lo que se pidió al principio (el pedido inicial):",
+        "- Punto 1: Medidas: A4 apaisada",
+        "- Punto 2: Precio: $ 199",
+        "- Punto 3: Vigencia: del 28/11/2026 al 30/11/2026",
+        "- Punto 4: Legales: Válido hasta agotar stock. No acumulable.",
+    ]
+    assert "Marca" not in bloque and "ronda anterior" not in texto and "miniatura" not in texto
+    assert texto.index("</pedido>") < texto.index("<cambios_pedidos>")
+    assert texto.endswith("Revisá las imágenes de arriba contra este pedido y decí, punto por punto, "
+                          "si la pieza cumple lo que se pidió.")
+    # La regla en el sistema: la de la ronda anterior no corre en la primera entrega.
+    assert "Si el mensaje trae <cambios_pedidos> y no dice que es la primera entrega" in rv.SISTEMA
+    assert "Si <cambios_pedidos> dice que es la primera entrega, no hay ronda anterior ni miniaturas" in rv.SISTEMA
+    for regla in ("otra medida que la pedida", "cada imagen trae su tamaño en píxeles",
+                  "compará la proporción", 'Antes que adivinar, "dudoso"'):
+        assert regla in rv.SISTEMA, regla
+
+
+def test_en_la_primera_entrega_la_ia_dice_punto_por_punto():
+    api = sim.ApiGrabada([_respuesta(_obs(), cambios=[
+        _cambio(2, "falta", "El precio dice $ 249 y se pidió $ 199."), _cambio(1, "dudoso", "No se puede medir."),
+        _cambio(9, "falta", "No hay punto 9."),
+    ])])
+    observaciones, cambios, _ = _pedir(api, contexto=PRIMERA)
+    assert len(observaciones) == 1
+    assert cambios == [
+        {"marcaId": "pedido-1", "numero": 1, "veredicto": "dudoso", "nota": "No se puede medir."},
+        {"marcaId": "pedido-2", "numero": 2, "veredicto": "falta", "nota": "El precio dice $ 249 y se pidió $ 199."},
+    ]
+    # Solo la imagen de ahora: no hay miniaturas de antes.
+    contenido = api.pedidos[0]["messages"][0]["content"]
+    assert len([b for b in contenido if b["type"] == "image"]) == 1
+    assert rv.miniaturas_para_comparar(PRIMERA) == ()
+    # A la agencia: cada punto con lo que se pidió y lo que vio la IA.
+    assert rv.cambios_para_la_agencia(cambios, PRIMERA.ronda_anterior) == [
+        {"numero": 1, "texto": "Medidas: A4 apaisada", "veredicto": "dudoso", "nota": "No se puede medir."},
+        {"numero": 2, "texto": "Precio: $ 199", "veredicto": "falta", "nota": "El precio dice $ 249 y se pidió $ 199."},
+    ]
+
+
+def test_la_ia_simulada_tambien_contesta_el_pedido_inicial():
+    # La del servidor de prueba: el 1 hecho, el 2 falta, el resto dudoso.
+    cliente = sim.cliente_con(sim.SimuladorDeDonTino())
+    _, cambios, _ = asyncio.run(rv.pedir_revision(cliente, _imagenes((1600, 1131)), PRIMERA, "claude-opus-5-5"))
+    assert [(c["marcaId"], c["veredicto"]) for c in cambios] == [
+        ("pedido-1", "hecho"), ("pedido-2", "falta"), ("pedido-3", "dudoso"), ("pedido-4", "dudoso")]
+
+
+def test_revisar_version_en_la_primera_ronda_guarda_lo_del_pedido_inicial(ia_prendida):
+    base = BaseFalsa(["ve-1"], ronda_anterior=PRIMERA.ronda_anterior)
+    api = sim.ApiGrabada([_respuesta(cambios=[_cambio(1), _cambio(2, "falta", "Dice $ 249.")])])
+    assert _revisar("ve-1", base, api) == "lista"
+    assert [(c["marcaId"], c["veredicto"]) for c in base.filas["ve-1"]["cambios_pedidos"]] == [
+        ("pedido-1", "hecho"), ("pedido-2", "falta")]
+
+
+def test_quien_aprueba_no_ve_los_puntos_del_pedido_inicial():
+    # No son marcas: «Lo que se pidió en la ronda N» sigue con las marcas de
+    # la ronda anterior y nada más. Quedan guardados con la revisión.
+    guardado = [{"marcaId": "pedido-1", "numero": 1, "veredicto": "falta", "nota": "Dice $ 249."},
+                {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."},
+                {"marcaId": "comentario-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."}]
+    assert rv.cambios_pedidos_para_mostrar(guardado, "lista") == guardado[1:]
+
+
+def test_la_agencia_sabe_si_el_control_es_del_pedido_inicial():
+    assert rv.ResultadoDelControl("listo", [], "cp-1", inicial=True).para_la_agencia() == {
+        "estado": "listo", "cambios": [], "controlId": "cp-1", "inicial": True}
+    assert rv.ResultadoDelControl("sin-pedido", []).para_la_agencia()["inicial"] is False

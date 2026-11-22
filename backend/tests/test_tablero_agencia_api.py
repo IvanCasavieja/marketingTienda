@@ -728,8 +728,9 @@ def test_corregir_la_empresa_de_la_agencia_no_le_saca_las_tarjetas_ni_el_calenda
         tarea_id, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
         assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
 
+        # «Sí, pasarlas» (desde el 21/11/2026 el panel pregunta antes).
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
-            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         # La respuesta dice cuántas pasaron al nombre nuevo.
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 0)
@@ -982,8 +983,9 @@ def test_corregir_el_nombre_de_la_agencia_corrige_sus_plantillas():
                 {"id": "t2", "titulo": "Retirar carteles", "ancla": "fin", "dias": 1},
             ]})
         assert r.status_code == 200, r.text
+        # «Sí, pasarlas» (desde el 21/11/2026 el panel pregunta antes).
         r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
-            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}"})
+            "es_externo": True, "empresa": f"Estudio del Sur {d.sufijo}", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 1)
         async with d.Sesion() as s:
@@ -1015,9 +1017,10 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
     después vuelve. Eso se tomaba como «le corrigieron el nombre a la
     agencia»: se llevaba a Publicis todas las tarjetas y las plantillas de
     Diseñadores, y al volver se traía las de Publicis. Un tablero no se
-    renombra: cada tarjeta y cada plantilla se queda en el suyo. Corregir el
-    nombre de una agencia que no es un tablero («Publisis» -> «Publicis») las
-    sigue pasando, y la respuesta dice cuántas."""
+    renombra: cada tarjeta y cada plantilla se queda en el suyo, aunque se
+    pida pasarlas. Corregir el nombre de una agencia que no es un tablero
+    («Publisis» -> «Publicis») las sigue pasando si se pide (desde el
+    21/11/2026 el panel pregunta antes), y la respuesta dice cuántas."""
     async def prueba(d):
         lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
         fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
@@ -1043,9 +1046,10 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
                 tareas = (await s.get(CalendarioPlantilla, plantilla)).tareas
             assert [t["agencia"] for t in tareas] == ["Diseñadores", "Publicis"]
 
-        # Ida y vuelta.
+        # Ida y vuelta, aunque se pida pasarlas.
         for empresa in ("Publicis", "Diseñadores"):
-            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": empresa})
+            r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+                "es_externo": True, "empresa": empresa, "pasar_tarjetas": True})
             assert r.status_code == 200, r.text
             assert r.json()["empresa"] == empresa
             assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
@@ -1059,13 +1063,15 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
         async with d.Sesion() as s:
             (await s.get(User, fer.id)).empresa = "DISENADORES"
             await s.commit()
-        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={"es_externo": True, "empresa": "Another Monday"})
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+            "es_externo": True, "empresa": "Another Monday", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
         await cada_una_en_su_tablero()
 
         # «Publisis» no es un tablero: es Publicis mal escrito. Su única
-        # cuenta pasa a Publicis y se lleva su tarjeta y su plantilla.
+        # cuenta pasa a Publicis y, si se pide («Sí, pasarlas»), se lleva su
+        # tarjeta y su plantilla.
         publisis = await _persona(d, "Pato Publisis", externo=True, empresa=f"Publisis {d.sufijo}")
         mal_escrita = f"ta-vm-{d.sufijo}"
         r = await lider.post(f"/calendario/barras/{d.ahora.id}/tareas", json={
@@ -1076,13 +1082,101 @@ def test_cambiar_de_tablero_a_la_unica_cuenta_no_se_lleva_las_tarjetas():
                 {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": f"Publisis {d.sufijo}",
                  "ancla": "inicio", "dias": -3}]})
         assert r.status_code == 200, r.text
-        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        r = await promo.patch(f"/admin/users/{publisis.id}/externo", json={
+            "es_externo": True, "empresa": "Publicis", "pasar_tarjetas": True})
         assert r.status_code == 200, r.text
         assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
         async with d.Sesion() as s:
             assert (await s.get(CalendarioTarea, mal_escrita)).agencia == "Publicis"
             assert (await s.get(CalendarioPlantilla, f"{plantilla}-m")).tareas[0]["agencia"] == "Publicis"
         await cada_una_en_su_tablero()
+    correr(prueba)
+
+
+def test_cambiar_de_agencia_a_la_unica_cuenta_no_se_lleva_nada_si_no_se_pide():
+    """Revisión del 19/11/2026: Bruno es la única cuenta de «Estudio Sur» (una
+    agencia que no es un tablero) y se lo pasa a Publicis porque se eligió mal
+    en la lista. Eso se tomaba como «le corrigieron el nombre a la agencia»:
+    se llevaba a Publicis las tarjetas y las plantillas de Estudio Sur sin
+    preguntar, y el panel avisaba después. Desde el 21/11/2026 pasan solo si
+    el pedido lo dice (`pasar_tarjetas`); el panel pregunta antes, con lo que
+    contesta GET /admin/users/{id}/pase-de-agencia. Los tres tableros siguen
+    sin pasar nada nunca."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        sur = f"Estudio Sur {d.sufijo}"
+        tarea_id, _ = await _pedir_banners(d, d.lider, agencia=sur)
+        plantilla = f"pl-pase-{d.sufijo}"
+        r = await lider.put(f"/calendario/plantillas/{plantilla}", json={
+            "mundo": MUNDO, "nombre": "Mega", "tareas": [
+                {"id": "t1", "titulo": "Push", "tipo": "push", "para": "agencia", "agencia": sur,
+                 "ancla": "inicio", "dias": -3}]})
+        assert r.status_code == 200, r.text
+
+        async def de_estudio_sur():
+            async with d.Sesion() as s:
+                return ((await s.get(CalendarioTarea, tarea_id)).agencia,
+                        (await s.get(CalendarioPlantilla, plantilla)).tareas[0]["agencia"])
+
+        # Antes de guardar, el panel pregunta qué se llevaría: «Bruno es la
+        # única cuenta de «Estudio Sur», que tiene 1 tarjeta y 1 plantilla».
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": "publicis"})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"de": sur, "a": "Publicis", "tarjetas": 1, "plantillas": 1}
+
+        # «No, dejarlas en Estudio Sur»: sin la marca no pasa nada.
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={"es_externo": True, "empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert r.json()["empresa"] == "Publicis"
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        assert await de_estudio_sur() == (sur, sur)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is None
+        # Fue un error: vuelve a Estudio Sur y lo de ahí sigue siendo suyo. A
+        # Publicis (un tablero) no se le lleva nada aunque se pida.
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": sur})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": sur, "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["empresa"], r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (sur, 0, 0)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+
+        # Cómo se escribe (sin tildes ni mayúsculas) no es otra agencia: nada que preguntar.
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": f"estudio súr {d.sufijo}"})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        # Pampa tiene dos cuentas: lo suyo se queda con la otra, nada que preguntar.
+        r = await promo.get(f"/admin/users/{d.a1.id}/pase-de-agencia", params={"empresa": "Publicis"})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+
+        # «Sí, pasarlas»: con la marca, pasan, y la respuesta dice cuántas.
+        nuevo = f"Estudio del Sur {d.sufijo}"
+        r = await promo.get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": nuevo})
+        assert r.json() == {"de": sur, "a": nuevo, "tarjetas": 1, "plantillas": 1}
+        r = await promo.patch(f"/admin/users/{d.b1.id}/externo", json={
+            "es_externo": True, "empresa": nuevo, "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (1, 1)
+        assert await de_estudio_sur() == (nuevo, nuevo)
+        assert await _tarjeta(Cliente(d.http, d.b1), tarea_id) is not None
+
+        # La única cuenta de un tablero (Diseñadores, una agencia externa):
+        # nada que preguntar, y aunque se pida no se lleva nada.
+        fer = await _persona(d, "Fer Disenia", externo=True, empresa="Diseñadores")
+        de_dis, _ = await _pedir_banners(d, d.lider, agencia="Diseñadores")
+        r = await promo.get(f"/admin/users/{fer.id}/pase-de-agencia", params={"empresa": "Another Monday"})
+        assert (r.json()["tarjetas"], r.json()["plantillas"]) == (0, 0)
+        r = await promo.patch(f"/admin/users/{fer.id}/externo", json={
+            "es_externo": True, "empresa": "Another Monday", "pasar_tarjetas": True})
+        assert r.status_code == 200, r.text
+        assert (r.json()["tarjetas_pasadas"], r.json()["plantillas_pasadas"]) == (0, 0)
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioTarea, de_dis)).agencia == "Diseñadores"
+
+        # Solo quien administra usuarios; y una cuenta que no existe, 404.
+        r = await Cliente(d.http, d.lucia).get(f"/admin/users/{d.b1.id}/pase-de-agencia", params={"empresa": "Publicis"})
+        assert r.status_code == 403
+        assert (await promo.get("/admin/users/999999999/pase-de-agencia", params={"empresa": "Publicis"})).status_code == 404
     correr(prueba)
 
 
@@ -1756,7 +1850,10 @@ def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
     """Revisión del 19/11/2026: mandarle a la base un ZIP de 40 MB arma copias
     en memoria (unos 120 MB más), y dos entregas grandes a la vez no entran en
     los 512 MB del servidor. El INSERT del ZIP sale con el semáforo tomado, y
-    adentro no pasa nada más (no espera candados de la base: no se traba)."""
+    adentro no pasa nada más (no espera candados de la base: no se traba).
+    Desde el 21/11/2026 también va adentro, justo antes, el control del tope
+    (ver test_dos_entregas_con_zip_a_la_vez_no_pasan_el_tope_de_los_zip): dos
+    lecturas, que tampoco esperan candados."""
     from sqlalchemy import event
     from sqlalchemy.engine import Engine
 
@@ -1798,7 +1895,13 @@ def test_el_zip_va_a_la_base_de_a_uno_en_todo_el_proceso(monkeypatch):
         correr(prueba)
     finally:
         event.remove(Engine, "before_cursor_execute", anotar)
-    assert adentro == ["INSERT INTO calendario_version_zips"]
+    assert adentro == [
+        "SELECT coalesce(sum(calendario_version_zips.tamano), $1::INTEGER)",  # el tope de los ZIP
+        "SELECT pg_database_size(current_database())",                        # y el de la base
+        "INSERT INTO calendario_version_zips",
+    ]
+    # Lo que reservó la entrega para el tope se soltó al confirmarla.
+    assert rutas_de_entregas._zips_sin_confirmar == 0
 
 
 def test_un_zip_con_solo_un_pdf_alcanza_y_sus_paginas_se_ven_y_se_marcan(monkeypatch):
@@ -1948,6 +2051,137 @@ def test_con_el_tope_de_los_zip_lleno_no_se_guarda_la_entrega_sigue_y_no_se_borr
     correr(prueba)
 
 
+def test_dos_entregas_con_zip_a_la_vez_no_pasan_el_tope_de_los_zip(monkeypatch):
+    """Revisión del 19/11/2026: dos entregas con un ZIP grande casi a la vez
+    pasaban las dos el control del tope (ZIP_TOPE_MB) antes de que ninguna
+    guardara, y lo dejaban pasado por hasta 40 MB. Con lugar para uno solo,
+    entra uno solo: el control va adentro del candado con el que se guarda
+    el ZIP de a uno, y cuenta también el ZIP que otra entrega ya mandó y
+    todavía no confirmó (arreglado el 21/11/2026).
+
+    Esta corre como el servidor: cada pedido con su conexión y su
+    transacción, confirmada de verdad (otra entrega no ve lo que esta no
+    confirmó). Lo que crea lo borra al final."""
+    from sqlalchemy import delete, text
+
+    from app.core.config import settings
+    from app.models.audit_log import AuditLog
+
+    _espiar_la_ia(monkeypatch)
+    # Que las dos lleguen al control antes de que alguna guarde, si pueden
+    # (hasta un segundo): con el control afuera del candado, llegaban las dos
+    # y entraban las dos. Adentro, la segunda espera su turno.
+    control = rutas_de_entregas._hay_lugar_para_el_zip
+    llegaron: list[int] = []
+
+    async def a_la_vez(db, peso, bytes_imagenes):
+        llegaron.append(peso)
+        for _ in range(100):
+            if len(llegaron) >= 2:
+                break
+            await asyncio.sleep(0.01)
+        return await control(db, peso, bytes_imagenes)
+
+    monkeypatch.setattr(rutas_de_entregas, "_hay_lugar_para_el_zip", a_la_vez)
+
+    async def prueba():
+        engine = create_async_engine(URL, poolclass=NullPool, connect_args={"statement_cache_size": 0})
+        Sesion = async_sessionmaker(engine, expire_on_commit=False)
+
+        async def get_db_de_prueba():
+            async with Sesion() as s:
+                try:
+                    yield s
+                    await s.commit()
+                except Exception:
+                    await s.rollback()
+                    raise
+
+        app.dependency_overrides[get_db] = get_db_de_prueba
+        limite_antes = limiter.enabled
+        limiter.enabled = False
+        d = None
+        try:
+            async with Sesion() as s:
+                d = await _sembrar(s)
+                await s.commit()
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://prueba") as http:
+                d.http, d.Sesion = http, Sesion
+                uno, _ = await _pedir_banners(d, d.lider)
+                otro, _ = await _pedir_banners(d, d.lider)
+                mb = 1024 * 1024
+                async with Sesion() as s:
+                    tamano = (await s.execute(text("SELECT pg_database_size(current_database())"))).scalar_one()
+                # La base, con lugar de sobra: lo que frena es el tope de los ZIP.
+                monkeypatch.setattr(settings, "BASE_TOPE_MB", -(-tamano // mb) + 200)
+                zip_ = _zip_de_prueba({"pieza.jpg": _jpeg_de_verdad(), "fuente.otf": os.urandom(3 * mb)})
+                ocupado = await _zips_guardados(d)
+                # Lugar para uno solo.
+                monkeypatch.setattr(settings, "ZIP_TOPE_MB", -(-(ocupado + len(zip_)) // mb))
+                assert ocupado + 2 * len(zip_) > settings.ZIP_TOPE_MB * mb
+
+                a1 = Cliente(http, d.a1)
+                r1, r2 = await asyncio.gather(
+                    _entregar(a1, uno, f"ve-par1-{d.sufijo}", imagenes=1, zip_=("uno.zip", zip_), ya_subidas="[0]"),
+                    _entregar(a1, otro, f"ve-par2-{d.sufijo}", imagenes=1, zip_=("otro.zip", zip_), ya_subidas="[0]"),
+                )
+                assert r1.status_code == 201 and r2.status_code == 201, (r1.text, r2.text)
+                assert len(llegaron) == 2
+                # Entra uno solo; el otro hace la entrega igual, sin guardar el ZIP.
+                assert sorted([r1.json()["zip"]["guardado"], r2.json()["zip"]["guardado"]]) == [False, True]
+                assert await _zips_guardados(d) == ocupado + len(zip_) <= settings.ZIP_TOPE_MB * mb
+                # Confirmadas las dos, no queda nada reservado.
+                assert rutas_de_entregas._zips_sin_confirmar == 0
+        finally:
+            limiter.enabled = limite_antes
+            app.dependency_overrides.pop(get_db, None)
+            if d is not None:
+                # Lo que se creó: las acciones (con sus tareas, entregas,
+                # versiones y ZIP, en cascada) y las cuentas (con sus avisos).
+                personas = [u.id for u in (d.promo, d.lucia, d.lider, d.aprob2, d.limitado, d.sin_cal,
+                                           d.a1, d.a2, d.b1)]
+                async with Sesion() as s:
+                    await s.execute(delete(CalendarioBarra).where(
+                        CalendarioBarra.id.in_([b.id for b in (d.ciber, d.ahora, d.viejo, d.lejos)])))
+                    await s.execute(delete(AuditLog).where(AuditLog.user_id.in_(personas)))
+                    await s.execute(delete(User).where(User.id.in_(personas)))
+                    await s.commit()
+            await engine.dispose()
+
+    asyncio.run(prueba())
+
+
+def test_si_la_entrega_no_se_confirma_su_zip_deja_de_contar_para_el_tope(monkeypatch):
+    """Lo que un ZIP reserva en el tope mientras la entrega no se confirma
+    (`_zips_sin_confirmar`) se suelta también si la entrega falla: si no, el
+    tope se iría llenando de ZIP que nunca quedaron guardados."""
+    class Base:
+        def add(self, fila):
+            self.fila = fila
+
+        async def flush(self):
+            pass
+
+    async def hay_lugar(db, peso, bytes_imagenes):
+        return True
+
+    monkeypatch.setattr(rutas_de_entregas, "_hay_lugar_para_el_zip", hay_lugar)
+
+    async def prueba():
+        base = Base()
+        with pytest.raises(RuntimeError):
+            async with rutas_de_entregas._guardar_el_zip(base, "ve-x", "x.zip", b"z" * 10, 0) as guardado:
+                assert guardado and rutas_de_entregas._zips_sin_confirmar == 10
+                raise RuntimeError("se cortó el commit")
+        assert rutas_de_entregas._zips_sin_confirmar == 0
+        assert base.fila.datos == b"z" * 10
+        # Sin ZIP no reserva nada ni toca la base.
+        async with rutas_de_entregas._guardar_el_zip(Base(), "ve-y", None, None, 0) as guardado:
+            assert guardado is False and rutas_de_entregas._zips_sin_confirmar == 0
+
+    asyncio.run(prueba())
+
+
 def test_con_la_base_llena_el_zip_no_se_guarda_la_entrega_sigue_y_no_se_borra_nada(monkeypatch, caplog):
     """Si la base no tiene lugar para el ZIP, aunque entre en el tope de los
     ZIP, la entrega se hace igual: quedan la versión y sus imágenes, y del ZIP
@@ -2052,8 +2286,14 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
             assert "- Marca 1, en la imagen 2, abajo en el centro (50% del ancho, 90% del alto): Falta la tilde" in texto
             # La nota interna no va: es del equipo, no algo que se le pidió a la agencia.
             assert "comercial" not in texto
-            # La primera ronda no tiene nada antes.
-            assert (await revision_ia.cargar_version(s, v1))[0].ronda_anterior is None
+            # La primera ronda no tiene ronda antes: desde el 21/11/2026 lo que
+            # se controla es el pedido inicial (lo que dice la tarjeta), no
+            # una ronda anterior. Antes acá se esperaba None.
+            primera = (await revision_ia.cargar_version(s, v1))[0].ronda_anterior
+            assert primera.inicial and primera.miniaturas == ()
+            assert [(m.marca_id, m.texto) for m in primera.marcas] == [
+                ("pedido-1", "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"),
+                ("pedido-2", "CTA: Ver ofertas")]
             # Las miniaturas de la ronda 1, en su orden y con el número de su imagen.
             assert [(m.numero, m.ancho, m.alto) for m in antes.miniaturas] == [(1, 64, 48), (2, 48, 64)]
             # Una que no está (la purga de antes del 19/11/2026 vació algunas)
@@ -2087,13 +2327,17 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
         r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
         assert r.status_code == 200 and r.json()["estado"] == "nada" and r.json()["cambiosPedidos"] == []
 
-        # Si vuelve solo con un comentario, sin marcas, no va nada: la IA
-        # contesta marca por marca, y al lado de cada marca es donde se ve.
+        # Si vuelve solo con un comentario, sin marcas, el comentario es lo que
+        # se pidió (20/11/2026: antes no iba nada y la agencia no veía el
+        # control): cada renglón, un pedido sin lugar en la imagen.
         assert (await _decidir(lider, v2, "cambios", "Otra vuelta: todo más grande")).status_code == 200
         r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v3}, files=dos)
         assert r.status_code == 201, r.text
         async with d.Sesion() as s:
-            assert (await revision_ia.cargar_version(s, v3))[0].ronda_anterior is None
+            anterior = (await revision_ia.cargar_version(s, v3))[0].ronda_anterior
+            assert [(m.marca_id, m.texto, m.x) for m in anterior.marcas] == [
+                ("comentario-1", "Otra vuelta: todo más grande", None)]
+            assert anterior.comentarios == ()
     correr(prueba)
 
 
@@ -2155,11 +2399,12 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         versiones = f"/calendario/tareas/{tarea_id}/versiones"
         v1, v2, v3 = (f"ve-cp{i}-{d.sufijo}" for i in (1, 2, 3))
 
-        # Primera ronda: no hay cambios pedidos que controlar; la IA ni se entera.
-        r = await a1.post(control, files=solo_imagenes)
-        assert r.status_code == 200 and r.json() == {"estado": "sin-pedido", "cambios": [], "controlId": None}, r.text
+        # Primera ronda, sin pasar por el control: corre la revisión de siempre.
+        # Hasta el 21/11/2026 acá el control decía 'sin-pedido'; ahora en la
+        # primera ronda controla el pedido inicial, y eso se prueba aparte
+        # (test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial).
         assert (await a1.post(versiones, data={"versionId": v1}, files=dos)).status_code == 201
-        assert en_segundo_plano == [v1]  # la revisión de siempre
+        assert en_segundo_plano == [v1]
         det = await _detalle(lider, tarea_id)
         im1, im2 = [i["id"] for i in det["fases"][0]["versiones"][0]["imagenes"]]
         r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
@@ -2175,7 +2420,7 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         r = await a1.post(control, data={"comentario": "Corregí la tilde"}, files=solo_imagenes)
         assert r.status_code == 200, r.text
         cuerpo = r.json()
-        assert cuerpo["estado"] == "listo" and cuerpo["controlId"]
+        assert cuerpo["estado"] == "listo" and cuerpo["controlId"] and cuerpo["inicial"] is False
         assert cuerpo["cambios"] == [
             {"numero": 1, "texto": "Falta la tilde en «Válido»", "veredicto": "falta",
              "nota": "Sigue diciendo «Valido», sin tilde."},
@@ -2226,7 +2471,8 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         # Si la IA falla (acá, se niega), 'no-disponible' y queda anotado.
         api.respuestas.append(sim.mensaje([sim.texto("")], stop_reason="refusal", entrada=900, salida=10))
         r = await a1.post(control, files=solo_imagenes)
-        assert r.status_code == 200 and r.json() == {"estado": "no-disponible", "cambios": [], "controlId": None}, r.text
+        assert r.status_code == 200 and r.json() == {
+            "estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False}, r.text
         async with d.Sesion() as s:
             # Todo corre en una transacción: created_at es igual en todas; se
             # busca por descarte de los dos de antes.
@@ -2240,6 +2486,163 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         r = await a1.post(control, files=solo_imagenes)
         assert r.status_code == 200 and r.json()["estado"] == "no-disponible", r.text
         assert len(api.pedidos) == 3
+    correr(prueba)
+
+
+def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
+    """Ivan (20/11/2026): "me comenta la agencia que al momento de subir la
+    entrega no les apareció la IA para las correcciones". Se habían pedido
+    los cambios solo con texto (sin marcas): ahora cada renglón del
+    comentario es un pedido que la IA controla antes de entregar."""
+    import json
+
+    import ia_simulada as sim
+
+    from app.core.config import settings
+    from app.services import ia_cliente, revision_ia
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+    monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+
+    async def espia(version_id, **kw):
+        return None
+
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    cuerpo = {"observaciones": [], "cambios_pedidos": [
+        {"numero": 1, "veredicto": "falta", "nota": "Sigue diciendo $249."},
+        {"numero": 2, "veredicto": "hecho", "nota": "El logo viejo ya no está."},
+    ]}
+    api = sim.ApiGrabada([sim.mensaje([sim.texto(json.dumps(cuerpo))], entrada=3_000, salida=300)])
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: api.cliente())
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        imagenes = [("imagenes", ("i.jpg", _jpeg_de_verdad(400, 300, "white"), "image/jpeg")),
+                    ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))]
+        v1 = f"ve-co1-{d.sufijo}"
+        assert (await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=imagenes)).status_code == 201
+        # Cambios pedidos solo con texto, como desde el tablero ("¿Qué hay que cambiar?").
+        r = await lider.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "cambios", "comentario": "- Cambiar el precio a $199\n- Sacar el logo viejo"})
+        assert r.status_code == 200, r.text
+
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/control-previo", files=[imagenes[0]])
+        assert r.status_code == 200, r.text
+        assert r.json()["estado"] == "listo"
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in r.json()["cambios"]] == [
+            (1, "Cambiar el precio a $199", "falta"), (2, "Sacar el logo viejo", "hecho"),
+        ]
+        texto = api.pedidos[0]["messages"][0]["content"][-1]["text"]
+        assert "pedida en el comentario" in texto and "Cambiar el precio a $199" in texto
+    correr(prueba)
+
+
+def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
+    """Ivan (21/11/2026): "No lo hace en la primera entrega, eso está mal. La
+    primera entrega debería compararse contra lo pedido inicialmente". Con la
+    base de verdad y la IA simulada (la del servidor de prueba: el punto 1
+    hecho, el 2 falta, el resto dudoso): antes de mandar la primera ronda, la
+    agencia ve punto por punto lo que dice la tarjeta; si entrega esas mismas
+    imágenes, la revisión del aprobador sale de ahí sin otra llamada, y quien
+    aprueba no ve los puntos (no son marcas). La fase que se abre devolviendo
+    la pieza aprobada controla primero lo que se pidió cambiar. Con el pedido
+    vacío, 'sin-pedido' y la IA ni se entera."""
+    import json
+
+    import ia_simulada as sim
+
+    from app.core.config import settings
+    from app.models.revision_ia import CalendarioControlPrevio
+    from app.services import ia_cliente, revision_ia
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+    monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+    en_segundo_plano = []
+
+    async def espia(version_id, **kw):
+        en_segundo_plano.append(version_id)
+
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    simulador, pedidos = sim.SimuladorDeDonTino(), []
+
+    def responder(cuerpo):
+        pedidos.append(cuerpo)
+        return simulador(cuerpo)
+
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: sim.cliente_con(responder))
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        # Una tarjeta del tablero: lo tildado con sus medidas, el CTA y la descripción.
+        tarea_id, _ = await _pedir_banners(d, d.lider, opciones=["Header", "Checkout"],
+                                           descripcion="Que se vea bien el logo.\n- Fondo rojo")
+        imagenes = [("imagenes", ("i.jpg", _jpeg_de_verdad(1600, 347), "image/jpeg")),
+                    ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 14), "image/jpeg"))]
+        solo = [imagenes[0]]
+        control = f"/calendario/tareas/{tarea_id}/control-previo"
+        v1 = f"ve-pi1-{d.sufijo}"
+        cabecera = "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"
+
+        # Antes de mandar la primera ronda: punto por punto, lo que dice la tarjeta.
+        r = await a1.post(control, files=solo)
+        assert r.status_code == 200, r.text
+        cuerpo = r.json()
+        assert cuerpo["estado"] == "listo" and cuerpo["inicial"] is True and cuerpo["controlId"]
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in cuerpo["cambios"]] == [
+            (1, cabecera, "hecho"), (2, "CTA: Ver ofertas", "falta"),
+            (3, "Que se vea bien el logo.", "dudoso"), (4, "Fondo rojo", "dudoso"),
+        ]
+        assert cuerpo["cambios"][1]["nota"] == "No se ve en la pieza."
+        # A la agencia, solo eso: la observación de ortografía es del equipo.
+        assert "OFERTA" not in json.dumps(cuerpo, ensure_ascii=False)
+        assert len(pedidos) == 1
+        texto = pedidos[0]["messages"][0]["content"][-1]["text"]
+        assert "Es la primera entrega" in texto and "- Punto 2: CTA: Ver ofertas" in texto and "- Marca" not in texto
+
+        # Entrega esas mismas: la revisión sale del control, sin otra llamada.
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=imagenes)
+        assert r.status_code == 201, r.text
+        assert en_segundo_plano == [] and len(pedidos) == 1
+        r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
+        assert r.status_code == 200, r.text
+        revision = r.json()
+        assert revision["estado"] == "lista" and [o["tipo"] for o in revision["observaciones"]] == ["ortografia"]
+        # Quien aprueba no ve los puntos: no son marcas, su pantalla no cambia.
+        assert revision["cambiosPedidos"] == []
+        assert (await a1.get(f"/calendario/versiones/{v1}/revision-ia")).status_code == 403
+        async with d.Sesion() as s:
+            # Quedan guardados con la revisión.
+            assert [(c["marcaId"], c["veredicto"]) for c in (await s.get(CalendarioRevisionIA, v1)).cambios_pedidos] == [
+                ("pedido-1", "hecho"), ("pedido-2", "falta"), ("pedido-3", "dudoso"), ("pedido-4", "dudoso")]
+            assert (await s.get(CalendarioControlPrevio, cuerpo["controlId"])).usado_en_version_id == v1
+            # La revisión de siempre (si no se hubiera reusado) controla lo mismo.
+            contexto, _ = await revision_ia.cargar_version(s, v1)
+            assert contexto.ronda_anterior.inicial
+            assert [m.texto for m in contexto.ronda_anterior.marcas] == [c["texto"] for c in cuerpo["cambios"]]
+
+        # Se aprueba y se devuelve con lo que hay que cambiar (17/11/2026): se
+        # abre otra fase, y su primera entrega controla primero eso.
+        assert (await _decidir(lider, v1, "aprobada")).status_code == 200
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver",
+                             json={"comentario": "- Fondo verde\n- Sacar el logo viejo"})
+        assert r.status_code == 200, r.text
+        r = await a1.post(control, files=solo)
+        assert r.status_code == 200 and r.json()["estado"] == "listo" and r.json()["inicial"] is True, r.text
+        assert [c["texto"] for c in r.json()["cambios"]][:3] == ["Fondo verde", "Sacar el logo viejo", cabecera]
+        assert len(pedidos) == 2
+
+        # Con el pedido vacío no hay nada que controlar: 'sin-pedido', sin llamar a la IA.
+        otra, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{otra}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        r = await a1.post(f"/calendario/tareas/{otra}/control-previo", files=solo)
+        assert r.status_code == 200 and r.json() == {
+            "estado": "sin-pedido", "cambios": [], "controlId": None, "inicial": False}, r.text
+        assert len(pedidos) == 2
     correr(prueba)
 
 
@@ -2273,7 +2676,9 @@ def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
         assert (await _entregar(a1, tarea_id, b2, imagenes=1)).status_code == 201
         assert (await _decidir(lider, b2, "aprobada")).status_code == 200
 
-        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que controlar.
+        # Arte final, ronda 1: lo de antes es del Boceto, otra fase. Nada que
+        # controlar: el pedido quedó vacío al configurar las fases (con un
+        # pedido cargado, sería el pedido inicial, 21/11/2026).
         assert (await _entregar(a1, tarea_id, f1, imagenes=1, color="black")).status_code == 201
         async with d.Sesion() as s:
             contexto, _ = await revision_ia.cargar_version(s, f1)
@@ -2496,6 +2901,54 @@ def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": f"ta-push-x-{d.sufijo}", "parentId": madre, "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
         assert r.status_code == 422
+    correr(prueba)
+
+
+def test_la_tarjeta_abierta_se_entera_de_los_cambios():
+    """Ivan (20/11/2026): "si se completa una tarea o una entrega y tengo
+    abierta la tarjeta, su estado no se actualiza solo". La tarjeta pregunta
+    con su huella: si no cambió nada, una línea; si cambió, todo de nuevo."""
+    async def prueba(d):
+        lider = Cliente(d.http, d.lider)
+        pieza, _ = await _pedir_banners(d, d.lider)
+        r = await lider.put(f"/calendario/tareas/{pieza}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+
+        async def huella_y_cambio(h):
+            r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h})
+            assert r.status_code == 200, r.text
+            return r.json()["huella"], not r.json().get("sinCambios", False)
+
+        h0 = (await lider.get(f"/calendario/tareas/{pieza}/entregas")).json()["huella"]
+        assert await huella_y_cambio(h0) == (h0, False)
+        # Sin cambios, la respuesta es solo eso.
+        r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h0})
+        assert set(r.json()) == {"huella", "sinCambios"}
+
+        # Un comentario la cambia.
+        assert (await lider.post(f"/calendario/tareas/{pieza}/comentarios", json={
+            "id": f"co-h-{d.sufijo}", "texto": "¿Va con precio?"})).status_code == 201
+        h1, cambio = await huella_y_cambio(h0)
+        assert cambio and h1 != h0
+
+        # Entrega la agencia: cambia; y la respuesta trae la tarjeta entera.
+        a1 = Cliente(d.http, d.a1)
+        assert (await _entregar_link(a1, pieza, f"ve-h1-{d.sufijo}")).status_code == 201
+        r = await lider.get(f"/calendario/tareas/{pieza}/entregas", params={"huella": h1})
+        assert r.json()["huella"] != h1 and r.json()["columna"] == "esperando"
+        h2 = r.json()["huella"]
+
+        # Se aprueba: cambia otra vez.
+        r = await lider.post(f"/calendario/versiones/ve-h1-{d.sufijo}/decision", json={"decision": "aprobada"})
+        assert r.status_code == 200, r.text
+        h3, cambio = await huella_y_cambio(h2)
+        assert cambio and h3 != h2
+
+        # Completar la tarea a mano (quien lidera) también.
+        assert (await lider.patch(f"/calendario/tareas/{pieza}", json={"estado": "en-proceso"})).status_code == 200
+        _, cambio = await huella_y_cambio(h3)
+        assert cambio
     correr(prueba)
 
 
@@ -2810,6 +3263,40 @@ def test_copiar_la_accion_no_le_deja_una_tarea_de_tienda_a_alguien_de_una_agenci
             assert await _tarjeta(Cliente(d.http, d.aprob2), tarea_id) is None
         # La de la agencia, sí: es suya (de Diseñadores).
         assert await _tarjeta(Cliente(d.http, d.aprob2), pieza_de_la_agencia.id) is not None
+    correr(prueba)
+
+
+def test_copiar_la_accion_saca_de_los_avisos_a_quien_ahora_es_de_una_agencia():
+    """Revisión del 19/11/2026: los avisos son internos (al configurarlos no
+    se puede elegir una cuenta externa), pero quien estaba en uno y después
+    pasó a ser de una agencia (Diseñadores, una agencia externa) seguía
+    abriendo el mundo y se copiaba en el aviso de la acción nueva. Ahora sale,
+    y la respuesta lo cuenta con los demás que salen de los avisos. El aviso
+    que se queda sin nadie no se copia."""
+    async def prueba(d):
+        lider, promo = Cliente(d.http, d.lider), Cliente(d.http, d.promo)
+        for aviso_id, destinatarios in ((f"av-cx1-{d.sufijo}", [d.aprob2.id, d.lucia.id]),
+                                        (f"av-cx2-{d.sufijo}", [d.aprob2.id])):
+            r = await lider.post(f"/calendario/barras/{d.ciber.id}/avisos", json={
+                "id": aviso_id, "diasAntes": 10, "destinatarios": destinatarios})
+            assert r.status_code == 201, r.text
+        # La persona de los avisos se pasa a Diseñadores: sigue abriendo el mundo.
+        r = await promo.patch(f"/admin/users/{d.aprob2.id}/externo", json={"es_externo": True, "empresa": "Diseñadores"})
+        assert r.status_code == 200, r.text
+
+        copia = f"br-cav-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/copiar", json={
+            "id": copia, "desde": (d.hoy + timedelta(days=20)).isoformat(), "nombre": f"Hot Sale {d.sufijo}"})
+        assert r.status_code == 201, r.text
+        assert (r.json()["destinatariosQuitados"], r.json()["avisosSinNadie"]) == (2, 1), r.json()
+        assert r.json()["copiadas"]["avisos"] == 1
+        async with d.Sesion() as s:
+            avisos = (await s.execute(select(CalendarioAviso).where(CalendarioAviso.barra_id == copia))).scalars().all()
+        assert [a.destinatarios for a in avisos] == [[d.lucia.id]]
+        # Los de la acción original quedan como estaban: la copia no los toca.
+        async with d.Sesion() as s:
+            original = await s.get(CalendarioAviso, f"av-cx1-{d.sufijo}")
+        assert original.destinatarios == [d.aprob2.id, d.lucia.id]
     correr(prueba)
 
 

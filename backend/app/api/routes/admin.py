@@ -13,7 +13,7 @@ import secrets
 import string
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.schemas.auth import _validate_password_strength
 from sqlalchemy import delete, select, desc, func, update
@@ -313,6 +313,11 @@ class UpdateAlcanceRequest(BaseModel):
 class UpdateExternoRequest(BaseModel):
     es_externo: bool
     empresa: str | None = Field(None, max_length=120)
+    # Si es la única cuenta de una agencia que no es un tablero y se la pasa
+    # a otra: llevarse también las tarjetas y las plantillas de la vieja. Solo
+    # si se pide (21/11/2026): el panel pregunta antes, con lo que contesta
+    # GET /admin/users/{id}/pase-de-agencia. Ver update_externo.
+    pasar_tarjetas: bool = False
 
 
 class AssignRoleRequest(BaseModel):
@@ -708,7 +713,6 @@ async def update_externo(
 
     antes = {"es_externo": bool(user.es_externo), "empresa": user.empresa, "permissions": list(user.permissions or [])}
     ya_era_externa = bool(user.es_externo)
-    empresa_vieja = externos.limpiar_empresa(user.empresa)
     tarjetas_pasadas = 0
     plantillas_pasadas = 0
     if payload.es_externo:
@@ -725,39 +729,25 @@ async def update_externo(
         )).scalar_one_or_none()
         if es_sucursal is not None:
             raise HTTPException(status_code=422, detail="Un login de sucursal no puede ser una cuenta externa")
-        if (ya_era_externa and empresa_vieja and not externos.misma_empresa(empresa_vieja, empresa)
-                and not tablero_de(empresa_vieja)):
-            # Le corrigieron el nombre a la empresa ("Publisis" -> "Publicis").
-            # Las tarjetas son de la AGENCIA, por nombre: si era la última
-            # cuenta con el nombre viejo, se pasan al nuevo; si no, el
-            # tablero de la agencia quedaba vacío y nadie las podía entregar.
-            # Si quedan otras cuentas con el nombre viejo, las tarjetas siguen
-            # siendo de ellas: esta cuenta es la que cambió de agencia.
-            # Si la vieja es uno de los tres tableros (Publicis, Another
-            # Monday, Diseñadores) no es un nombre mal escrito: la cuenta se
-            # cambió de agencia y lo de ese tablero se queda ahí, aunque se
-            # quede sin cuentas. Antes, pasar a la única cuenta de Diseñadores
-            # a Publicis (porque se eligió mal) se llevaba todas las tarjetas
-            # y plantillas de Diseñadores, y volverla atrás se traía también
-            # las de Publicis (revisión del 19/11/2026).
-            clave_vieja = externos.clave_de_empresa(empresa_vieja)
-            quedan = (await db.execute(
-                select(func.count()).select_from(User).where(
-                    User.id != user.id, User.es_externo.is_(True),
-                    externos.empresa_en_sql(User.empresa) == clave_vieja,
+        # Era la única cuenta de su agencia y se la pasa a otra: lo de la
+        # vieja (sus tarjetas y plantillas) pasa a la nueva solo si se pidió
+        # (`pasar_tarjetas`, 21/11/2026). Antes pasaba solo, tomándolo como
+        # una corrección del nombre («Publisis» -> «Publicis»): con «Estudio
+        # Sur» -> Publicis elegida por error en la lista, Publicis se llevaba
+        # todo lo de Estudio Sur y el panel avisaba después (revisión del
+        # 19/11/2026). Ahora el panel pregunta antes de guardar.
+        vieja = await _agencia_que_queda_sola(db, user, empresa)
+        if vieja and payload.pasar_tarjetas:
+            tarjetas_pasadas = (await db.execute(
+                update(CalendarioTarea)
+                .where(
+                    CalendarioTarea.para == "agencia",
+                    externos.empresa_en_sql(CalendarioTarea.agencia) == externos.clave_de_empresa(vieja),
                 )
-            )).scalar_one()
-            if not quedan:
-                tarjetas_pasadas = (await db.execute(
-                    update(CalendarioTarea)
-                    .where(
-                        CalendarioTarea.para == "agencia",
-                        externos.empresa_en_sql(CalendarioTarea.agencia) == clave_vieja,
-                    )
-                    .values(agencia=empresa)
-                    .execution_options(synchronize_session=False)
-                )).rowcount or 0
-                plantillas_pasadas = await _pasar_plantillas_de_agencia(db, empresa_vieja, empresa)
+                .values(agencia=empresa)
+                .execution_options(synchronize_session=False)
+            )).rowcount or 0
+            plantillas_pasadas = await _pasar_plantillas_de_agencia(db, vieja, empresa)
         user.es_externo = True
         user.empresa = empresa
         user.role_id = None
@@ -775,16 +765,89 @@ async def update_externo(
     db.add(AuditLog(
         user_id=current_user.id, action="admin.user.update_externo", resource="user", resource_id=str(user.id),
         details={"antes": antes, "es_externo": user.es_externo, "empresa": user.empresa,
-                 "permissions": list(user.permissions or []), "tarjetas_pasadas": tarjetas_pasadas,
-                 "plantillas_pasadas": plantillas_pasadas},
+                 "permissions": list(user.permissions or []), "pasar_tarjetas": payload.pasar_tarjetas,
+                 "tarjetas_pasadas": tarjetas_pasadas, "plantillas_pasadas": plantillas_pasadas},
         ip_address=_client_ip(request),
     ))
     return {
         "es_externo": user.es_externo, "empresa": user.empresa, "permissions": user.permissions or [],
-        # Cuántas tarjetas y plantillas pasaron al nombre nuevo de la agencia
-        # (0 si no se le corrigió el nombre a ninguna): el panel lo avisa.
+        # Cuántas tarjetas y plantillas pasaron a la agencia nueva (0 si no
+        # se pidió, o si no había nada que pasar): el panel lo avisa.
         "tarjetas_pasadas": tarjetas_pasadas, "plantillas_pasadas": plantillas_pasadas,
     }
+
+
+@router.get("/users/{user_id}/pase-de-agencia")
+async def pase_de_agencia(
+    user_id: int,
+    empresa: str = Query(..., max_length=120),
+    _: User = Depends(_require_user_management),
+    db: AsyncSession = Depends(get_db),
+):
+    """Qué se llevaría la cuenta si se la pasa a la agencia `empresa`, para
+    que el panel pregunte ANTES de guardar (21/11/2026): «Fer es la única
+    cuenta de «Estudio Sur», que tiene 3 tarjetas y 1 plantilla. ¿Pasarlas
+    también a «Publicis»?». Contesta {de, a, tarjetas, plantillas}: `a`
+    escrita como la guardaría update_externo; tarjetas y plantillas en 0 si
+    no hay nada que preguntar (quedan otras cuentas en la vieja, la vieja es
+    uno de los tres tableros, es la misma agencia escrita de otra forma, o
+    la cuenta no era externa). No cambia nada."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    nueva = await agencias.como_ya_esta(db, empresa, menos=user.id)
+    vieja = await _agencia_que_queda_sola(db, user, nueva) if nueva else None
+    tarjetas, plantillas = await _lo_de_la_agencia(db, vieja) if vieja else (0, 0)
+    return {"de": user.empresa, "a": nueva, "tarjetas": tarjetas, "plantillas": plantillas}
+
+
+async def _agencia_que_queda_sola(db: AsyncSession, user: User, empresa: str) -> str | None:
+    """Si pasar a `user` (que ya es externa) a la agencia `empresa` deja sin
+    cuentas a la suya, que no es un tablero: el nombre de esa agencia (como
+    lo tiene la cuenta). Es cuando sus tarjetas y plantillas se pueden pasar
+    a la nueva (si se pide): las tarjetas son de la AGENCIA, por nombre, y sin
+    ninguna cuenta nadie las vería ni las podría entregar.
+
+    None si no: si quedan otras cuentas con el nombre viejo, lo de la agencia
+    sigue siendo de ellas (esta cuenta es la que cambió). Si la vieja es uno
+    de los tres tableros (Publicis, Another Monday, Diseñadores: agencias
+    externas), no es un nombre mal escrito y lo de ese tablero se queda ahí,
+    aunque se quede sin cuentas (revisión del 19/11/2026: pasar a la única
+    cuenta de Diseñadores a Publicis se llevaba todo lo de Diseñadores)."""
+    vieja = externos.limpiar_empresa(user.empresa)
+    if (not user.es_externo or not vieja or externos.misma_empresa(vieja, empresa)
+            or tablero_de(vieja)):
+        return None
+    quedan = (await db.execute(
+        select(func.count()).select_from(User).where(
+            User.id != user.id, User.es_externo.is_(True),
+            externos.empresa_en_sql(User.empresa) == externos.clave_de_empresa(vieja),
+        )
+    )).scalar_one()
+    return None if quedan else vieja
+
+
+async def _lo_de_la_agencia(db: AsyncSession, empresa: str) -> tuple[int, int]:
+    """Cuántas tarjetas (tareas para la agencia) y cuántas plantillas nombran
+    a la agencia `empresa`: lo que se pasaría con `pasar_tarjetas`."""
+    from app.models.calendario import CalendarioPlantilla
+
+    tarjetas = (await db.execute(
+        select(func.count()).select_from(CalendarioTarea).where(
+            CalendarioTarea.para == "agencia",
+            externos.empresa_en_sql(CalendarioTarea.agencia) == externos.clave_de_empresa(empresa),
+        )
+    )).scalar_one()
+    plantillas = sum(
+        1 for tareas in (await db.execute(select(CalendarioPlantilla.tareas))).scalars()
+        if any(_nombra_a_la_agencia(t, empresa) for t in (tareas or []))
+    )
+    return tarjetas, plantillas
+
+
+def _nombra_a_la_agencia(tarea: dict, empresa: str) -> bool:
+    """Si una tarea de plantilla es para la agencia `empresa`."""
+    return tarea.get("para") == "agencia" and externos.misma_empresa(tarea.get("agencia"), empresa)
 
 
 @router.get("/mundos")
@@ -818,7 +881,8 @@ async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str)
     plantillas que la nombran pasan al nombre nuevo, como sus tarjetas. Si
     no, cada vez que se aplicaba la plantilla nacía una tarjeta para el
     nombre viejo, que la agencia no veía ni le avisaba (revisión del
-    16/11/2026). Devuelve cuántas plantillas cambió.
+    16/11/2026). Desde el 21/11/2026, solo si se pidió (`pasar_tarjetas`).
+    Devuelve cuántas plantillas cambió.
 
     Las tareas de una plantilla son una lista en JSONB: se asigna una lista
     nueva (si no, SQLAlchemy no ve el cambio y no lo guarda)."""
@@ -831,7 +895,7 @@ async def _pasar_plantillas_de_agencia(db: AsyncSession, vieja: str, nueva: str)
         tareas = [dict(t) for t in (p.tareas or [])]
         cambio = False
         for t in tareas:
-            if t.get("para") == "agencia" and externos.misma_empresa(t.get("agencia"), vieja):
+            if _nombra_a_la_agencia(t, vieja):
                 t["agencia"] = nueva
                 cambio = True
         if cambio:

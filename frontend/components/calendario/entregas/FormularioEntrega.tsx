@@ -5,7 +5,8 @@ import { AlertTriangle, Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCc
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
-  ETIQUETA_DEL_VEREDICTO, hayQueControlar, mismasImagenes, paraAvisar, type CambioControlado, type ControlPrevio,
+  ETIQUETA_DEL_VEREDICTO, hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type CambioControlado,
+  type ControlPrevio,
 } from '@/lib/calendario/control-previo'
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
@@ -54,11 +55,14 @@ type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: numbe
  *
  * Antes de mandar, la IA (20/11/2026, Ivan: "que a la agencia, cuando va a
  * subir los archivos, la IA le diga 'che, pará, acá faltan estas cositas de
- * los cambios'"): en una ronda que volvió con cambios, "Entregar" manda
- * primero las imágenes al control previo. Mientras mira (hasta un minuto) se
- * puede "Mandar sin esperar". Si ve algo que falta o que no se ve claro, lo
- * muestra con "Corregir" o "Mandar igual"; si no, manda solo. Si la IA no
- * está o falla, manda igual: nunca traba (lib/calendario/control-previo.ts).
+ * los cambios'"): con imágenes, "Entregar" las manda primero al control
+ * previo. En una ronda que volvió con cambios mira esos cambios; desde el
+ * 21/11/2026 también la primera entrega, contra el pedido inicial (Ivan:
+ * "No lo hace en la primera entrega, eso está mal"), con sus propios textos.
+ * Mientras mira (hasta un minuto) se puede "Mandar sin esperar". Si ve algo
+ * que falta o que no se ve claro, lo muestra con "Corregir" o "Mandar
+ * igual"; si no, manda solo. Si la IA no está, no hay nada que controlar o
+ * falla, manda igual: nunca traba (lib/calendario/control-previo.ts).
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -70,6 +74,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const ronda = resumen.ronda + 1
   // Es una ronda que volvió con cambios (cambia el ejemplo del comentario).
   const volvio = resumen.momento === 'cambios'
+  // La primera entrega de la fase: la IA la mira contra el pedido inicial
+  // (21/11/2026). Para el texto de mientras mira; después lo dice el servidor.
+  const primera = ronda === 1
 
   // El id se arma una vez: si la subida se corta y se reintenta, el
   // servidor reconoce que es la misma y no la duplica.
@@ -83,7 +90,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const [leyendoZip, setLeyendoZip] = useState(false)
   // El control de la IA antes de mandar: mientras mira, y lo que encontró.
   const [controlando, setControlando] = useState<AbortController | null>(null)
-  const [avisos, setAvisos] = useState<CambioControlado[] | null>(null)
+  // `inicial`: si lo que falta es del pedido inicial (cambia el título).
+  const [avisos, setAvisos] = useState<{ inicial: boolean; lista: CambioControlado[] } | null>(null)
   // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
   const yaControladas = useRef<Blob[] | null>(null)
   const ocupado = subiendo !== null || controlando !== null
@@ -197,11 +205,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     }
   }
 
-  /** "Entregar": en una ronda que volvió con cambios, primero la IA. */
+  /** "Entregar": con imágenes, primero la IA (los cambios pedidos o, en la
+   *  primera entrega, el pedido inicial). */
   async function entregar() {
     if (!hayMateriales || linkMalo || ocupado) return
     const grandes = imagenes.map(im => im.grande)
-    if (!hayQueControlar(volvio, grandes.length)
+    if (!hayQueControlar(grandes.length)
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
       await enviar()
       return
@@ -225,7 +234,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     yaControladas.current = grandes
     const lista = paraAvisar(control)
     if (lista.length > 0) {
-      setAvisos(lista)
+      setAvisos({ inicial: control?.inicial ?? primera, lista })
       return
     }
     await enviar()
@@ -449,7 +458,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           <p className="flex flex-1 items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
             <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600 dark:text-brand-300" />
             <span>
-              La IA está mirando si se hicieron los cambios que se pidieron…{' '}
+              {textosDelControl(primera).mirando}{' '}
               <span className="text-slate-500 dark:text-slate-400">Puede tardar un minuto.</span>
             </span>
           </p>
@@ -462,13 +471,14 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </button>
         </div>
       ) : avisos ? (
-        // Lo que la IA ve que falta (o que no se ve claro) de lo que se pidió.
+        // Lo que la IA ve que falta (o que no se ve claro) de lo que se pidió:
+        // los cambios de la ronda anterior o, en la primera entrega, el pedido.
         <section aria-labelledby="ojo-falta" className="mx-auto w-full max-w-3xl">
           <h4 id="ojo-falta" className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
-            <AlertTriangle className="h-4 w-4 shrink-0" /> Ojo: parece que falta algo de lo que se pidió
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {textosDelControl(avisos.inicial).falta}
           </h4>
           <ul className="mt-2 max-h-[40vh] space-y-1.5 overflow-y-auto overscroll-contain">
-            {avisos.map(c => (
+            {avisos.lista.map(c => (
               <li key={c.numero} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/40">
                 <p className="flex items-start gap-2 text-sm text-slate-900 dark:text-slate-100">
                   <span className="mt-px inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white">
