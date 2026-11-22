@@ -19,7 +19,11 @@ es una de mentira que usa la misma regla de reclamo que la de Postgres
   descarta sin tirar la revisión;
 - el pedido inicial (21/11/2026): en la primera entrega de una fase, los
   puntos de lo pedido al principio, que la IA controla punto por punto y que
-  quien aprueba no ve (no son marcas).
+  quien aprueba no ve (no son marcas);
+- sin ruido (21/11/2026, más tarde): lo tildado con sus medidas no es un
+  punto (lo controla la plataforma), los renglones de cortesía tampoco, un
+  "no_aplica" no le llega a nadie ni dispara el aviso, y lo que se le manda
+  a la IA no lleva temperature y pide un criterio estable.
 
 Lo que hace la consulta de Postgres de verdad (el reclamo con su candado,
 cargar la versión, guardar y registrar el uso) se probó contra una copia
@@ -180,7 +184,9 @@ def test_la_salida_estructurada_es_la_que_acepta_la_api():
     assert esquema["properties"]["cambios_pedidos"]["items"] == {"$ref": "#/$defs/CambioPedidoDeLaIA"}
     cambio = esquema["$defs"]["CambioPedidoDeLaIA"]["properties"]
     assert set(cambio) == {"numero", "veredicto", "nota"}
-    assert cambio["veredicto"]["enum"] == list(rv.VEREDICTOS) == ["hecho", "falta", "dudoso"]
+    # "no_aplica" (21/11/2026): ese punto no es un pedido sobre la pieza.
+    assert cambio["veredicto"]["enum"] == list(rv.VEREDICTOS) == ["hecho", "falta", "dudoso", "no_aplica"]
+    assert "'no_aplica' si ese punto no es un pedido sobre la pieza" in cambio["veredicto"]["description"]
     assert cambio["numero"]["type"] == "integer" and cambio["nota"]["type"] == "string"
 
 
@@ -1356,8 +1362,10 @@ def test_una_tarjeta_del_tablero_se_controla_renglon_por_renglon():
         {"cta": "Ver ofertas"},
     )
     assert config["tipo_pieza"] == "banner"
-    assert rv.pedidos_del_pedido_inicial("banner", config["brief"]) == [
-        "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)",
+    # Lo tildado con sus medidas, el primer renglón, ya no es un punto
+    # (21/11/2026): lo controla la plataforma. Ver más abajo.
+    tildado = rv.lo_tildado("banners", ["Header", "Checkout"])
+    assert rv.pedidos_del_pedido_inicial("banner", config["brief"], tildado=tildado) == [
         "CTA: Ver ofertas",
         "Que se vea bien el logo.",
         "Fondo rojo",  # sin la viñeta, sin el renglón vacío y sin el CTA repetido
@@ -1506,3 +1514,236 @@ def test_la_agencia_sabe_si_el_control_es_del_pedido_inicial():
     assert rv.ResultadoDelControl("listo", [], "cp-1", inicial=True).para_la_agencia() == {
         "estado": "listo", "cambios": [], "controlId": "cp-1", "inicial": True}
     assert rv.ResultadoDelControl("sin-pedido", []).para_la_agencia()["inicial"] is False
+
+
+# ---------------------------------------------------------------------------
+# Sin ruido en el pedido inicial (21/11/2026, más tarde)
+# ---------------------------------------------------------------------------
+# Ivan: "la IA a veces encuentra un problema y a veces no".
+
+CABECERA = "Banners: Header (web 1920×416 · mobile 640×260), Checkout (web 412×157)"
+
+
+def test_lo_tildado_es_el_renglon_que_arma_descripcion_del_pedido():
+    from app.services.tipos_de_tarea import descripcion_del_pedido
+
+    # El mismo texto con que empieza el pedido de una tarjeta del tablero,
+    # sin los datos de más (el CTA sigue siendo un punto).
+    assert rv.lo_tildado("banners", ["Header", "Checkout"]) == CABECERA
+    completo = descripcion_del_pedido("banners", ["Header", "Checkout"], {"cta": "Ver ofertas"})
+    assert completo.split("\n") == [CABECERA, "CTA: Ver ofertas"]
+    # La medida del tipo entero, sin opciones; y las proporciones de redes.
+    assert rv.lo_tildado("whatsapp", []) == "Envío WhatsApp: imagen de 1080×1350 px · 4:5 vertical"
+    assert rv.lo_tildado("redes", ["4:5", "9:16"]) == "Redes sociales: 4:5, 9:16"
+    # Sin tipo, un tipo sin medida ni nada tildado, o uno que no existe: nada.
+    assert rv.lo_tildado(None, None) is None
+    assert rv.lo_tildado("totem", []) is None
+    assert rv.lo_tildado("no-existe", ["Header"]) is None
+
+
+def test_el_renglon_de_lo_tildado_no_es_un_punto_y_los_demas_si():
+    from app.services.entregas import config_por_defecto
+
+    config = config_por_defecto(1, "Que se vea bien el logo.\nPrecio: $ 199\nLegales: Válido hasta agotar stock.",
+                                "banners", ["Header", "Checkout"], {"cta": "Ver ofertas"})
+    assert config["brief"]["detalle"].split("\n")[0] == CABECERA
+    tildado = rv.lo_tildado("banners", ["Header", "Checkout"])
+    r = rv.pedido_inicial("banner", config["brief"], tildado=tildado)
+    # El CTA, el precio, los legales y la descripción escrita siguen.
+    assert [m.texto for m in r.marcas] == [
+        "CTA: Ver ofertas", "Que se vea bien el logo.", "Precio: $ 199", "Legales: Válido hasta agotar stock."]
+    assert [m.marca_id for m in r.marcas] == ["pedido-1", "pedido-2", "pedido-3", "pedido-4"]
+    bloque = rv.texto_del_pedido(Contexto(**{**PRIMERA.__dict__, "tipo_pieza": "banner", "brief": config["brief"],
+                                             "ronda_anterior": r})).split("<cambios_pedidos>", 1)[1]
+    assert CABECERA not in bloque and "- Punto 1: CTA: Ver ofertas" in bloque
+    # En <pedido> sigue entero: la IA mira el contenido de cada pieza.
+    texto = rv.texto_del_pedido(Contexto(**{**PRIMERA.__dict__, "tipo_pieza": "banner", "brief": config["brief"],
+                                            "ronda_anterior": r}))
+    assert CABECERA in texto.split("</pedido>", 1)[0]
+    # Una tarjeta que solo tiene lo tildado: no queda nada que controlar
+    # (la plataforma ya dice qué piezas faltan) y la IA ni se entera.
+    solo = config_por_defecto(1, None, "banners", ["Header"], None)
+    assert rv.pedido_inicial("banner", solo["brief"], tildado=rv.lo_tildado("banners", ["Header"])) is None
+    # Se compara con el texto, no con una forma: si alguien lo cambió a mano
+    # en «Más opciones», ya no es lo tildado y queda como punto. Y uno
+    # parecido en la descripción escrita, también.
+    a_mano = {"detalle": "Banners: Header en rojo\nBanners: Header (web 1920×416 · mobile 640×260)"}
+    assert rv.pedidos_del_pedido_inicial("banner", a_mano, tildado=tildado) == [
+        "Banners: Header en rojo", "Banners: Header (web 1920×416 · mobile 640×260)"]
+
+
+@pytest.mark.parametrize("renglon", [
+    "Gracias!", "Gracias!!!", "¡Muchas gracias!", "Mil gracias 🙏", "Gracias, saludos.", "Saludos", "Slds",
+    "Saludos cordiales", "Un abrazo", "Abrazo 🙂", "Besos", "Cualquier duda me avisan", "Cualquier duda, avisen.",
+    "Quedo atenta a cualquier consulta", "Gracias de antemano", "Hola equipo!", "Buen día", "Por favor", "Dale, gracias",
+])
+def test_un_renglon_de_cortesia_no_es_un_pedido(renglon):
+    assert rv.es_cortesia(renglon)
+    assert rv.pedidos_del_pedido_inicial("otro", {"detalle": f"Fondo rojo\n{renglon}"}) == ["Fondo rojo"]
+    # Tampoco en un pedido de cambios escrito sin marcas.
+    assert rv.pedidos_del_comentario([f"- Sacar el logo viejo\n- {renglon}"]) == ["Sacar el logo viejo"]
+
+
+@pytest.mark.parametrize("renglon", [
+    # Algo de la pieza, aunque venga con un gracias: es un pedido.
+    "Gracias, el logo más grande", "Hola, cambiar el precio a $ 199", "Saludos, Ana",
+    # Un plazo o una aclaración no son cortesía obvia: los contesta la IA ("no_aplica").
+    "Para el viernes", "Lo necesitamos para mañana",
+    # Palabras sueltas que no son cortesía.
+    "Más grande", "Fondo rojo", "Todos los precios con IVA", "Válido del 28 al 30",
+])
+def test_lo_que_no_es_solo_cortesia_sigue_siendo_un_punto(renglon):
+    assert not rv.es_cortesia(renglon)
+    assert rv.pedidos_del_pedido_inicial("otro", {"detalle": renglon}) == [renglon]
+
+
+def test_un_renglon_sin_letras_ni_numeros_tampoco_es_un_punto():
+    assert rv.pedidos_del_pedido_inicial("otro", {"detalle": "Fondo rojo\n!!\n🙂\n...\n2x1"}) == ["Fondo rojo", "2x1"]
+    # Una tarjeta con solo cortesía en la descripción no tiene nada que controlar.
+    assert rv.pedido_inicial("otro", {"detalle": "Gracias!\nSaludos 🙂"}) is None
+
+
+def test_el_sistema_explica_no_aplica_y_el_criterio_estable():
+    assert ('"no_aplica" si ese punto no es un pedido sobre la pieza: un saludo, un agradecimiento, un plazo, '
+            "una aclaración") in rv.SISTEMA
+    assert "No se le muestra a nadie." in rv.SISTEMA
+    assert ("Ante la duda entre falta y dudoso, elegí siempre lo mismo para el mismo caso: si no se ve en ninguna "
+            "imagen, falta; si se ve pero no se lee bien, dudoso.") in rv.SISTEMA
+    # Lo tildado con sus medidas lo controla la plataforma, no la IA; el
+    # contenido de cada pieza, sí.
+    assert "lo controla la plataforma, no vos: no hagas observaciones de eso" in rv.SISTEMA
+    assert "Sí revisá el contenido de cada pieza." in rv.SISTEMA
+
+
+def test_un_no_aplica_queda_guardado_pero_no_llega_a_la_agencia_ni_al_aprobador():
+    r = rv.pedido_inicial("otro", {"detalle": "Fondo rojo\nPara el viernes\nSacar el logo viejo"})
+    cambios = rv.limpiar_cambios_pedidos([
+        _cambio(1, "hecho", "Se ve el fondo rojo."), _cambio(2, "no_aplica", "Es un plazo."),
+        _cambio(3, "falta", "Sigue el logo viejo."),
+    ], r)
+    # Queda guardado con la revisión: se sabe qué se le preguntó y qué dijo.
+    assert [(c["marcaId"], c["veredicto"]) for c in cambios] == [
+        ("pedido-1", "hecho"), ("pedido-2", "no_aplica"), ("pedido-3", "falta")]
+    # A la agencia, sin el no_aplica: ni se muestra ni cuenta para el aviso.
+    assert rv.cambios_para_la_agencia(cambios, r) == [
+        {"numero": 1, "texto": "Fondo rojo", "veredicto": "hecho", "nota": "Se ve el fondo rojo."},
+        {"numero": 3, "texto": "Sacar el logo viejo", "veredicto": "falta", "nota": "Sigue el logo viejo."},
+    ]
+    # Al aprobador tampoco, cuando sí ve lo de la ronda anterior (marcas y
+    # pedidos escritos en el comentario).
+    guardado = [{"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."},
+                {"marcaId": "comentario-2", "numero": 2, "veredicto": "no_aplica", "nota": "Es un saludo."},
+                {"marcaId": "mk-3", "numero": 3, "veredicto": "no_aplica", "nota": "No pide nada."}]
+    assert rv.cambios_pedidos_para_mostrar(guardado, "lista") == guardado[:1]
+
+
+class SesionDelControl:
+    """Lo justo de una sesión para `controlar_antes_de_entregar` en la
+    primera ronda de una fase: no hay rondas antes, hoy no se hizo nada, y lo
+    que se agrega queda a mano para mirarlo."""
+
+    def __init__(self):
+        self.agregadas: list = []
+
+    async def execute(self, *a, **kw):
+        return SimpleNamespace(scalar_one_or_none=lambda: None, scalar_one=lambda: 0)
+
+    def add(self, fila):
+        self.agregadas.append(fila)
+
+    async def get(self, modelo, clave, **kw):
+        return next((f for f in self.agregadas if isinstance(f, modelo) and getattr(f, "id", None) == clave), None)
+
+    async def commit(self):
+        pass
+
+    async def rollback(self):
+        pass
+
+
+def _controlar(api, *, descripcion, opciones=("Header", "Checkout")):
+    from app.services.entregas import config_por_defecto
+
+    config = config_por_defecto(1, descripcion, "banners", list(opciones), {"cta": "Ver ofertas"})
+    db = SesionDelControl()
+    resultado = asyncio.run(rv.controlar_antes_de_entregar(
+        db, tarea=SimpleNamespace(id="ta-1", titulo="Ciberlunes - Banners", tipo="banners", opciones=list(opciones)),
+        entrega=SimpleNamespace(tipo_pieza=config["tipo_pieza"], brief=config["brief"]),
+        barra=SimpleNamespace(mundo="tienda_inglesa", nombre="Ciberlunes", desde=date(2026, 11, 30),
+                              hasta=date(2026, 11, 30)),
+        fase=SimpleNamespace(id="fa-1", nombre="Entrega", motivo=None), ronda=1, usuario_id=7,
+        imagenes=[(_jpeg(1600, 347), "image/jpeg")], comentario=None, cliente=api.cliente(),
+    ))
+    return resultado, db
+
+
+def test_en_el_control_previo_un_no_aplica_no_dispara_el_aviso(ia_prendida):
+    from app.models.revision_ia import CalendarioControlPrevio
+
+    # La descripción de una tarjeta como las de verdad: el pedido, un plazo
+    # y las cortesías de siempre.
+    descripcion = "Que se vea bien el logo.\nPara el viernes\nGracias!\nCualquier duda me avisan"
+    api = sim.ApiGrabada([_respuesta(cambios=[
+        _cambio(1, "hecho", "Dice «Ver ofertas»."), _cambio(2, "hecho", "Se ve el logo."),
+        _cambio(3, "no_aplica", "Es un plazo, no un pedido sobre la pieza."),
+    ])])
+    resultado, db = _controlar(api, descripcion=descripcion)
+    # A la IA le llegan solo los pedidos: ni lo tildado ni las cortesías.
+    texto = api.pedidos[0]["messages"][0]["content"][-1]["text"]
+    bloque = texto.split("<cambios_pedidos>\n", 1)[1].split("\n</cambios_pedidos>", 1)[0]
+    assert bloque.split("\n")[1:] == ["- Punto 1: CTA: Ver ofertas", "- Punto 2: Que se vea bien el logo.",
+                                      "- Punto 3: Para el viernes"]
+    # A la agencia vuelve lo que sí era un pedido, sin el no_aplica: como
+    # nada falta ni es dudoso, no hay aviso y se manda sola.
+    agencia = resultado.para_la_agencia()
+    assert agencia["estado"] == "listo" and agencia["inicial"] is True
+    assert [(c["numero"], c["veredicto"]) for c in agencia["cambios"]] == [(1, "hecho"), (2, "hecho")]
+    assert not [c for c in agencia["cambios"] if c["veredicto"] in ("falta", "dudoso")]
+    # Queda guardado entero con el control (y si se reusa, con la revisión).
+    [control] = [f for f in db.agregadas if isinstance(f, CalendarioControlPrevio)]
+    assert [(c["marcaId"], c["veredicto"]) for c in control.cambios_pedidos] == [
+        ("pedido-1", "hecho"), ("pedido-2", "hecho"), ("pedido-3", "no_aplica")]
+    assert rv.cambios_pedidos_para_mostrar(control.cambios_pedidos, "lista") == []
+
+
+def test_una_tarjeta_con_solo_lo_tildado_no_llama_a_la_ia(ia_prendida):
+    # Sin CTA ni descripción (solo cortesía), lo único era lo tildado, y eso
+    # lo controla la plataforma: 'sin-pedido', y la IA ni se entera.
+    from app.services.entregas import config_por_defecto
+
+    api = sim.ApiGrabada([])
+    config = config_por_defecto(1, "Gracias!", "banners", ["Header"], None)
+    resultado = asyncio.run(rv.controlar_antes_de_entregar(
+        SesionDelControl(), tarea=SimpleNamespace(id="ta-1", titulo="x", tipo="banners", opciones=["Header"]),
+        entrega=SimpleNamespace(tipo_pieza="banner", brief=config["brief"]),
+        barra=SimpleNamespace(mundo="tienda_inglesa", nombre="x", desde=HOY, hasta=HOY),
+        fase=SimpleNamespace(id="fa-1", nombre="Entrega", motivo=None), ronda=1, usuario_id=7,
+        imagenes=[(_jpeg(), "image/jpeg")], comentario=None, cliente=api.cliente(),
+    ))
+    assert resultado.para_la_agencia() == {"estado": "sin-pedido", "cambios": [], "controlId": None, "inicial": False}
+    assert api.pedidos == []
+
+
+def test_la_ia_simulada_contesta_no_aplica_a_lo_que_no_es_un_pedido():
+    # La del servidor de prueba: un plazo va "no_aplica"; los demás, por su lugar.
+    contexto = Contexto(**{**PRIMERA.__dict__, "ronda_anterior": rv.pedido_inicial(
+        "otro", {"detalle": "Fondo rojo\nPara el viernes\nSacar el logo viejo"})})
+    cliente = sim.cliente_con(sim.SimuladorDeDonTino())
+    _, cambios, _ = asyncio.run(rv.pedir_revision(cliente, _imagenes((1600, 1131)), contexto, "claude-opus-5-5"))
+    assert [(c["marcaId"], c["veredicto"]) for c in cambios] == [
+        ("pedido-1", "hecho"), ("pedido-2", "no_aplica"), ("pedido-3", "dudoso")]
+
+
+def test_sin_temperature_y_lo_que_se_le_manda_es_lo_mismo_cada_vez():
+    """Que dé lo mismo cada vez (21/11/2026): con Opus 5.5 la API rechaza
+    temperature, top_p y top_k (solo acepta los valores por defecto), así
+    que no van; lo estable va en las instrucciones. Y para la misma versión,
+    el pedido a la IA es idéntico byte a byte: si cambia la respuesta, no es
+    por lo que se le manda."""
+    api = sim.ApiGrabada([_respuesta(), _respuesta()])
+    _pedir(api, contexto=PRIMERA)
+    _pedir(api, contexto=PRIMERA)
+    primero, segundo = api.pedidos
+    assert not {"temperature", "top_p", "top_k"} & set(primero)
+    assert primero == segundo
+    assert set(primero["output_config"]) == {"effort", "format"} and primero["output_config"]["effort"] == "medium"
