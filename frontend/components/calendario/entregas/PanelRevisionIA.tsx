@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { AlertTriangle, FileArchive, Link2, Loader2, MapPin, MessageSquarePlus, RotateCcw, Sparkles, Stamp, X } from 'lucide-react'
 import {
-  TIPO_OBSERVACION, archivoDe, cambiosPorMarca, ordenarObservaciones, textoRevisados, tieneLugar, tituloRevisionIA,
-  type ObservacionIA, type RevisionIA,
+  TIPO_OBSERVACION, archivoDe, cambiosPorMarca, ordenarObservaciones, puntosParaMostrar, textoRevisados, tieneLugar,
+  tituloRevisionIA, type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 
 /**
@@ -72,8 +72,9 @@ export function PanelRevisionIA({
   // diga "no encontró nada", que suena a que estaba todo bien.
   const nadaMirado = imagenes.length === 0 && revisados.length === 0
   // Si al lado de las marcas de la ronda anterior dice «IA: falta», sin
-  // observaciones el título dice «nada nuevo», no «nada» (19/11/2026).
-  const conCambiosPedidos = cambiosPorMarca(revision).size > 0
+  // observaciones el título dice «nada nuevo», no «nada» (19/11/2026). Lo
+  // mismo con lo que se pidió sin marcas, que se ve en su caja (21/11/2026).
+  const conCambiosPedidos = cambiosPorMarca(revision).size > 0 || puntosParaMostrar(revision) != null
   const sinImagenes = imagenes.length === 0
   const numeroDeImagen = (id: string | null) => {
     const i = imagenes.findIndex(im => im.id === id)

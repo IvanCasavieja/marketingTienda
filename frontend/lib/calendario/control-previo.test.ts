@@ -3,7 +3,7 @@
  *
  *     npm run test:calendario
  */
-import { hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type ControlPrevio } from './control-previo'
+import { enOrden, hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type ControlPrevio } from './control-previo'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -22,11 +22,11 @@ igual('solo con un link, no (no hay imágenes que mirar)', hayQueControlar(0), f
 console.log('Qué dice la pantalla')
 igual('en la primera entrega, mientras mira: el pedido', textosDelControl(true).mirando,
   'La IA está mirando si la pieza cumple lo que se pidió…')
-igual('en la primera entrega, si falta algo', textosDelControl(true).falta, 'Ojo: parece que falta algo del pedido')
 igual('en una ronda que volvió, mientras mira: los cambios (como antes)', textosDelControl(false).mirando,
   'La IA está mirando si se hicieron los cambios que se pidieron…')
-igual('en una ronda que volvió, si falta algo (como antes)', textosDelControl(false).falta,
-  'Ojo: parece que falta algo de lo que se pidió')
+// Desde el 21/11/2026 el aviso es uno solo («Antes de mandar, revisá esto»):
+// ya no hay un «Ojo: parece que falta algo…» para cada caso.
+igual('solo el texto de mientras mira', Object.keys(textosDelControl(true)), ['mirando'])
 
 console.log('Qué se le avisa')
 const control = (cambios: ControlPrevio['cambios'], estado: ControlPrevio['estado'] = 'listo'): ControlPrevio =>
@@ -40,6 +40,15 @@ igual('si la IA no estuvo: nada (se manda igual)', paraAvisar(control([c(1, 'fal
 igual('del pedido inicial: igual, punto por punto',
   paraAvisar({ ...control([c(1, 'hecho'), c(2, 'falta'), c(3, 'dudoso')]), inicial: true }).map(x => x.numero), [2, 3])
 igual('sin respuesta: nada', paraAvisar(null), [])
+igual('un veredicto que no se conoce no se avisa', paraAvisar(control([
+  c(1, 'falta'), { numero: 2, texto: 'x', veredicto: 'no_aplica' as 'falta', nota: '' }])).map(x => x.numero), [1])
+// Quien aprueba ve todo, en el mismo orden que el aviso y con lo hecho al final (21/11/2026).
+igual('en orden: lo que falta, lo dudoso y lo hecho, cada grupo por número',
+  enOrden([c(3, 'hecho'), c(4, 'dudoso'), c(2, 'falta'), c(1, 'hecho'), c(5, 'falta')]).map(x => `${x.numero}${x.veredicto[0]}`),
+  ['2f', '5f', '4d', '1h', '3h'])
+const entrada = [c(2, 'hecho'), c(1, 'falta')]
+enOrden(entrada)
+igual('no toca la lista de entrada', entrada.map(x => x.numero), [2, 1])
 
 console.log('Las mismas imágenes')
 const a = new Blob(['a']), b = new Blob(['b'])

@@ -323,6 +323,9 @@ class SimuladorDeDonTino:
         pedido: una de ortografía sobre el título («OFERAT»), una de precio
         si el pedido trae precio y una de legales si los trae. La imagen de
         prueba del recorrido se dibuja con esos errores para que coincidan.
+        La de ortografía va en cada imagen, con su lugar en cada una (21/11/2026:
+        es lo que se le pide ahora al modelo cuando un problema está en
+        varias imágenes); las otras dos, en la primera.
         Si el pedido dice "sin observaciones", devuelve la lista vacía; si
         dice "falla la ia" (por ejemplo, en el comentario de la agencia), la
         API simulada se cae, para ver que la entrega sigue igual. Si trae los
@@ -340,10 +343,10 @@ class SimuladorDeDonTino:
             return mensaje([pensamiento(), texto(json.dumps({"observaciones": [], "cambios_pedidos": cambios},
                                                             ensure_ascii=False))], entrada=4_300, salida=900)
         obs = [{
-            "tipo": "ortografia", "gravedad": "importante", "imagen": 1,
+            "tipo": "ortografia", "gravedad": "importante", "imagen": i,
             "texto": "Dice «OFERAT»: debería ser «OFERTA».",
-            "x": round(ancho * 0.30), "y": round(alto * 0.12),
-        }]
+            "x": round(a * 0.30), "y": round(h * 0.12),
+        } for i, (a, h) in enumerate(tamanos or [(ancho, alto)], 1)]
         if (precio := re.search(r"^- Precio: (.+)$", pedido, re.M)):
             obs.append({
                 "tipo": "precio_vigencia", "gravedad": "importante", "imagen": 1,

@@ -1,21 +1,23 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
-  ETIQUETA_DEL_VEREDICTO, hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type CambioControlado,
-  type ControlPrevio,
+  hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type CambioControlado, type ControlPrevio,
 } from '@/lib/calendario/control-previo'
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
-import { faltanEnLaEntrega, tituloDeLoQueFalta, type Medidas, type Pieza } from '@/lib/calendario/piezas'
+import {
+  faltanEnLaEntrega, medidaDePieza, primeras, tituloDeLasPiezas, type Medidas, type Pieza,
+} from '@/lib/calendario/piezas'
 import {
   abrirEntrada, avisoZipSinGuardar, detalleDelZip, leerIndiceZip, medidasDeEntrada, nombreCorto, tipoDeImagen,
   zipSumaImagenes, zipYaResueltas, ZipRaro, type EntradaZip, type EstadoDelZip,
 } from '@/lib/calendario/zip'
+import { LoQueVioLaIA } from './LoQueVioLaIA'
 
 function detalleDeError(e: unknown): string | null {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -78,6 +80,11 @@ type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: numbe
  * mandar sale el aviso en cualquier ronda, con lo que vea la IA si vio algo,
  * aunque la IA no esté; y un lugar para escribir por qué no va todo. Si se
  * manda igual, lo que falta y el porqué viajan con la ronda.
+ *
+ * Cómo se ve el aviso (21/11/2026, Ivan: "las correcciones de la IA están
+ * súper mezcladas, no tiene un formato bonito de ver ni nada"): ocupa el
+ * lugar del formulario, que hace scroll, y los botones quedan siempre a la
+ * vista abajo (ver AvisoAntesDeMandar).
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -90,7 +97,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // Es una ronda que volvió con cambios (cambia el ejemplo del comentario).
   const volvio = resumen.momento === 'cambios'
   // La primera entrega de la fase: la IA la mira contra el pedido inicial
-  // (21/11/2026). Para el texto de mientras mira; después lo dice el servidor.
+  // (21/11/2026). Para el texto de mientras mira.
   const primera = ronda === 1
 
   // El id se arma una vez: si la subida se corta y se reintenta, el
@@ -105,9 +112,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const [leyendoZip, setLeyendoZip] = useState(false)
   // El control de la IA antes de mandar: mientras mira, y lo que encontró.
   const [controlando, setControlando] = useState<AbortController | null>(null)
-  // `inicial`: si lo que falta es del pedido inicial (cambia el título).
-  // `faltan`: las piezas del pedido que no vienen (las ve la plataforma sola).
-  const [avisos, setAvisos] = useState<{ inicial: boolean; lista: CambioControlado[]; faltan: Pieza[] } | null>(null)
+  // Lo que se avisa antes de mandar: `lista`, lo que vio la IA de lo pedido;
+  // `faltan`, las piezas del pedido que no vienen (las ve la plataforma sola).
+  const [avisos, setAvisos] = useState<{ lista: CambioControlado[]; faltan: Pieza[] } | null>(null)
   // «¿Por qué no va todo?»: lo que escribe quien entrega si falta alguna pieza.
   const [porQue, setPorQue] = useState('')
   // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
@@ -254,7 +261,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
       // Sin nada para la IA (o ya miró estas): si falta alguna pieza, se avisa igual.
       if (faltan.length > 0) {
-        setAvisos({ inicial: primera, lista: [], faltan })
+        setAvisos({ lista: [], faltan })
         return
       }
       await enviar()
@@ -280,7 +287,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     // Si la IA no estuvo o no vio nada, la lista viene vacía: lo que falta va igual.
     const lista = paraAvisar(control)
     if (lista.length > 0 || faltan.length > 0) {
-      setAvisos({ inicial: control?.inicial ?? primera, lista, faltan })
+      setAvisos({ lista, faltan })
       return
     }
     await enviar()
@@ -292,7 +299,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     // Sin esperar a la IA. Lo que falta del pedido no la necesita: se avisa igual.
     const faltan = loQueFalta()
     if (faltan.length > 0) {
-      setAvisos({ inicial: primera, lista: [], faltan })
+      setAvisos({ lista: [], faltan })
       return
     }
     void enviar()
@@ -346,8 +353,13 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* La caja es ancha (19/11/2026, ver VistaEntregas): el formulario va al
-          medio, con aire a los costados, para que los campos no se estiren. */}
+          medio, con aire a los costados, para que los campos no se estiren.
+          Si hay algo que avisar antes de mandar, el aviso ocupa su lugar
+          (21/11/2026): hace scroll y los botones quedan abajo, a la vista. */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
+      {avisos ? (
+        <AvisoAntesDeMandar faltan={avisos.faltan} lista={avisos.lista} porQue={porQue} onPorQue={setPorQue} />
+      ) : (
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
@@ -508,6 +520,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </label>
         </div>
       </div>
+      )}
       </div>
 
       <div className="shrink-0 border-t border-slate-300 bg-white px-4 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))] dark:border-slate-700 dark:bg-slate-900 sm:px-6">
@@ -530,79 +543,23 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </button>
         </div>
       ) : avisos ? (
-        // Las piezas del pedido que no vienen (las ve la plataforma, por las
-        // medidas) y lo que la IA ve que falta (o que no se ve claro) de lo
-        // que se pidió: los cambios de la ronda anterior o, en la primera
-        // entrega, el pedido. Todo en el mismo aviso.
-        <section aria-labelledby="ojo-falta" className="mx-auto w-full max-w-3xl">
-          <h4 id="ojo-falta" className="flex items-start gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="min-w-0 break-words">
-              {avisos.faltan.length > 0 ? tituloDeLoQueFalta(avisos.faltan) : textosDelControl(avisos.inicial).falta}
-            </span>
-          </h4>
-          {avisos.faltan.length > 0 && (
-            <p className="mt-0.5 pl-6 text-xs text-slate-600 dark:text-slate-400">
-              Ninguna imagen tiene esa medida (vale una más grande, con la misma proporción).
-            </p>
-          )}
-          {avisos.lista.length > 0 && (
-            <>
-              {avisos.faltan.length > 0 && (
-                <p className="mt-3 text-sm font-bold text-amber-900 dark:text-amber-100">{textosDelControl(avisos.inicial).falta}</p>
-              )}
-              <ul className={`mt-2 space-y-1.5 overflow-y-auto overscroll-contain ${avisos.faltan.length > 0 ? 'max-h-[25vh]' : 'max-h-[40vh]'}`}>
-                {avisos.lista.map(c => (
-                  <li key={c.numero} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/40">
-                    <p className="flex items-start gap-2 text-sm text-slate-900 dark:text-slate-100">
-                      <span className="mt-px inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white">
-                        {c.numero}
-                      </span>
-                      <span className="min-w-0 break-words">{c.texto}</span>
-                    </p>
-                    <p className="mt-0.5 pl-7 text-xs text-amber-900 dark:text-amber-100">
-                      <strong>{ETIQUETA_DEL_VEREDICTO[c.veredicto]}</strong>{c.nota ? ` · ${c.nota}` : ''}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-                Lo dice la IA mirando las imágenes, y puede equivocarse: si ya está, mandalo igual.
-              </p>
-            </>
-          )}
-          {/* El espacio para explicar (Ivan: "estaría bueno que le des el
-              espacio a la agencia ahí de escribir por qué no los manda"). */}
-          {avisos.faltan.length > 0 && (
-            <label className="mt-3 block">
-              <span className="etiqueta-campo">¿Por qué no va todo? (opcional)</span>
-              <textarea
-                value={porQue}
-                onChange={e => setPorQue(e.target.value)}
-                rows={2}
-                maxLength={500}
-                placeholder="Ej: Es el KV, para aprobarlo antes de hacer el resto"
-                className="campo !h-auto py-2"
-              />
-            </label>
-          )}
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setAvisos(null)}
-              className="min-h-[48px] rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[44px]"
-            >
-              Corregir
-            </button>
-            <button
-              type="button"
-              onClick={() => { setAvisos(null); void enviar() }}
-              className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none"
-            >
-              <Send className="h-4 w-4" /> Mandar igual
-            </button>
-          </div>
-        </section>
+        // El aviso está arriba, donde estaba el formulario: acá, sus botones.
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAvisos(null)}
+            className="min-h-[48px] rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[44px]"
+          >
+            Corregir
+          </button>
+          <button
+            type="button"
+            onClick={() => { setAvisos(null); void enviar() }}
+            className="ml-auto flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none"
+          >
+            <Send className="h-4 w-4" /> Mandar igual
+          </button>
+        </div>
       ) : (
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         <button
@@ -632,5 +589,110 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       )}
       </div>
     </div>
+  )
+}
+
+/**
+ * El aviso antes de mandar (21/11/2026). Ivan: "las correcciones de la IA
+ * están súper mezcladas, no tiene un formato bonito de ver ni nada". Antes iba
+ * en la barra de los botones: arriba un renglón largo en negrita y ámbar con
+ * todas las piezas que faltaban seguidas por comas, abajo «Ojo: parece que
+ * falta algo del pedido» con tarjetitas amarillas y un número violeta, y al
+ * final el campo. Ahora es un solo bloque, en el lugar del formulario:
+ *
+ * - un título claro, con el único acento de color (el ámbar del ícono);
+ * - «Piezas que faltan (10)»: un chip parejo por pieza, con el nombre arriba
+ *   y la medida abajo en gris; 3 columnas en la compu y 2 en el teléfono. Si
+ *   son muchas, las primeras 6 y «Ver las otras 4» (lib/calendario/piezas.ts);
+ * - «Lo que vio la IA (2)»: un renglón por cosa pedida, con su estado, lo
+ *   pedido en negrita y lo que vio la IA abajo, en gris (LoQueVioLaIA, el
+ *   mismo diseño que ve quien aprueba en el Revisor);
+ * - la aclaración chica, el campo «¿Por qué no va todo? (opcional)» si falta
+ *   alguna pieza, y los botones abajo, siempre a la vista (los pone
+ *   FormularioEntrega en su barra).
+ */
+function AvisoAntesDeMandar({ faltan, lista, porQue, onPorQue }: {
+  faltan: Pieza[]
+  lista: CambioControlado[]
+  porQue: string
+  onPorQue: (texto: string) => void
+}) {
+  const [todas, setTodas] = useState(false)
+  const titulo = useRef<HTMLHeadingElement>(null)
+  // Al aparecer, el título con el foco (y a la vista): es lo que sigue leer.
+  useEffect(() => { titulo.current?.focus() }, [])
+  const { vistas, resto } = primeras(faltan)
+  const piezas = todas ? faltan : vistas
+  return (
+    <section aria-labelledby="antes-de-mandar" className="mx-auto w-full max-w-3xl space-y-6">
+      <h3
+        id="antes-de-mandar"
+        ref={titulo}
+        tabIndex={-1}
+        className="flex items-center gap-2 text-lg font-bold text-slate-900 outline-none dark:text-slate-100"
+      >
+        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+        Antes de mandar, revisá esto
+      </h3>
+
+      {faltan.length > 0 && (
+        <section aria-labelledby="piezas-que-faltan">
+          <h4 id="piezas-que-faltan" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            {tituloDeLasPiezas(faltan)} <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({faltan.length})</span>
+          </h4>
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+            Ninguna imagen tiene esa medida (vale una más grande, con la misma proporción).
+          </p>
+          <ul className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {piezas.map((p, i) => (
+              <li key={`${i}-${p.nombre}`} className="min-w-0 rounded-lg border border-slate-300 px-2.5 py-1.5 dark:border-slate-700">
+                <span className="block break-words text-sm font-medium leading-snug text-slate-900 dark:text-slate-100">{p.nombre}</span>
+                <span className="block text-xs tabular-nums text-slate-600 dark:text-slate-400">{medidaDePieza(p)}</span>
+              </li>
+            ))}
+          </ul>
+          {resto > 0 && (
+            <button
+              type="button"
+              onClick={() => setTodas(v => !v)}
+              aria-expanded={todas}
+              className="-mx-2 mt-1 flex min-h-[40px] items-center rounded-lg px-2 text-sm font-semibold text-brand-700 transition hover:bg-slate-100 dark:text-brand-200 dark:hover:bg-slate-800"
+            >
+              {todas ? 'Ver menos' : `Ver las otras ${resto}`}
+            </button>
+          )}
+        </section>
+      )}
+
+      {lista.length > 0 && (
+        <section aria-labelledby="lo-que-vio-la-ia">
+          <h4 id="lo-que-vio-la-ia" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Lo que vio la IA <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({lista.length})</span>
+          </h4>
+          <div className="mt-2.5 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
+            <LoQueVioLaIA cambios={lista} />
+          </div>
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+            Lo dice la IA mirando las imágenes y puede equivocarse: si ya está, mandalo igual.
+          </p>
+        </section>
+      )}
+
+      {/* El espacio para explicar (Ivan: "estaría bueno que le des el
+          espacio a la agencia ahí de escribir por qué no los manda"). */}
+      {faltan.length > 0 && (
+        <label className="block">
+          <span className="etiqueta-campo">¿Por qué no va todo? (opcional)</span>
+          <textarea
+            value={porQue}
+            onChange={e => onPorQue(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="Ej: Es el KV, para aprobarlo antes de hacer el resto"
+            className="campo !h-auto py-2"
+          />
+        </label>
+      )}
+    </section>
   )
 }

@@ -18,7 +18,8 @@
 //
 // Si falta algo, el formulario de entrega lo avisa antes de mandar (con lo
 // que vea la IA, si vio algo) y deja escribir por qué; lo que falta y el
-// porqué viajan con la ronda y los ven quien aprueba y la agencia.
+// porqué viajan con la ronda y los ven quien aprueba y la agencia. Cómo se
+// muestra, abajo (los chips, desde el 21/11/2026).
 //
 // Este archivo es puro (sin React ni '@/') a propósito: se prueba con
 // piezas.test.ts.
@@ -49,31 +50,99 @@ export function cubre(imagen: Medidas, pieza: Pieza): boolean {
   return pieza.proporcion || (imagen.ancho >= pieza.ancho && imagen.alto >= pieza.alto)
 }
 
+/** Cuánto puede diferir, de ancho y de alto, una imagen que mide exacto lo
+ *  pedido: 2 px. */
+export const TOLERANCIA_EXACTA = 2
+
+/** Si una imagen mide exacto lo que pide la pieza (±2 px de ancho y de alto).
+ *  De las de proporción no hay medida exacta. Sirve para repartir las
+ *  imágenes (`piezasQueFaltan`), entre las que cubren la pieza. Pura. */
+export function esExacta(imagen: Medidas, pieza: Pieza): boolean {
+  return !pieza.proporcion
+    && Math.abs(imagen.ancho - pieza.ancho) <= TOLERANCIA_EXACTA
+    && Math.abs(imagen.alto - pieza.alto) <= TOLERANCIA_EXACTA
+}
+
+/** Una arista de la red del reparto: a dónde va, si queda lugar (0 o 1), lo
+ *  que cuesta y dónde está la de vuelta en el nodo de destino. */
+type Arista = { a: number; lugar: number; costo: number; vuelta: number }
+
 /**
  * Las piezas del pedido que no cubre ninguna imagen, en el orden del pedido.
  * Cada imagen cubre una sola pieza: dos piezas iguales (Foto receta y Foto
- * producto, las dos de 1200×900) piden dos imágenes. Se reparten de la mejor
- * manera posible (el emparejamiento más grande, con caminos de aumento): una
- * imagen grande que sirve para dos piezas se deja para la que la otra imagen
- * no alcanza. Si dos piezas se disputan la misma imagen, se la queda la que
- * está más arriba en el pedido. Pura.
+ * producto, las dos de 1200×900) piden dos imágenes. De todos los repartos
+ * posibles se queda con este, en este orden:
+ *
+ * 1. El que cubre más piezas: una imagen grande que sirve para dos se deja
+ *    para la que la otra imagen no alcanza.
+ * 2. Entre los que cubren las mismas, el que tiene más piezas con su medida
+ *    exacta (±2 px, `esExacta`). Desde el 21/11/2026: en la prueba de la
+ *    entrega de Publicis, un checkout de 412×157 se lo quedaba el Carrito
+ *    (368×140, casi la misma proporción y más arriba en el pedido), y el
+ *    aviso decía que faltaba el Checkout.
+ * 3. Si aun así empatan, se la queda la que está más arriba en el pedido.
+ *
+ * Es un reparto de costo mínimo (un flujo, con el camino más barato cada
+ * vez): la fuente da una a cada pieza, cada pieza pasa a una imagen que la
+ * cubre y cada imagen, al sumidero. Lo que vale una pieza cubierta, en
+ * negativo: si es exacta, más que todas las preferencias por el orden
+ * juntas; y la de más arriba, un poco más. Son pocas (una tarjeta pide unas
+ * decenas de medidas como mucho, y un ZIP trae unas decenas de imágenes):
+ * cada camino se busca con Bellman-Ford, que acepta los costos negativos.
+ * Pura.
  */
 export function piezasQueFaltan(piezas: readonly Pieza[], imagenes: readonly Medidas[]): Pieza[] {
-  // Para cada imagen, a qué pieza quedó asignada (-1: a ninguna).
-  const de = imagenes.map(() => -1)
-  const sirve = piezas.map(p => imagenes.map(im => cubre(im, p)))
-  const asignar = (p: number, vistas: boolean[]): boolean => {
-    for (let i = 0; i < imagenes.length; i++) {
-      if (vistas[i] || !sirve[p][i]) continue
-      vistas[i] = true
-      if (de[i] === -1 || asignar(de[i], vistas)) {
-        de[i] = p
-        return true
-      }
-    }
-    return false
+  const n = piezas.length
+  // Los nodos: 0 es la fuente; de 1 a n, las piezas; de n+1 a n+m, las
+  // imágenes; el último, el sumidero.
+  const fuente = 0
+  const sumidero = n + imagenes.length + 1
+  const red: Arista[][] = Array.from({ length: sumidero + 1 }, () => [])
+  const unir = (de: number, a: number, costo: number) => {
+    red[de].push({ a, lugar: 1, costo, vuelta: red[a].length })
+    red[a].push({ a: de, lugar: 0, costo: -costo, vuelta: red[de].length - 1 })
   }
-  return piezas.filter((_, p) => !asignar(p, imagenes.map(() => false)))
+  // Una exacta vale más que n + (n-1) + … + 1: la suma de las preferencias por el orden.
+  const exacta = (n * (n + 1)) / 2 + 1
+  piezas.forEach((pieza, p) => {
+    unir(fuente, 1 + p, 0)
+    imagenes.forEach((imagen, i) => {
+      if (cubre(imagen, pieza)) unir(1 + p, 1 + n + i, -((esExacta(imagen, pieza) ? exacta : 0) + (n - p)))
+    })
+  })
+  imagenes.forEach((_, i) => unir(1 + n + i, sumidero, 0))
+
+  // Mientras haya un camino de la fuente al sumidero, por el más barato: cada
+  // vuelta cubre una pieza más (y puede pasarle su imagen a otra).
+  for (;;) {
+    const costo = red.map(() => Infinity)
+    const llegaDe: ([number, number] | null)[] = red.map(() => null)
+    costo[fuente] = 0
+    for (let vuelta = 0, cambio = true; cambio && vuelta < red.length; vuelta++) {
+      cambio = false
+      red.forEach((aristas, u) => {
+        if (costo[u] === Infinity) return
+        aristas.forEach((e, k) => {
+          if (e.lugar > 0 && costo[u] + e.costo < costo[e.a]) {
+            costo[e.a] = costo[u] + e.costo
+            llegaDe[e.a] = [u, k]
+            cambio = true
+          }
+        })
+      })
+    }
+    if (costo[sumidero] === Infinity) break
+    for (let v = sumidero; v !== fuente;) {
+      const [u, k] = llegaDe[v] as [number, number]
+      const e = red[u][k]
+      e.lugar -= 1
+      red[v][e.vuelta].lugar += 1
+      v = u
+    }
+  }
+  // Falta la pieza cuya arista desde la fuente no se usó (la fuente tiene
+  // una por pieza, en el orden del pedido).
+  return piezas.filter((_, p) => red[fuente][p].lugar > 0)
 }
 
 /**
@@ -91,25 +160,72 @@ export function faltanEnLaEntrega(
   return piezasQueFaltan(piezas, imagenes as Medidas[])
 }
 
-/** El título del aviso antes de mandar: «Faltan estas piezas del pedido:
- *  Header (mobile) 640×260, Checkout 412×157». Pura. */
-export function tituloDeLoQueFalta(faltan: readonly Pieza[]): string {
-  const lista = faltan.map(textoDePieza).join(', ')
-  return faltan.length === 1 ? `Falta esta pieza del pedido: ${lista}` : `Faltan estas piezas del pedido: ${lista}`
+// ---------------------------------------------------------------------------
+// Cómo se muestra (21/11/2026)
+// ---------------------------------------------------------------------------
+// Ivan: "las correcciones de la IA están súper mezcladas, no tiene un formato
+// bonito de ver ni nada". Antes, lo que faltaba iba en un renglón con todas
+// las piezas seguidas por comas («Faltan estas piezas del pedido: Header
+// (web) 1920×416, Slider fila (normal) (mobile) 640×260, …»), que con diez
+// piezas era un párrafo y en la ficha se salía de la pantalla. Ahora cada
+// pieza es un chip: en el aviso antes de mandar, con el nombre arriba y la
+// medida abajo; en la ficha y al revisar, solo el nombre (es lo que viaja con
+// la ronda). Si son muchas, se ven las primeras.
+
+/** La medida de una pieza, abajo de su nombre en el aviso: «1920×416». De las
+ *  de proporción importa solo eso, y ya está en el nombre («Redes 4:5»):
+ *  «cualquier tamaño». Pura. */
+export function medidaDePieza(p: Pieza): string {
+  return p.proporcion ? 'cualquier tamaño' : `${p.ancho}×${p.alto}`
 }
 
-/** La línea de la ronda, arriba al revisar y en su ficha: «Faltan 2 piezas
- *  del pedido: Header (mobile), Checkout · La agencia dice: «Es el KV, para
- *  aprobarlo antes»». `quien`: quién la entregó («La agencia» o, si la hace
- *  alguien de Tienda, su nombre). Null si no faltaba nada. Pura. */
-export function lineaDeLoQueFalta(
+/** Cuántas piezas se ven de entrada (Ivan: "si son más de 6, se ven 6 y «Ver
+ *  las otras 4»"). */
+export const PIEZAS_A_LA_VISTA = 6
+
+/**
+ * Las primeras de una lista larga y cuántas quedan para «Ver las otras N».
+ * Se corta solo si quedan afuera al menos dos: un botón para mostrar una sola
+ * ocupa lo mismo que mostrarla, así que con 7 se ven las 7. Pura.
+ */
+export function primeras<T>(lista: readonly T[], tope = PIEZAS_A_LA_VISTA): { vistas: T[]; resto: number } {
+  if (lista.length <= tope + 1) return { vistas: [...lista], resto: 0 }
+  return { vistas: lista.slice(0, tope), resto: lista.length - tope }
+}
+
+/** El subtítulo de las piezas en el aviso antes de mandar: «Piezas que
+ *  faltan», y al lado, en gris, la cantidad. Pura. */
+export function tituloDeLasPiezas(faltan: readonly Pieza[]): string {
+  return faltan.length === 1 ? 'Pieza que falta' : 'Piezas que faltan'
+}
+
+/** Lo que faltaba en una ronda, en su ficha y al revisarla. */
+export type LoQueFaltaba = {
+  /** «Faltan 10 piezas del pedido». */
+  titulo: string
+  /** Los nombres, como viajaron con la ronda («Header (web)»). */
+  piezas: string[]
+  /** Quién lo dice: «La agencia» o, si la hace alguien de Tienda, su nombre. */
+  quien: string
+  /** Por qué no iba todo, como lo escribió (null si no escribió nada). */
+  porQue: string | null
+}
+
+/** Lo que faltaba en una ronda: el título con la cantidad, las piezas y, en
+ *  otro renglón, por qué («La agencia dice: «Es el KV, para aprobarlo
+ *  antes»»). `quien`: quién la entregó. Null si no faltaba nada (o es una
+ *  ronda de antes del 21/11/2026). Pura. */
+export function loQueFaltaba(
   faltan: readonly string[] | null | undefined, porQue: string | null | undefined, quien = 'La agencia',
-): string | null {
+): LoQueFaltaba | null {
   if (!faltan?.length) return null
   const n = faltan.length
-  const que = `${n === 1 ? 'Falta 1 pieza' : `Faltan ${n} piezas`} del pedido: ${faltan.join(', ')}`
-  const dice = (porQue ?? '').trim()
-  return dice ? `${que} · ${quien} dice: «${dice}»` : que
+  return {
+    titulo: `${n === 1 ? 'Falta 1 pieza' : `Faltan ${n} piezas`} del pedido`,
+    piezas: [...faltan],
+    quien,
+    porQue: (porQue ?? '').trim() || null,
+  }
 }
 
 // ---------------------------------------------------------------------------

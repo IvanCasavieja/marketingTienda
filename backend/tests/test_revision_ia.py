@@ -18,12 +18,15 @@ es una de mentira que usa la misma regla de reclamo que la de Postgres
   descarta); la IA dice marca por marca si se ve hecho, y lo que venga mal se
   descarta sin tirar la revisión;
 - el pedido inicial (21/11/2026): en la primera entrega de una fase, los
-  puntos de lo pedido al principio, que la IA controla punto por punto y que
-  quien aprueba no ve (no son marcas);
+  puntos de lo pedido al principio, que la IA controla punto por punto;
 - sin ruido (21/11/2026, más tarde): lo tildado con sus medidas no es un
   punto (lo controla la plataforma), los renglones de cortesía tampoco, un
   "no_aplica" no le llega a nadie ni dispara el aviso, y lo que se le manda
-  a la IA no lleva temperature y pide un criterio estable.
+  a la IA no lleva temperature y pide un criterio estable;
+- con la prueba de Ivan (21/11/2026): quien aprueba ve los puntos del
+  pedido inicial y los del comentario, aparte de las marcas y con su texto,
+  lo mismo que vio la agencia; y un problema que está en varias imágenes va
+  en cada una (las instrucciones lo piden y la limpieza no lo tira).
 
 Lo que hace la consulta de Postgres de verdad (el reclamo con su candado,
 cargar la versión, guardar y registrar el uso) se probó contra una copia
@@ -328,13 +331,59 @@ def test_la_respuesta_se_limpia():
     assert len({o["id"] for o in obs}) == 3
 
 
-def test_como_mucho_diez_y_las_importantes_primero():
-    muchas = [_obs(texto=f"dudosa {i}", gravedad="a_revisar") for i in range(8)]
-    muchas += [_obs(texto=f"segura {i}") for i in range(5)]
+def test_como_mucho_treinta_y_las_importantes_primero():
+    # Eran 10 hasta el 21/11/2026: con una observación por imagen, un solo
+    # problema repetido en las 12 imágenes de una entrega ya no entraba.
+    assert rv.MAX_OBSERVACIONES == 30 >= 2 * rv.MAX_IMAGENES_IA
+    muchas = [_obs(texto=f"dudosa {i}", gravedad="a_revisar") for i in range(25)]
+    muchas += [_obs(texto=f"segura {i}") for i in range(10)]
     obs = rv.limpiar_observaciones({"observaciones": muchas}, _imagenes((1600, 1131)))
     assert len(obs) == rv.MAX_OBSERVACIONES
-    assert [o["texto"] for o in obs[:5]] == [f"segura {i}" for i in range(5)]
-    assert [o["texto"] for o in obs[5:]] == [f"dudosa {i}" for i in range(5)]
+    assert [o["texto"] for o in obs[:10]] == [f"segura {i}" for i in range(10)]
+    assert [o["texto"] for o in obs[10:]] == [f"dudosa {i}" for i in range(20)]
+
+
+def test_el_mismo_problema_en_otra_imagen_no_es_repetido():
+    """Ivan (21/11/2026), con su prueba de Publicis: "solo aparecen las cosas
+    en la primera imagen y en la segunda no aparece nada". Una observación con
+    el mismo texto que otra se tiraba aunque fuera de otra imagen: ahora se
+    saca solo si es de la misma, y cada una queda con su imagen y su lugar."""
+    texto = "El botón dice «Ver oferta»: el pedido dice «Ver ofertas»."
+    obs = rv.limpiar_observaciones({"observaciones": [
+        _obs(texto=texto, imagen=1, x=1400, y=300),
+        _obs(texto=texto, imagen=2, x=500, y=200),
+        _obs(texto=texto.upper(), imagen=2, x=10, y=10),    # repetida en la misma imagen
+        _obs(texto=texto, imagen=None, x=None, y=None),       # con dos imágenes, sin imagen
+        _obs(texto=texto, imagen=None, x=None, y=None),       # repetida, también sin imagen
+        _obs(texto=texto, imagen=7, x=5, y=5),                # una imagen que no hay: sin imagen, repetida
+    ]}, _imagenes((1600, 1131), (1000, 400)))
+    assert [(o["imagenId"], o["x"], o["y"]) for o in obs] == [
+        ("im-1", 0.875, 0.265), ("im-2", 0.5, 0.5), (None, None, None)]
+    assert len({o["id"] for o in obs}) == 3
+    # Con una sola imagen, la que no dice cuál es de esa: repetida.
+    una = rv.limpiar_observaciones({"observaciones": [_obs(texto=texto), _obs(texto=texto, imagen=None)]},
+                                   _imagenes((1600, 1131)))
+    assert [o["imagenId"] for o in una] == ["im-1"]
+
+
+def test_las_instrucciones_piden_revisar_todas_las_imagenes_y_una_observacion_por_imagen():
+    assert ("Revisá todas las imágenes, una por una, de la primera a la última" in rv.SISTEMA
+            and "No te quedes en la primera." in rv.SISTEMA)
+    assert ("si el mismo problema está en varias imágenes (por ejemplo, el mismo botón mal escrito en dos piezas), "
+            "va una observación por cada imagen donde está, con el número y el lugar en esa imagen") in rv.SISTEMA
+    # El tope que se le dice es el que se aplica después.
+    assert f"Como mucho {rv.MAX_OBSERVACIONES}, las importantes primero." in rv.SISTEMA
+    assert "Una observación por problema, como mucho" not in rv.SISTEMA
+    # Lo pedido sin lugar (el CTA, el precio) se controla en todas las piezas.
+    assert ('Para decidir, mirá todas las imágenes de ahora, no solo la primera. Si lo pedido es para todas las '
+            'piezas (el CTA, el precio, los legales) y en alguna no se cumple, es "falta", y la nota dice en '
+            "cuál.") in rv.SISTEMA
+    # Lo mismo en el esquema que va a la API.
+    esquema = rv.FORMATO["schema"]
+    lista = esquema["properties"]["observaciones"]["description"]
+    assert "mirando todas las imágenes" in lista and "una por problema y por imagen" in lista
+    imagen = esquema["$defs"]["ObservacionDeLaIA"]["properties"]["imagen"]["description"]
+    assert "va otra observación con el número de esa" in imagen
 
 
 def test_sin_observaciones_es_una_respuesta_valida():
@@ -389,6 +438,19 @@ def test_lo_que_contesta_la_ia_simulada_pasa_la_validacion_del_sdk():
     assert [(c["marcaId"], c["veredicto"]) for c in cambios] == [("mk-1", "hecho"), ("mk-2", "falta")]
     for r in respuestas:
         rv.RespuestaDeLaIA.model_validate_json(next(b["text"] for b in r["content"] if b["type"] == "text"))
+
+
+def test_la_ia_simulada_marca_el_mismo_problema_en_cada_imagen():
+    # Como se le pide ahora al modelo (21/11/2026): la de ortografía va en
+    # cada imagen, con su lugar en cada una; las otras dos, en la primera.
+    cliente = sim.cliente_con(sim.SimuladorDeDonTino())
+    obs, _, _ = asyncio.run(rv.pedir_revision(
+        cliente, _imagenes((1600, 1131), (1000, 400)), CONTEXTO, "claude-opus-5-5"))
+    assert [(o["tipo"], o["imagenId"], o["x"], o["y"]) for o in obs] == [
+        ("ortografia", "im-1", 0.3, 0.12), ("ortografia", "im-2", 0.3, 0.12),
+        ("precio_vigencia", "im-1", 0.28, 0.52), ("legal", "im-1", 0.5, 0.94),
+    ]
+    assert obs[0]["texto"] == obs[1]["texto"] and obs[0]["id"] != obs[1]["id"]
 
 
 # ---------------------------------------------------------------------------
@@ -848,10 +910,13 @@ def test_la_ia_dice_marca_por_marca_si_se_ve_hecho():
     ])])
     observaciones, cambios, _ = _pedir(api, contexto=CON_CAMBIOS)
     assert len(observaciones) == 1
-    # En el orden de las marcas y con el id de cada una: la pantalla lo pone al lado.
+    # En el orden de las marcas y con el id de cada una: la pantalla lo pone
+    # al lado. Con lo que se pidió, en una línea (21/11/2026).
     assert cambios == [
-        {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "El -40% ahora es más grande."},
-        {"marcaId": "mk-2", "numero": 2, "veredicto": "falta", "nota": "Sigue diciendo «Valido», sin tilde."},
+        {"marcaId": "mk-1", "numero": 1, "texto": "Agrandar el -40%", "veredicto": "hecho",
+         "nota": "El -40% ahora es más grande."},
+        {"marcaId": "mk-2", "numero": 2, "texto": "Falta la tilde: «Valido» → «Válido»", "veredicto": "falta",
+         "nota": "Sigue diciendo «Valido», sin tilde."},
     ]
     # Lo pedido viajó en el último texto del mensaje, después de las imágenes.
     # Esta ronda anterior no trae miniaturas (ver las pruebas de abajo): va
@@ -991,8 +1056,9 @@ def test_lo_que_viene_mal_de_los_cambios_pedidos_se_descarta():
         _cambio(1, nota={"no": "es texto"}),      # la nota no es texto: el veredicto solo
     ], RONDA_1)
     assert cambios == [
-        {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": ""},
-        {"marcaId": "mk-2", "numero": 2, "veredicto": "dudoso", "nota": "No se lee bien."},
+        {"marcaId": "mk-1", "numero": 1, "texto": "Agrandar el -40%", "veredicto": "hecho", "nota": ""},
+        {"marcaId": "mk-2", "numero": 2, "texto": "Falta la tilde: «Valido» → «Válido»", "veredicto": "dudoso",
+         "nota": "No se lee bien."},
     ]
     larga = rv.limpiar_cambios_pedidos([_cambio(1, nota="palabra " * 80)], RONDA_1)[0]["nota"]
     assert len(larga) == rv.MAX_NOTA and larga.endswith("…")
@@ -1471,18 +1537,23 @@ def test_en_la_primera_entrega_la_ia_dice_punto_por_punto():
     observaciones, cambios, _ = _pedir(api, contexto=PRIMERA)
     assert len(observaciones) == 1
     assert cambios == [
-        {"marcaId": "pedido-1", "numero": 1, "veredicto": "dudoso", "nota": "No se puede medir."},
-        {"marcaId": "pedido-2", "numero": 2, "veredicto": "falta", "nota": "El precio dice $ 249 y se pidió $ 199."},
+        {"marcaId": "pedido-1", "numero": 1, "texto": "Medidas: A4 apaisada", "veredicto": "dudoso",
+         "nota": "No se puede medir."},
+        {"marcaId": "pedido-2", "numero": 2, "texto": "Precio: $ 199", "veredicto": "falta",
+         "nota": "El precio dice $ 249 y se pidió $ 199."},
     ]
     # Solo la imagen de ahora: no hay miniaturas de antes.
     contenido = api.pedidos[0]["messages"][0]["content"]
     assert len([b for b in contenido if b["type"] == "image"]) == 1
     assert rv.miniaturas_para_comparar(PRIMERA) == ()
     # A la agencia: cada punto con lo que se pidió y lo que vio la IA.
-    assert rv.cambios_para_la_agencia(cambios, PRIMERA.ronda_anterior) == [
+    agencia = rv.cambios_para_la_agencia(cambios, PRIMERA.ronda_anterior)
+    assert agencia == [
         {"numero": 1, "texto": "Medidas: A4 apaisada", "veredicto": "dudoso", "nota": "No se puede medir."},
         {"numero": 2, "texto": "Precio: $ 199", "veredicto": "falta", "nota": "El precio dice $ 249 y se pidió $ 199."},
     ]
+    # Y quien aprueba, lo mismo, con lo que quedó guardado (21/11/2026).
+    assert rv.puntos_pedidos_para_mostrar(cambios, "lista") == {"inicial": True, "puntos": agencia}
 
 
 def test_la_ia_simulada_tambien_contesta_el_pedido_inicial():
@@ -1497,17 +1568,64 @@ def test_revisar_version_en_la_primera_ronda_guarda_lo_del_pedido_inicial(ia_pre
     base = BaseFalsa(["ve-1"], ronda_anterior=PRIMERA.ronda_anterior)
     api = sim.ApiGrabada([_respuesta(cambios=[_cambio(1), _cambio(2, "falta", "Dice $ 249.")])])
     assert _revisar("ve-1", base, api) == "lista"
-    assert [(c["marcaId"], c["veredicto"]) for c in base.filas["ve-1"]["cambios_pedidos"]] == [
-        ("pedido-1", "hecho"), ("pedido-2", "falta")]
+    guardados = base.filas["ve-1"]["cambios_pedidos"]
+    assert [(c["marcaId"], c["texto"], c["veredicto"]) for c in guardados] == [
+        ("pedido-1", "Medidas: A4 apaisada", "hecho"), ("pedido-2", "Precio: $ 199", "falta")]
+    # Corriendo al entregar (sin control previo), quien aprueba ve lo mismo
+    # que hubiera visto la agencia.
+    assert rv.puntos_pedidos_para_mostrar(guardados, "lista")["puntos"] == rv.cambios_para_la_agencia(
+        guardados, PRIMERA.ronda_anterior)
 
 
-def test_quien_aprueba_no_ve_los_puntos_del_pedido_inicial():
-    # No son marcas: «Lo que se pidió en la ronda N» sigue con las marcas de
-    # la ronda anterior y nada más. Quedan guardados con la revisión.
-    guardado = [{"marcaId": "pedido-1", "numero": 1, "veredicto": "falta", "nota": "Dice $ 249."},
-                {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."},
-                {"marcaId": "comentario-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."}]
-    assert rv.cambios_pedidos_para_mostrar(guardado, "lista") == guardado[1:]
+def test_quien_aprueba_ve_los_puntos_aparte_de_las_marcas():
+    """Ivan (21/11/2026), con su prueba de Publicis: a la agencia el control
+    le dijo dos cosas, una por punto del pedido, y a quien aprobaba no le
+    llegó ninguna. Lo de las marcas sigue al lado de cada marca
+    (`cambios_pedidos_para_mostrar`); los puntos del pedido inicial y los
+    pedidos del comentario, que no son marcas, van aparte, con su texto
+    (`puntos_pedidos_para_mostrar`): lo mismo que vio la agencia."""
+    del_pedido = [
+        {"marcaId": "pedido-1", "numero": 1, "texto": "CTA: Ver ofertas", "veredicto": "falta",
+         "nota": "En las dos piezas el botón dice «Ver oferta»."},
+        {"marcaId": "pedido-2", "numero": 2, "texto": "Para el viernes", "veredicto": "no_aplica", "nota": "Un plazo."},
+        {"marcaId": "pedido-3", "numero": 3, "texto": "En el banner menú quiero CTA ver más", "veredicto": "dudoso",
+         "nota": "No se ve ningún banner de menú."},
+        {"marcaId": "pedido-4", "numero": 4, "texto": "Fondo rojo", "veredicto": "hecho", "nota": "Se ve rojo."},
+    ]
+    assert rv.cambios_pedidos_para_mostrar(del_pedido, "lista") == []
+    assert rv.puntos_pedidos_para_mostrar(del_pedido, "lista") == {"inicial": True, "puntos": [
+        {"numero": 1, "texto": "CTA: Ver ofertas", "veredicto": "falta",
+         "nota": "En las dos piezas el botón dice «Ver oferta»."},
+        {"numero": 3, "texto": "En el banner menú quiero CTA ver más", "veredicto": "dudoso",
+         "nota": "No se ve ningún banner de menú."},
+        {"numero": 4, "texto": "Fondo rojo", "veredicto": "hecho", "nota": "Se ve rojo."},
+    ]}
+    # Los del comentario (cambios pedidos solo con texto): no son del pedido inicial.
+    del_comentario = [{"marcaId": "comentario-1", "numero": 1, "texto": "Cambiar el precio a $199",
+                       "veredicto": "falta", "nota": "Sigue diciendo $249."}]
+    assert rv.cambios_pedidos_para_mostrar(del_comentario, "lista") == []
+    assert rv.puntos_pedidos_para_mostrar(del_comentario, "lista") == {"inicial": False, "puntos": [
+        {"numero": 1, "texto": "Cambiar el precio a $199", "veredicto": "falta", "nota": "Sigue diciendo $249."}]}
+    # Las marcas de la ronda anterior siguen como estaban, y no son puntos.
+    de_marcas = [{"marcaId": "mk-1", "numero": 1, "texto": "Agrandar el -40%", "veredicto": "hecho", "nota": "Bien."}]
+    assert rv.cambios_pedidos_para_mostrar(de_marcas, "lista") == de_marcas
+    assert rv.puntos_pedidos_para_mostrar(de_marcas, "lista") is None
+    # Sin la revisión lista, o sin nada guardado, nada.
+    assert rv.puntos_pedidos_para_mostrar(del_pedido, "pendiente") is None
+    assert rv.puntos_pedidos_para_mostrar(None, "lista") is None
+    # Todos "no_aplica": nada que mostrar.
+    assert rv.puntos_pedidos_para_mostrar(del_pedido[1:2], "lista") is None
+    # Una revisión de antes (sin el texto de cada punto) no se muestra: no
+    # se adivina, el pedido se pudo cambiar después.
+    sin_texto = [{k: v for k, v in c.items() if k != "texto"} for c in del_pedido]
+    assert rv.puntos_pedidos_para_mostrar(sin_texto, "lista") is None
+    # Lo que no tenga la forma esperada se descarta.
+    raros = ["no", None, {"marcaId": "pedido-9", "numero": "9", "texto": "x", "veredicto": "falta"},
+             {"marcaId": "pedido-8", "numero": 8, "texto": "x", "veredicto": "quizás"},
+             {"marcaId": "pedido-7", "numero": 7, "texto": "   ", "veredicto": "falta"},
+             {"marcaId": "pedido-6", "numero": 6, "texto": "Logo", "veredicto": "falta", "nota": None}]
+    assert rv.puntos_pedidos_para_mostrar(raros, "lista") == {"inicial": True, "puntos": [
+        {"numero": 6, "texto": "Logo", "veredicto": "falta", "nota": ""}]}
 
 
 def test_la_agencia_sabe_si_el_control_es_del_pedido_inicial():
@@ -1625,16 +1743,20 @@ def test_un_no_aplica_queda_guardado_pero_no_llega_a_la_agencia_ni_al_aprobador(
     assert [(c["marcaId"], c["veredicto"]) for c in cambios] == [
         ("pedido-1", "hecho"), ("pedido-2", "no_aplica"), ("pedido-3", "falta")]
     # A la agencia, sin el no_aplica: ni se muestra ni cuenta para el aviso.
-    assert rv.cambios_para_la_agencia(cambios, r) == [
+    agencia = rv.cambios_para_la_agencia(cambios, r)
+    assert agencia == [
         {"numero": 1, "texto": "Fondo rojo", "veredicto": "hecho", "nota": "Se ve el fondo rojo."},
         {"numero": 3, "texto": "Sacar el logo viejo", "veredicto": "falta", "nota": "Sigue el logo viejo."},
     ]
-    # Al aprobador tampoco, cuando sí ve lo de la ronda anterior (marcas y
-    # pedidos escritos en el comentario).
+    # Al aprobador tampoco: ni al lado de las marcas, ni en los puntos (que
+    # desde el 21/11/2026 ve aparte, lo mismo que la agencia).
+    assert rv.puntos_pedidos_para_mostrar(cambios, "lista") == {"inicial": True, "puntos": agencia}
     guardado = [{"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": "Bien."},
-                {"marcaId": "comentario-2", "numero": 2, "veredicto": "no_aplica", "nota": "Es un saludo."},
                 {"marcaId": "mk-3", "numero": 3, "veredicto": "no_aplica", "nota": "No pide nada."}]
     assert rv.cambios_pedidos_para_mostrar(guardado, "lista") == guardado[:1]
+    del_comentario = [{"marcaId": "comentario-2", "numero": 2, "texto": "Saludos, Ana", "veredicto": "no_aplica",
+                       "nota": "Es un saludo."}]
+    assert rv.puntos_pedidos_para_mostrar(del_comentario, "lista") is None
 
 
 class SesionDelControl:
@@ -1704,6 +1826,9 @@ def test_en_el_control_previo_un_no_aplica_no_dispara_el_aviso(ia_prendida):
     assert [(c["marcaId"], c["veredicto"]) for c in control.cambios_pedidos] == [
         ("pedido-1", "hecho"), ("pedido-2", "hecho"), ("pedido-3", "no_aplica")]
     assert rv.cambios_pedidos_para_mostrar(control.cambios_pedidos, "lista") == []
+    # Si se reusa, quien aprueba ve los mismos puntos que la agencia (21/11/2026).
+    assert rv.puntos_pedidos_para_mostrar(control.cambios_pedidos, "lista") == {
+        "inicial": True, "puntos": agencia["cambios"]}
 
 
 def test_una_tarjeta_con_solo_lo_tildado_no_llama_a_la_ia(ia_prendida):
