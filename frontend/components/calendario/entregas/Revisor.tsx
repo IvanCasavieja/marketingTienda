@@ -14,6 +14,7 @@ import {
   type ObservacionIA, type RevisionIA, type VeredictoIA,
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
+import { LoQueFalta } from './LoQueFalta'
 import { PanelRevisionIA } from './PanelRevisionIA'
 
 /** Una marca que se está poniendo. `observacionIA`: si salió de lo que vio la IA. */
@@ -363,6 +364,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             <p className="text-sm text-slate-600 dark:text-slate-400">
               La subió {nombre(version.subidaPor)} · {fechaYHora(version.fecha)}
             </p>
+            {/* Las piezas del pedido que no vinieron en esta ronda, y por qué
+                (21/11/2026): una línea discreta, para revisar sabiéndolo. */}
+            <LoQueFalta detalle={detalle} version={version} className="mt-1" />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {hayIA && (

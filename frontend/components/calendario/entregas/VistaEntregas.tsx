@@ -30,6 +30,7 @@ import {
 } from './FormularioEntregas'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { LineaDeFases } from './LineaDeFases'
+import { LoQueFalta } from './LoQueFalta'
 import { Revisor } from './Revisor'
 import { urlDeImagen } from './useImagen'
 
@@ -459,6 +460,8 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
           {ultimaDeFase.comentario && (
             <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{ultimaDeFase.comentario}»</p>
           )}
+          {/* Las piezas del pedido que no venían, y por qué (21/11/2026). */}
+          <LoQueFalta detalle={detalle} version={ultimaDeFase} />
           <ListaDeMarcas marcas={ultimaDeFase.marcas} version={ultimaDeFase} />
         </section>
       ))}
@@ -1087,6 +1090,7 @@ function Ronda({ detalle, fase, version, conFase }: {
           <p className="text-xs text-slate-500 dark:text-slate-400">La subió {nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</p>
           <VersionGrande detalle={detalle} version={version} claseImagen="max-h-[50vh]" />
           {version.comentario && <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{version.comentario}»</p>}
+          <LoQueFalta detalle={detalle} version={version} />
           <ListaDeMarcas marcas={version.marcas} version={version} />
           <Decisiones detalle={detalle} version={version} />
         </div>

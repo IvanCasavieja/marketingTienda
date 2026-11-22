@@ -23,6 +23,8 @@
 // para avisar antes de subir 40 MB que después se rechazan.
 // ---------------------------------------------------------------------------
 
+import { medidasDeImagen, type Medidas } from './piezas'
+
 export const MAX_ARCHIVOS_ZIP = 60
 export const MAX_BYTES_DESCOMPRIMIDO = 200 * 1024 * 1024
 /** Lo que se abre de cada imagen de adentro (el índice puede mentir). */
@@ -129,14 +131,19 @@ export function leerIndiceZip(buf: ArrayBuffer): EntradaZip[] {
   return entradas
 }
 
-/** Los bytes de un archivo de adentro, cortando en `tope` (una bomba zip miente en el índice). */
-export async function abrirEntrada(buf: ArrayBuffer, e: EntradaZip, tope = MAX_BYTES_ENTRADA): Promise<Uint8Array<ArrayBuffer>> {
-  if (e.cifrado) throw new Error(`«${e.nombre}» tiene contraseña`)
+/** Lo comprimido de un archivo de adentro, tal cual está en el ZIP. */
+function comprimidoDe(buf: ArrayBuffer, e: EntradaZip): Uint8Array<ArrayBuffer> {
   const v = new DataView(buf)
   if (e.desde + 30 > v.byteLength || v.getUint32(e.desde, true) !== 0x04034b50) throw new Error(`«${e.nombre}» está dañado`)
   const inicio = e.desde + 30 + v.getUint16(e.desde + 26, true) + v.getUint16(e.desde + 28, true)
   if (inicio + e.comprimido > v.byteLength) throw new Error(`«${e.nombre}» está dañado`)
-  const datos = new Uint8Array(buf, inicio, e.comprimido)
+  return new Uint8Array(buf, inicio, e.comprimido)
+}
+
+/** Los bytes de un archivo de adentro, cortando en `tope` (una bomba zip miente en el índice). */
+export async function abrirEntrada(buf: ArrayBuffer, e: EntradaZip, tope = MAX_BYTES_ENTRADA): Promise<Uint8Array<ArrayBuffer>> {
+  if (e.cifrado) throw new Error(`«${e.nombre}» tiene contraseña`)
+  const datos = comprimidoDe(buf, e)
   if (e.metodo === 0) {
     if (datos.byteLength > tope) throw new Error(`«${e.nombre}» es demasiado grande`)
     return datos.slice()
@@ -159,6 +166,51 @@ export async function abrirEntrada(buf: ArrayBuffer, e: EntradaZip, tope = MAX_B
   let p = 0
   for (const parte of partes) { salida.set(parte, p); p += parte.byteLength }
   return salida
+}
+
+/** Lo que se abre, como mucho, del principio de una imagen del ZIP para
+ *  saber su tamaño: los JPG de Photoshop traen antes el perfil de color y
+ *  una miniatura, y pueden ser unos cientos de KB. */
+export const MAX_BYTES_ENCABEZADO = 4 * 1024 * 1024
+
+/**
+ * El tamaño ORIGINAL de una imagen del ZIP, abriendo solo su principio (21/11/
+ * 2026: para saber si falta alguna pieza del pedido, ver piezas.ts). Sirve
+ * para todas, también las que no entran en las 4 de la ronda y no se abren
+ * enteras. Lo comprimido se descomprime de a partes y se corta apenas
+ * aparece el tamaño. Null si no es una imagen, tiene contraseña, está dañada
+ * o acá no se puede abrir: la pantalla no dice que falta nada.
+ */
+export async function medidasDeEntrada(buf: ArrayBuffer, e: EntradaZip): Promise<Medidas | null> {
+  if (e.clase !== 'imagen' || e.cifrado) return null
+  let datos: Uint8Array<ArrayBuffer>
+  try { datos = comprimidoDe(buf, e) } catch { return null }
+  const cerrado = (r: Medidas | 'faltan-bytes' | null) => (r === 'faltan-bytes' ? null : r)
+  if (e.metodo === 0) return cerrado(medidasDeImagen(datos.subarray(0, MAX_BYTES_ENCABEZADO)))
+  if (e.metodo !== 8 || typeof DecompressionStream === 'undefined') return null
+  // Para sacar los primeros N bytes alcanza con poco más de N comprimidos
+  // (deflate no agranda casi nada): no se copia la imagen entera.
+  const principio = datos.subarray(0, MAX_BYTES_ENCABEZADO + 64 * 1024)
+  const lector = new Blob([principio]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader()
+  let leido = new Uint8Array(0)
+  try {
+    for (;;) {
+      const { done, value } = await lector.read()
+      if (done) return cerrado(medidasDeImagen(leido))
+      const junto = new Uint8Array(leido.byteLength + value.byteLength)
+      junto.set(leido)
+      junto.set(value, leido.byteLength)
+      leido = junto
+      const r = medidasDeImagen(leido)
+      if (r !== 'faltan-bytes') return r
+      if (leido.byteLength >= MAX_BYTES_ENCABEZADO) return null
+    }
+  } catch {
+    // Lo cortado a propósito termina con error al final: si no apareció el tamaño, no se sabe.
+    return null
+  } finally {
+    lector.cancel().catch(() => {})
+  }
 }
 
 /** El tipo de imagen por la extensión, para armar el File que se achica. */

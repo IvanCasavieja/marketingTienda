@@ -11,9 +11,10 @@ import {
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
+import { faltanEnLaEntrega, tituloDeLoQueFalta, type Medidas, type Pieza } from '@/lib/calendario/piezas'
 import {
-  abrirEntrada, avisoZipSinGuardar, detalleDelZip, leerIndiceZip, nombreCorto, tipoDeImagen, zipSumaImagenes,
-  zipYaResueltas, ZipRaro, type EntradaZip, type EstadoDelZip,
+  abrirEntrada, avisoZipSinGuardar, detalleDelZip, leerIndiceZip, medidasDeEntrada, nombreCorto, tipoDeImagen,
+  zipSumaImagenes, zipYaResueltas, ZipRaro, type EntradaZip, type EstadoDelZip,
 } from '@/lib/calendario/zip'
 
 function detalleDeError(e: unknown): string | null {
@@ -26,9 +27,12 @@ const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1).replace('.', ',')} MB`
 /** Una imagen de la ronda; `deZip`: su lugar en el índice del ZIP, si salió de ahí. */
 type Imagen = ImagenLista & { deZip?: number }
 
-/** El ZIP elegido: su índice (null si no se pudo leer acá) y las imágenes de
- *  adentro que la persona sacó de la ronda (el servidor no las vuelve a poner). */
-type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: number[] }
+/** El ZIP elegido: su índice (null si no se pudo leer acá), las imágenes de
+ *  adentro que la persona sacó de la ronda (el servidor no las vuelve a poner)
+ *  y el tamaño original de todas sus imágenes (null en una que no se pudo
+ *  medir; null entero si no se leyó el índice), para ver si falta alguna
+ *  pieza del pedido. */
+type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: number[]; medidas: (Medidas | null)[] | null }
 
 /**
  * Entregar una ronda: las imágenes (de la cámara o de la galería), un
@@ -63,6 +67,17 @@ type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: numbe
  * que falta o que no se ve claro, lo muestra con "Corregir" o "Mandar
  * igual"; si no, manda solo. Si la IA no está, no hay nada que controlar o
  * falla, manda igual: nunca traba (lib/calendario/control-previo.ts).
+ *
+ * Las piezas del pedido que faltan (21/11/2026, Ivan: "si yo pido 4 banners
+ * y me pasan uno (...) tiene que analizar y decir 'che, pará, acá faltan
+ * también los banners X o Y'. Y quizás estaría bueno que le des el espacio
+ * a la agencia ahí de escribir por qué no los manda"): eso no lo dice la
+ * IA, que a veces lo ve y a veces no, sino la plataforma sola, comparando
+ * lo pedido (tarea.piezas) con el tamaño original de cada imagen suelta y
+ * de todas las del ZIP (lib/calendario/piezas.ts). Si falta alguna, antes de
+ * mandar sale el aviso en cualquier ronda, con lo que vea la IA si vio algo,
+ * aunque la IA no esté; y un lugar para escribir por qué no va todo. Si se
+ * manda igual, lo que falta y el porqué viajan con la ronda.
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -91,7 +106,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // El control de la IA antes de mandar: mientras mira, y lo que encontró.
   const [controlando, setControlando] = useState<AbortController | null>(null)
   // `inicial`: si lo que falta es del pedido inicial (cambia el título).
-  const [avisos, setAvisos] = useState<{ inicial: boolean; lista: CambioControlado[] } | null>(null)
+  // `faltan`: las piezas del pedido que no vienen (las ve la plataforma sola).
+  const [avisos, setAvisos] = useState<{ inicial: boolean; lista: CambioControlado[]; faltan: Pieza[] } | null>(null)
+  // «¿Por qué no va todo?»: lo que escribe quien entrega si falta alguna pieza.
+  const [porQue, setPorQue] = useState('')
   // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
   const yaControladas = useRef<Blob[] | null>(null)
   const ocupado = subiendo !== null || controlando !== null
@@ -113,6 +131,18 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // Los materiales son las imágenes y/o el link (16/11/2026): con uno alcanza.
   // Un ZIP solo, si de adentro sale alguna imagen para ver.
   const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo) || zipDaImagenes
+
+  /** Las piezas del pedido que no vienen en lo que se entrega: las imágenes
+   *  sueltas y todas las del ZIP, con su tamaño original. Si no se puede
+   *  saber (solo un link, algo del ZIP sin medir), ninguna. */
+  function loQueFalta(): Pieza[] {
+    const sueltas = imagenes
+      .filter(im => im.deZip == null)
+      .map(im => (im.ancho > 0 && im.alto > 0 ? { ancho: im.ancho, alto: im.alto } : null))
+    // Las que salieron del ZIP ya están en sus medidas: no se cuentan dos veces.
+    const todas = zip ? (zip.medidas ? [...sueltas, ...zip.medidas] : null) : sueltas
+    return faltanEnLaEntrega(detalle.tarea.piezas, todas)
+  }
 
   async function agregar(archivos: FileList | null) {
     if (!archivos || archivos.length === 0) return
@@ -177,10 +207,18 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
         toast.error(`«${archivo.name}» no trae imágenes (JPG, PNG, WebP) ni PDF.`)
         return
       }
+      // El tamaño original de todas las imágenes de adentro, también las que
+      // no entran en la ronda, leído del principio de cada una: para ver si
+      // falta alguna pieza del pedido (21/11/2026).
+      let medidas: (Medidas | null)[] | null = null
+      if (entradas) {
+        medidas = []
+        for (const e of entradas) if (e.clase === 'imagen') medidas.push(await medidasDeEntrada(buf, e))
+      }
       // Un ZIP nuevo reemplaza al anterior, con sus imágenes.
       const propias = imagenes.filter(im => im.deZip == null).length
       sacarZip()
-      setZip({ archivo, entradas, sacadas: [] })
+      setZip({ archivo, entradas, sacadas: [], medidas })
       const tomar = (paraRevisar ?? [])
         .filter(e => e.clase === 'imagen' && !e.cifrado)
         .slice(0, Math.max(0, limites.imagenes - propias - preparando))
@@ -206,12 +244,19 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   }
 
   /** "Entregar": con imágenes, primero la IA (los cambios pedidos o, en la
-   *  primera entrega, el pedido inicial). */
+   *  primera entrega, el pedido inicial). Lo que falta del pedido lo ve la
+   *  plataforma sola, siempre igual, y se avisa haya dicho algo la IA o no. */
   async function entregar() {
     if (!hayMateriales || linkMalo || ocupado) return
+    const faltan = loQueFalta()
     const grandes = imagenes.map(im => im.grande)
     if (!hayQueControlar(grandes.length)
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
+      // Sin nada para la IA (o ya miró estas): si falta alguna pieza, se avisa igual.
+      if (faltan.length > 0) {
+        setAvisos({ inicial: primera, lista: [], faltan })
+        return
+      }
       await enviar()
       return
     }
@@ -232,9 +277,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     }
     if (ac.signal.aborted) return
     yaControladas.current = grandes
+    // Si la IA no estuvo o no vio nada, la lista viene vacía: lo que falta va igual.
     const lista = paraAvisar(control)
-    if (lista.length > 0) {
-      setAvisos({ inicial: control?.inicial ?? primera, lista })
+    if (lista.length > 0 || faltan.length > 0) {
+      setAvisos({ inicial: control?.inicial ?? primera, lista, faltan })
       return
     }
     await enviar()
@@ -243,6 +289,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   function mandarSinEsperar() {
     controlando?.abort()
     setControlando(null)
+    // Sin esperar a la IA. Lo que falta del pedido no la necesita: se avisa igual.
+    const faltan = loQueFalta()
+    if (faltan.length > 0) {
+      setAvisos({ inicial: primera, lista: [], faltan })
+      return
+    }
     void enviar()
   }
 
@@ -254,6 +306,13 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     form.append('link', link.trim())
     // Ya no se tilda qué se corrigió (ver arriba): va la lista vacía.
     form.append('corregidas', '[]')
+    // Lo que falta del pedido y por qué (21/11/2026): lo ven quien aprueba y
+    // la agencia, en la ronda. Se vuelve a mirar acá por si sacó o sumó algo.
+    const faltan = loQueFalta()
+    if (faltan.length > 0) {
+      form.append('faltan', JSON.stringify(faltan.map(p => p.nombre)))
+      if (porQue.trim()) form.append('porQueFaltan', porQue.trim())
+    }
     imagenes.forEach((im, i) => {
       form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)
@@ -471,30 +530,62 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           </button>
         </div>
       ) : avisos ? (
-        // Lo que la IA ve que falta (o que no se ve claro) de lo que se pidió:
-        // los cambios de la ronda anterior o, en la primera entrega, el pedido.
+        // Las piezas del pedido que no vienen (las ve la plataforma, por las
+        // medidas) y lo que la IA ve que falta (o que no se ve claro) de lo
+        // que se pidió: los cambios de la ronda anterior o, en la primera
+        // entrega, el pedido. Todo en el mismo aviso.
         <section aria-labelledby="ojo-falta" className="mx-auto w-full max-w-3xl">
-          <h4 id="ojo-falta" className="flex items-center gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
-            <AlertTriangle className="h-4 w-4 shrink-0" /> {textosDelControl(avisos.inicial).falta}
+          <h4 id="ojo-falta" className="flex items-start gap-2 text-sm font-bold text-amber-900 dark:text-amber-100">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 break-words">
+              {avisos.faltan.length > 0 ? tituloDeLoQueFalta(avisos.faltan) : textosDelControl(avisos.inicial).falta}
+            </span>
           </h4>
-          <ul className="mt-2 max-h-[40vh] space-y-1.5 overflow-y-auto overscroll-contain">
-            {avisos.lista.map(c => (
-              <li key={c.numero} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/40">
-                <p className="flex items-start gap-2 text-sm text-slate-900 dark:text-slate-100">
-                  <span className="mt-px inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white">
-                    {c.numero}
-                  </span>
-                  <span className="min-w-0 break-words">{c.texto}</span>
-                </p>
-                <p className="mt-0.5 pl-7 text-xs text-amber-900 dark:text-amber-100">
-                  <strong>{ETIQUETA_DEL_VEREDICTO[c.veredicto]}</strong>{c.nota ? ` · ${c.nota}` : ''}
-                </p>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            Lo dice la IA mirando las imágenes, y puede equivocarse: si ya está, mandalo igual.
-          </p>
+          {avisos.faltan.length > 0 && (
+            <p className="mt-0.5 pl-6 text-xs text-slate-600 dark:text-slate-400">
+              Ninguna imagen tiene esa medida (vale una más grande, con la misma proporción).
+            </p>
+          )}
+          {avisos.lista.length > 0 && (
+            <>
+              {avisos.faltan.length > 0 && (
+                <p className="mt-3 text-sm font-bold text-amber-900 dark:text-amber-100">{textosDelControl(avisos.inicial).falta}</p>
+              )}
+              <ul className={`mt-2 space-y-1.5 overflow-y-auto overscroll-contain ${avisos.faltan.length > 0 ? 'max-h-[25vh]' : 'max-h-[40vh]'}`}>
+                {avisos.lista.map(c => (
+                  <li key={c.numero} className="rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:ring-amber-500/40">
+                    <p className="flex items-start gap-2 text-sm text-slate-900 dark:text-slate-100">
+                      <span className="mt-px inline-flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white">
+                        {c.numero}
+                      </span>
+                      <span className="min-w-0 break-words">{c.texto}</span>
+                    </p>
+                    <p className="mt-0.5 pl-7 text-xs text-amber-900 dark:text-amber-100">
+                      <strong>{ETIQUETA_DEL_VEREDICTO[c.veredicto]}</strong>{c.nota ? ` · ${c.nota}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                Lo dice la IA mirando las imágenes, y puede equivocarse: si ya está, mandalo igual.
+              </p>
+            </>
+          )}
+          {/* El espacio para explicar (Ivan: "estaría bueno que le des el
+              espacio a la agencia ahí de escribir por qué no los manda"). */}
+          {avisos.faltan.length > 0 && (
+            <label className="mt-3 block">
+              <span className="etiqueta-campo">¿Por qué no va todo? (opcional)</span>
+              <textarea
+                value={porQue}
+                onChange={e => setPorQue(e.target.value)}
+                rows={2}
+                maxLength={500}
+                placeholder="Ej: Es el KV, para aprobarlo antes de hacer el resto"
+                className="campo !h-auto py-2"
+              />
+            </label>
+          )}
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
