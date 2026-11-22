@@ -50,31 +50,99 @@ export function cubre(imagen: Medidas, pieza: Pieza): boolean {
   return pieza.proporcion || (imagen.ancho >= pieza.ancho && imagen.alto >= pieza.alto)
 }
 
+/** Cuánto puede diferir, de ancho y de alto, una imagen que mide exacto lo
+ *  pedido: 2 px. */
+export const TOLERANCIA_EXACTA = 2
+
+/** Si una imagen mide exacto lo que pide la pieza (±2 px de ancho y de alto).
+ *  De las de proporción no hay medida exacta. Sirve para repartir las
+ *  imágenes (`piezasQueFaltan`), entre las que cubren la pieza. Pura. */
+export function esExacta(imagen: Medidas, pieza: Pieza): boolean {
+  return !pieza.proporcion
+    && Math.abs(imagen.ancho - pieza.ancho) <= TOLERANCIA_EXACTA
+    && Math.abs(imagen.alto - pieza.alto) <= TOLERANCIA_EXACTA
+}
+
+/** Una arista de la red del reparto: a dónde va, si queda lugar (0 o 1), lo
+ *  que cuesta y dónde está la de vuelta en el nodo de destino. */
+type Arista = { a: number; lugar: number; costo: number; vuelta: number }
+
 /**
  * Las piezas del pedido que no cubre ninguna imagen, en el orden del pedido.
  * Cada imagen cubre una sola pieza: dos piezas iguales (Foto receta y Foto
- * producto, las dos de 1200×900) piden dos imágenes. Se reparten de la mejor
- * manera posible (el emparejamiento más grande, con caminos de aumento): una
- * imagen grande que sirve para dos piezas se deja para la que la otra imagen
- * no alcanza. Si dos piezas se disputan la misma imagen, se la queda la que
- * está más arriba en el pedido. Pura.
+ * producto, las dos de 1200×900) piden dos imágenes. De todos los repartos
+ * posibles se queda con este, en este orden:
+ *
+ * 1. El que cubre más piezas: una imagen grande que sirve para dos se deja
+ *    para la que la otra imagen no alcanza.
+ * 2. Entre los que cubren las mismas, el que tiene más piezas con su medida
+ *    exacta (±2 px, `esExacta`). Desde el 21/11/2026: en la prueba de la
+ *    entrega de Publicis, un checkout de 412×157 se lo quedaba el Carrito
+ *    (368×140, casi la misma proporción y más arriba en el pedido), y el
+ *    aviso decía que faltaba el Checkout.
+ * 3. Si aun así empatan, se la queda la que está más arriba en el pedido.
+ *
+ * Es un reparto de costo mínimo (un flujo, con el camino más barato cada
+ * vez): la fuente da una a cada pieza, cada pieza pasa a una imagen que la
+ * cubre y cada imagen, al sumidero. Lo que vale una pieza cubierta, en
+ * negativo: si es exacta, más que todas las preferencias por el orden
+ * juntas; y la de más arriba, un poco más. Son pocas (una tarjeta pide unas
+ * decenas de medidas como mucho, y un ZIP trae unas decenas de imágenes):
+ * cada camino se busca con Bellman-Ford, que acepta los costos negativos.
+ * Pura.
  */
 export function piezasQueFaltan(piezas: readonly Pieza[], imagenes: readonly Medidas[]): Pieza[] {
-  // Para cada imagen, a qué pieza quedó asignada (-1: a ninguna).
-  const de = imagenes.map(() => -1)
-  const sirve = piezas.map(p => imagenes.map(im => cubre(im, p)))
-  const asignar = (p: number, vistas: boolean[]): boolean => {
-    for (let i = 0; i < imagenes.length; i++) {
-      if (vistas[i] || !sirve[p][i]) continue
-      vistas[i] = true
-      if (de[i] === -1 || asignar(de[i], vistas)) {
-        de[i] = p
-        return true
-      }
-    }
-    return false
+  const n = piezas.length
+  // Los nodos: 0 es la fuente; de 1 a n, las piezas; de n+1 a n+m, las
+  // imágenes; el último, el sumidero.
+  const fuente = 0
+  const sumidero = n + imagenes.length + 1
+  const red: Arista[][] = Array.from({ length: sumidero + 1 }, () => [])
+  const unir = (de: number, a: number, costo: number) => {
+    red[de].push({ a, lugar: 1, costo, vuelta: red[a].length })
+    red[a].push({ a: de, lugar: 0, costo: -costo, vuelta: red[de].length - 1 })
   }
-  return piezas.filter((_, p) => !asignar(p, imagenes.map(() => false)))
+  // Una exacta vale más que n + (n-1) + … + 1: la suma de las preferencias por el orden.
+  const exacta = (n * (n + 1)) / 2 + 1
+  piezas.forEach((pieza, p) => {
+    unir(fuente, 1 + p, 0)
+    imagenes.forEach((imagen, i) => {
+      if (cubre(imagen, pieza)) unir(1 + p, 1 + n + i, -((esExacta(imagen, pieza) ? exacta : 0) + (n - p)))
+    })
+  })
+  imagenes.forEach((_, i) => unir(1 + n + i, sumidero, 0))
+
+  // Mientras haya un camino de la fuente al sumidero, por el más barato: cada
+  // vuelta cubre una pieza más (y puede pasarle su imagen a otra).
+  for (;;) {
+    const costo = red.map(() => Infinity)
+    const llegaDe: ([number, number] | null)[] = red.map(() => null)
+    costo[fuente] = 0
+    for (let vuelta = 0, cambio = true; cambio && vuelta < red.length; vuelta++) {
+      cambio = false
+      red.forEach((aristas, u) => {
+        if (costo[u] === Infinity) return
+        aristas.forEach((e, k) => {
+          if (e.lugar > 0 && costo[u] + e.costo < costo[e.a]) {
+            costo[e.a] = costo[u] + e.costo
+            llegaDe[e.a] = [u, k]
+            cambio = true
+          }
+        })
+      })
+    }
+    if (costo[sumidero] === Infinity) break
+    for (let v = sumidero; v !== fuente;) {
+      const [u, k] = llegaDe[v] as [number, number]
+      const e = red[u][k]
+      e.lugar -= 1
+      red[v][e.vuelta].lugar += 1
+      v = u
+    }
+  }
+  // Falta la pieza cuya arista desde la fuente no se usó (la fuente tiene
+  // una por pieza, en el orden del pedido).
+  return piezas.filter((_, p) => red[fuente][p].lugar > 0)
 }
 
 /**

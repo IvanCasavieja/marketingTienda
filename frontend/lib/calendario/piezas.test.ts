@@ -4,8 +4,8 @@
  *     npm run test:calendario
  */
 import {
-  PIEZAS_A_LA_VISTA, cubre, faltanEnLaEntrega, loQueFaltaba, medidaDePieza, medidasDeImagen, piezasQueFaltan, primeras,
-  textoDePieza, tituloDeLasPiezas, type Medidas, type Pieza,
+  PIEZAS_A_LA_VISTA, TOLERANCIA_EXACTA, cubre, esExacta, faltanEnLaEntrega, loQueFaltaba, medidaDePieza, medidasDeImagen,
+  piezasQueFaltan, primeras, textoDePieza, tituloDeLasPiezas, type Medidas, type Pieza,
 } from './piezas'
 import { jpegArmado, pngArmado, webpArmado } from './imagenes-de-prueba'
 
@@ -78,10 +78,68 @@ igual('...en cualquier orden', piezasQueFaltan([quintuples, octuples], [im(140, 
 igual('dos chicas no cubren la grande', nombres(piezasQueFaltan([octuples, quintuples], [im(140, 140), im(150, 150)])), ['Quíntuples'])
 // Carrito (368×140) y Checkout (412×157) tienen casi la misma proporción: una de 412×157 sirve para las dos, pero una sola vez.
 const carrito = px('Carrito', 368, 140)
-igual('una que sirve para dos: falta la de más abajo en el pedido', nombres(piezasQueFaltan([carrito, checkout], [im(412, 157)])), ['Checkout'])
+// Hasta el 21/11/2026 se la quedaba la de más arriba (el Carrito) y faltaba el Checkout: ver «La medida exacta», abajo.
+igual('una que sirve para dos: se la queda la que mide exacto, y falta el Carrito',
+  nombres(piezasQueFaltan([carrito, checkout], [im(412, 157)])), ['Carrito'])
 igual('...con las dos medidas, ninguna', piezasQueFaltan([carrito, checkout], [im(412, 157), im(368, 140)]), [])
 igual('el mobile repetido (Header y Slider, los dos 640×260): dos imágenes',
   nombres(piezasQueFaltan([headerMobile, px('Slider fila (normal) (mobile)', 640, 260)], [im(640, 260)])), ['Slider fila (normal) (mobile)'])
+
+console.log('\nLa medida exacta (21/11/2026)')
+// En la prueba de la entrega de Publicis, el checkout de 412×157 se lo
+// quedaba el Carrito (más arriba en el pedido) y el aviso decía que faltaba
+// el Checkout. Ahora: primero cubrir la mayor cantidad de piezas; entre los
+// repartos que cubren las mismas, el de más piezas con su medida exacta
+// (±2 px); y si empatan, la de más arriba.
+igual('exacta: la misma medida, o hasta 2 px de diferencia de cada lado', [
+  esExacta(im(412, 157), checkout), esExacta(im(414, 159), checkout), esExacta(im(410, 155), checkout),
+  esExacta(im(415, 157), checkout), esExacta(im(412, 160), checkout), esExacta(im(824, 314), checkout),
+], [true, true, true, false, false, false])
+igual('la tolerancia es de 2 px', TOLERANCIA_EXACTA, 2)
+igual('las de proporción nunca son exactas (no tienen medida)', esExacta(im(4, 5), redes45), false)
+igual('el checkout de la prueba, con el pedido al revés: igual falta el Carrito',
+  nombres(piezasQueFaltan([checkout, carrito], [im(412, 157)])), ['Carrito'])
+igual('a 2 px sigue siendo del Checkout (414×159)', nombres(piezasQueFaltan([carrito, checkout], [im(414, 159)])), ['Carrito'])
+igual('a 3 px ya no es exacta de ninguna (415×158): se la queda la de más arriba',
+  nombres(piezasQueFaltan([carrito, checkout], [im(415, 158)])), ['Checkout'])
+igual('@2x no es exacta de ninguna (824×314): se la queda la de más arriba',
+  nombres(piezasQueFaltan([carrito, checkout], [im(824, 314)])), ['Checkout'])
+igual('una cuadrada de 230×230 es de Quíntuples aunque Óctuples esté más arriba: falta Óctuples',
+  nombres(piezasQueFaltan([octuples, quintuples], [im(230, 230)])), ['Óctuples'])
+igual('...con la de 300×300 (exacta de ninguna), la de más arriba: falta Quíntuples',
+  nombres(piezasQueFaltan([octuples, quintuples], [im(300, 300)])), ['Quíntuples'])
+igual('exacta y @2x: cada una a la suya', piezasQueFaltan([carrito, checkout], [im(824, 314), im(368, 140)]), [])
+// Cubrir más piezas va antes que la medida exacta: la de 1030×400 cubre el
+// Checkout (1,9 % de diferencia de proporción) pero no el Carrito (2,04 %).
+igual('1030×400 sirve para el Checkout y no para el Carrito', [cubre(im(1030, 400), checkout), cubre(im(1030, 400), carrito)],
+  [true, false])
+igual('cubrir más va primero: el 412×157 exacto se lo deja al Carrito para cubrir los dos',
+  piezasQueFaltan([checkout, carrito], [im(412, 157), im(1030, 400)]), [])
+// Los mobile de Dobles (315×405), Triples (206×265) y Cuádruples (155×200)
+// tienen casi la misma proporción: una más grande sirve para las más chicas.
+const doblesMobile = px('Dobles (mobile)', 315, 405)
+const triplesMobile = px('Triples (mobile)', 206, 265)
+const cuadruplesMobile = px('Cuádruples (mobile)', 155, 200)
+igual('los mobile: cada una a la que mide exacto, y falta la que no vino',
+  nombres(piezasQueFaltan([doblesMobile, triplesMobile, cuadruplesMobile], [im(206, 265), im(315, 405)])), ['Cuádruples (mobile)'])
+igual('...con la de Cuádruples exacta y una grande de más (@2x de Triples), se cubren las tres',
+  piezasQueFaltan([doblesMobile, triplesMobile, cuadruplesMobile], [im(412, 530), im(315, 405), im(155, 200)]), [])
+igual('...y si la única que viene es la de Cuádruples, solo Cuádruples',
+  nombres(piezasQueFaltan([doblesMobile, triplesMobile, cuadruplesMobile], [im(155, 200)])), ['Dobles (mobile)', 'Triples (mobile)'])
+// La entrega de la prueba: doce medidas pedidas, el header web y el checkout.
+const pedidoDeLaPrueba = [
+  headerWeb, headerMobile, px('Slider fila (normal) (web)', 1200, 179), px('Slider fila (normal) (mobile)', 640, 260), carrito,
+  checkout, px('Menú principal', 625, 450), px('Dobles (web)', 590, 240), px('Dobles (mobile)', 315, 405), quintuples,
+  px('Séxtuples', 190, 182), octuples,
+]
+igual('la entrega de la prueba: faltan diez, el Carrito y no el Checkout',
+  nombres(piezasQueFaltan(pedidoDeLaPrueba, [im(1920, 416), im(412, 157)])), [
+    'Header (mobile)', 'Slider fila (normal) (web)', 'Slider fila (normal) (mobile)', 'Carrito', 'Menú principal',
+    'Dobles (web)', 'Dobles (mobile)', 'Quíntuples', 'Séxtuples', 'Óctuples',
+  ])
+const conElCarrito = nombres(piezasQueFaltan(pedidoDeLaPrueba, [im(1920, 416), im(412, 157), im(368, 140)]))
+igual('...y si viene también el carrito, faltan nueve (ni el Carrito ni el Checkout)',
+  [conElCarrito.length, conElCarrito.filter(n => /Carrito|Checkout/.test(n))], [9, []])
 
 console.log('\nLa entrega: las sueltas y las del ZIP')
 // Las sueltas, con su tamaño de antes de achicar; las del ZIP, todas (también
