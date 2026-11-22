@@ -1,7 +1,8 @@
 """revision_ia.py — lo que encontró la IA en una versión, para quien la aprueba.
 
-  GET   /calendario/versiones/{id}/revision-ia        — estado, observaciones y, si la ronda
-                                                        anterior volvió con cambios, qué se ve hecho
+  GET   /calendario/versiones/{id}/revision-ia        — estado, observaciones y qué se ve hecho de
+                                                        lo que se pidió (las marcas de la ronda
+                                                        anterior, el pedido inicial o el comentario)
   PATCH /calendario/versiones/{id}/revision-ia/{obs}  — descartar una (o traerla de vuelta)
 
 Convertir una observación en marca no tiene ruta propia: la marca se crea con
@@ -65,9 +66,19 @@ async def ver_revision(
     además `revisados`, `noSePudoAbrir` e `ignorados` (ver
     revision_ia.materiales_para_mostrar) y `cambiosPedidos`: si se ve hecho
     lo que pedía cada marca de la ronda anterior, [{marcaId, numero,
-    veredicto: 'hecho' | 'falta' | 'dudoso', nota}] (ver
-    revision_ia.cambios_pedidos_para_mostrar). Como todo lo de acá, solo para
-    quien puede ver la revisión: la agencia nunca."""
+    veredicto: 'hecho' | 'falta' | 'dudoso', nota}] (desde el 21/11/2026,
+    también `texto`: lo que pedía la marca; ver
+    revision_ia.cambios_pedidos_para_mostrar).
+
+    Desde el 21/11/2026 viaja además `puntosPedidos`: lo que se pidió sin
+    marcas (en la primera ronda, cada punto del pedido inicial; si los
+    cambios se pidieron solo con texto, cada pedido del comentario) y lo que
+    dijo la IA de cada uno, como lo ve la agencia antes de mandar (si entregó
+    las imágenes que controló, es lo mismo que vio):
+    {inicial, puntos: [{numero, texto, veredicto, nota}]}, o null (ver
+    revision_ia.puntos_pedidos_para_mostrar). Como todo lo de acá, solo para
+    quien puede ver la revisión: la agencia nunca (lo suyo lo ve en el
+    control antes de entregar)."""
     await _version_visible(db, version_id, current_user)
     fila = await db.get(CalendarioRevisionIA, version_id)
     out = revision_ia.para_mostrar(
@@ -76,9 +87,9 @@ async def ver_revision(
     )
     out["observaciones"] = await _json(db, out["observaciones"])
     out.update(revision_ia.materiales_para_mostrar(fila.materiales if fila else None, out["estado"]))
-    out["cambiosPedidos"] = revision_ia.cambios_pedidos_para_mostrar(
-        fila.cambios_pedidos if fila else None, out["estado"],
-    )
+    cambios = fila.cambios_pedidos if fila else None
+    out["cambiosPedidos"] = revision_ia.cambios_pedidos_para_mostrar(cambios, out["estado"])
+    out["puntosPedidos"] = revision_ia.puntos_pedidos_para_mostrar(cambios, out["estado"])
     return out
 
 

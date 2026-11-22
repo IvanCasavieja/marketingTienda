@@ -2444,6 +2444,11 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         [obs] = revision["observaciones"]
         assert obs["imagenId"] == de_v2[1]["id"] and (obs["x"], obs["y"]) == (0.375, 0.997)
         assert [(c["numero"], c["veredicto"]) for c in revision["cambiosPedidos"]] == [(1, "falta"), (2, "hecho")]
+        # Lo mismo que vio la agencia, marca por marca, al lado de cada una;
+        # no hay puntos aparte (eso es del pedido inicial o del comentario).
+        assert [(c["numero"], c["veredicto"], c["nota"]) for c in revision["cambiosPedidos"]] == [
+            (c["numero"], c["veredicto"], c["nota"]) for c in cuerpo["cambios"]]
+        assert revision["puntosPedidos"] is None
         assert (await a1.get(f"/calendario/versiones/{v2}/revision-ia")).status_code == 403
         async with d.Sesion() as s:
             fila = await s.get(CalendarioControlPrevio, cuerpo["controlId"])
@@ -2494,7 +2499,9 @@ def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
     """Ivan (20/11/2026): "me comenta la agencia que al momento de subir la
     entrega no les apareció la IA para las correcciones". Se habían pedido
     los cambios solo con texto (sin marcas): ahora cada renglón del
-    comentario es un pedido que la IA controla antes de entregar."""
+    comentario es un pedido que la IA controla antes de entregar. Y si la
+    agencia entrega esa misma imagen, quien aprueba ve esos pedidos con lo
+    mismo que vio ella (21/11/2026: antes no los veía)."""
     import json
 
     import ia_simulada as sim
@@ -2505,9 +2512,10 @@ def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
     monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
     monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
     monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+    en_segundo_plano = []
 
     async def espia(version_id, **kw):
-        return None
+        en_segundo_plano.append(version_id)
 
     monkeypatch.setattr(revision_ia, "revisar_version", espia)
     cuerpo = {"observaciones": [], "cambios_pedidos": [
@@ -2531,12 +2539,106 @@ def test_la_ia_tambien_controla_lo_pedido_solo_en_el_comentario(monkeypatch):
 
         r = await a1.post(f"/calendario/tareas/{tarea_id}/control-previo", files=[imagenes[0]])
         assert r.status_code == 200, r.text
-        assert r.json()["estado"] == "listo"
-        assert [(c["numero"], c["texto"], c["veredicto"]) for c in r.json()["cambios"]] == [
+        agencia = r.json()
+        assert agencia["estado"] == "listo" and agencia["inicial"] is False
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in agencia["cambios"]] == [
             (1, "Cambiar el precio a $199", "falta"), (2, "Sacar el logo viejo", "hecho"),
         ]
         texto = api.pedidos[0]["messages"][0]["content"][-1]["text"]
         assert "pedida en el comentario" in texto and "Cambiar el precio a $199" in texto
+
+        # Entrega esa misma imagen: la revisión sale del control, y quien
+        # aprueba ve los mismos pedidos con lo que vio la agencia. No son del
+        # pedido inicial (`inicial` en False: cambia el título) ni marcas.
+        v2 = f"ve-co2-{d.sufijo}"
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v2}, files=imagenes)
+        assert r.status_code == 201, r.text
+        assert en_segundo_plano == [v1] and len(api.pedidos) == 1
+        r = await lider.get(f"/calendario/versiones/{v2}/revision-ia")
+        assert r.status_code == 200, r.text
+        assert r.json()["puntosPedidos"] == {"inicial": False, "puntos": agencia["cambios"]}
+        assert r.json()["cambiosPedidos"] == []
+    correr(prueba)
+
+
+def test_lo_que_vio_la_agencia_lo_ve_quien_aprueba_y_en_cada_imagen(monkeypatch):
+    """Ivan (21/11/2026), con su prueba de Publicis: "Los cambios que la IA
+    reconoce en la ronda de revisión no son los mismos que reconoce en ronda
+    uno (...) solo aparecen las cosas en la primera imagen y en la segunda no
+    aparece nada. La IA debería revisar todos los archivos, no quedarse en uno
+    solo". La primera entrega, con dos piezas: a la agencia el control le
+    dice dos cosas, una por punto del pedido, y la IA ve el mismo problema en
+    las dos imágenes. Entrega esas mismas: la revisión sale del control (sin
+    otra llamada), y quien aprueba ve los mismos dos puntos con lo mismo que
+    vio la agencia, y la observación en cada imagen, con su lugar en cada
+    una."""
+    import json
+
+    import ia_simulada as sim
+
+    from app.core.config import settings
+    from app.services import ia_cliente, revision_ia
+
+    monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", True)
+    monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "sk-ant-simulada")
+    monkeypatch.setattr(settings, "IA_REVISION_POR_DIA", 10_000)
+    en_segundo_plano = []
+
+    async def espia(version_id, **kw):
+        en_segundo_plano.append(version_id)
+
+    monkeypatch.setattr(revision_ia, "revisar_version", espia)
+    boton = "El botón dice «Ver oferta»: el pedido dice «Ver ofertas»."
+    cuerpo = {
+        "observaciones": [
+            {"tipo": "otro", "texto": boton, "gravedad": "importante", "imagen": 1, "x": 1400, "y": 300},
+            {"tipo": "otro", "texto": boton, "gravedad": "importante", "imagen": 2, "x": 500, "y": 200},
+        ],
+        "cambios_pedidos": [
+            {"numero": 1, "veredicto": "falta", "nota": "En las dos piezas el botón dice «Ver oferta»."},
+            {"numero": 2, "veredicto": "falta", "nota": "No se ve ningún banner de menú: son un header y un checkout."},
+        ],
+    }
+    api = sim.ApiGrabada([sim.mensaje([sim.pensamiento(), sim.texto(json.dumps(cuerpo))], entrada=6_000, salida=900)])
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: api.cliente())
+
+    async def prueba(d):
+        lider, a1 = Cliente(d.http, d.lider), Cliente(d.http, d.a1)
+        tarea_id, _ = await _pedir_banners(d, d.lider, opciones=["Header", "Checkout"],
+                                           descripcion="En el banner menú quiero CTA ver más")
+        mini = _jpeg_de_verdad(64, 48)
+        dos = [("imagenes", ("a.jpg", _jpeg_de_verdad(1600, 347), "image/jpeg")),
+               ("miniaturas", ("m.jpg", mini, "image/jpeg")),
+               ("imagenes", ("b.jpg", _jpeg_de_verdad(1000, 400, "black"), "image/jpeg")),
+               ("miniaturas", ("n.jpg", mini, "image/jpeg"))]
+
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/control-previo", files=[f for f in dos if f[0] == "imagenes"])
+        assert r.status_code == 200, r.text
+        agencia = r.json()
+        assert agencia["estado"] == "listo" and agencia["inicial"] is True
+        assert [(c["numero"], c["texto"], c["veredicto"]) for c in agencia["cambios"]] == [
+            (1, "CTA: Ver ofertas", "falta"), (2, "En el banner menú quiero CTA ver más", "falta")]
+        # Las dos imágenes van a la IA, cada una con su número, y las
+        # instrucciones le piden mirarlas todas.
+        pedido = api.pedidos[0]
+        textos = [b["text"] for b in pedido["messages"][0]["content"] if b["type"] == "text"]
+        assert textos[:2] == ["Imagen 1 de 2 (1600 × 347 px):", "Imagen 2 de 2 (1000 × 400 px):"]
+        assert "No te quedes en la primera." in pedido["system"]
+
+        v1 = f"ve-iv1-{d.sufijo}"
+        r = await a1.post(f"/calendario/tareas/{tarea_id}/versiones", data={"versionId": v1}, files=dos)
+        assert r.status_code == 201, r.text
+        assert en_segundo_plano == [] and len(api.pedidos) == 1
+        r = await lider.get(f"/calendario/versiones/{v1}/revision-ia")
+        assert r.status_code == 200, r.text
+        revision = r.json()
+        assert revision["estado"] == "lista"
+        assert revision["puntosPedidos"] == {"inicial": True, "puntos": agencia["cambios"]}
+        assert revision["cambiosPedidos"] == []
+        ids = [i["id"] for i in (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"]]
+        assert [(o["texto"], o["imagenId"], o["x"], o["y"]) for o in revision["observaciones"]] == [
+            (boton, ids[0], 0.875, 0.865), (boton, ids[1], 0.5, 0.5)]
+        assert (await a1.get(f"/calendario/versiones/{v1}/revision-ia")).status_code == 403
     correr(prueba)
 
 
@@ -2547,9 +2649,10 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
     hecho, el 2 falta, el resto dudoso): antes de mandar la primera ronda, la
     agencia ve punto por punto lo que dice la tarjeta; si entrega esas mismas
     imágenes, la revisión del aprobador sale de ahí sin otra llamada, y quien
-    aprueba no ve los puntos (no son marcas). La fase que se abre devolviendo
-    la pieza aprobada controla primero lo que se pidió cambiar. Con el pedido
-    vacío, 'sin-pedido' y la IA ni se entera.
+    aprueba ve los mismos puntos, con lo mismo que vio la agencia (desde la
+    prueba de Ivan del 21/11/2026; antes no los veía, no son marcas). La fase
+    que se abre devolviendo la pieza aprobada controla primero lo que se
+    pidió cambiar. Con el pedido vacío, 'sin-pedido' y la IA ni se entera.
 
     Sin ruido (21/11/2026, más tarde): lo tildado con sus medidas no es un
     punto (lo controla la plataforma), un «Gracias!» tampoco, y un plazo
@@ -2619,8 +2722,11 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         assert r.status_code == 200, r.text
         revision = r.json()
         assert revision["estado"] == "lista" and [o["tipo"] for o in revision["observaciones"]] == ["ortografia"]
-        # Quien aprueba no ve los puntos: no son marcas, su pantalla no cambia.
+        # Quien aprueba ve lo mismo que vio la agencia: cada punto con su
+        # veredicto y su nota, sin el que no aplica. Aparte de las marcas
+        # (que en una primera ronda no hay).
         assert revision["cambiosPedidos"] == []
+        assert revision["puntosPedidos"] == {"inicial": True, "puntos": cuerpo["cambios"]}
         assert (await a1.get(f"/calendario/versiones/{v1}/revision-ia")).status_code == 403
         async with d.Sesion() as s:
             # Quedan guardados con la revisión, también el que no aplica.
