@@ -337,7 +337,7 @@ export default function MisTareasPage() {
             <ul className="space-y-2.5">
               {g.lista.map((t, i) => (
                 <Fila
-                  key={t.id} tarea={t} hoy={hoy} orden={i}
+                  key={t.id} tarea={t} hoy={hoy} orden={i} usuarioId={user?.id ?? null}
                   saliendo={saliendo.has(t.id)}
                   onTildar={tildar} onEstado={cambiarEstado}
                 />
@@ -363,7 +363,7 @@ export default function MisTareasPage() {
             {verHechas && (
               <ul className="space-y-2.5">
                 {hechas.map((t, i) => (
-                  <Fila key={t.id} tarea={t} hoy={hoy} orden={i} saliendo={false} onTildar={tildar} onEstado={cambiarEstado} />
+                  <Fila key={t.id} tarea={t} hoy={hoy} orden={i} usuarioId={user?.id ?? null} saliendo={false} onTildar={tildar} onEstado={cambiarEstado} />
                 ))}
               </ul>
             )}
@@ -374,10 +374,11 @@ export default function MisTareasPage() {
   );
 }
 
-function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
+function Fila({ tarea, hoy, orden, usuarioId, saliendo, onTildar, onEstado }: {
   tarea: MiTarea;
   hoy: string;
   orden: number;
+  usuarioId: number | null;
   /** Recién tildada: se queda un momento, con el tilde, y se va. */
   saliendo: boolean;
   onTildar: (t: MiTarea) => void;
@@ -389,6 +390,11 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
   // Una tarea con entregas no se tilda: queda hecha sola cuando se aprueba la
   // última fase. En su lugar va en qué fase está y la puerta a sus entregas.
   const entrega = tarea.entrega;
+  // La hace una agencia y yo la llevo por Tienda (responsable, 24/11/2026):
+  // está en mi lista, pero no me toca entregarla.
+  const laLlevo = usuarioId != null && tarea.responsable === usuarioId && tarea.asignadoA !== usuarioId;
+  const hace = tarea.para && tarea.para !== "tienda" && tarea.agencia
+    ? { tipo: tarea.para, nombre: tarea.agencia } as const : null;
 
   return (
     <li
@@ -430,6 +436,11 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
         <p className={`text-base font-semibold leading-snug transition-colors duration-300 ${hecha ? "text-slate-500 line-through decoration-slate-300 dark:text-slate-400 dark:decoration-slate-600" : "text-slate-900 dark:text-slate-100"}`}>
           {tarea.titulo}
         </p>
+        {laLlevo && (
+          <p className="mt-0.5 text-xs font-semibold text-brand-700 dark:text-brand-200">
+            La llevás por Tienda{hace ? ` · la hace ${hace.nombre}` : ""}
+          </p>
+        )}
         {tarea.descripcion && <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>}
 
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -481,8 +492,9 @@ function Fila({ tarea, hoy, orden, saliendo, onTildar, onEstado }: {
         </div>
 
         {entrega && (() => {
-          // La tarea es mía: si le toca a alguien, soy yo (entregar) o un aprobador (esperar).
-          const paso = proximoPaso(entrega, tarea.asignadoA, tarea.asignadoA, () => "");
+          // Si la tengo asignada, entregar me toca a mí; si la llevo por
+          // Tienda, le toca a la agencia. O espera a quien la aprueba.
+          const paso = proximoPaso(entrega, tarea.asignadoA, usuarioId, () => "", false, { hace });
           const fase = entrega.fases.find(f => f.id === entrega.faseActual);
           const texto = entrega.momento === "revision" && fase
             ? `Esperando que revisen la ronda ${entrega.ronda} de ${fase.nombre}`

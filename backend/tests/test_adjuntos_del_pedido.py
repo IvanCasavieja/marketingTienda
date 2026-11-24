@@ -7,7 +7,6 @@ test_tablero_agencia_api.py.
 """
 import io
 import os
-import uuid
 import zipfile
 
 import openpyxl
@@ -140,7 +139,7 @@ def test_lucia_adjunta_el_excel_y_la_agencia_lo_ve_y_lo_baja():
         assert r.status_code == 201, r.text
         [adj] = r.json()["adjuntos"]
         assert adj["nombre"] == "Listado ciberlunes.xlsx" and adj["tamano"] == len(excel)
-        assert adj["puedoSacar"] and not adj["heredado"]
+        assert adj["puedoSacar"]
         # La tarjeta abierta se entera sola: la huella cambió.
         sigue = await lucia.get(f"/calendario/tareas/{tarea_id}/entregas", params={"huella": antes})
         assert not sigue.json().get("sinCambios")
@@ -149,14 +148,13 @@ def test_lucia_adjunta_el_excel_y_la_agencia_lo_ve_y_lo_baja():
         det = await _detalle(ana, tarea_id)
         assert [a["nombre"] for a in det["adjuntos"]] == ["Listado ciberlunes.xlsx"]
         assert det["puedoAdjuntar"] is False and det["adjuntos"][0]["puedoSacar"] is False
-        r = await ana.get(f"/calendario/adjuntos/{adj['id']}", params={"desde": tarea_id})
+        r = await ana.get(f"/calendario/adjuntos/{adj['id']}")
         assert r.status_code == 200, r.text
         assert r.content == excel
         assert "Listado%20ciberlunes.xlsx" in r.headers["content-disposition"]
         assert r.headers["x-content-type-options"] == "nosniff"
         # Otra agencia, ni sabe que existe.
-        for params in ({"desde": tarea_id}, {}):
-            assert (await bruno.get(f"/calendario/adjuntos/{adj['id']}", params=params)).status_code == 404
+        assert (await bruno.get(f"/calendario/adjuntos/{adj['id']}")).status_code == 404
         assert (await bruno.get(f"/calendario/tareas/{tarea_id}/adjuntos")).status_code == 404
 
         # La agencia no adjunta al pedido ni saca nada.
@@ -170,7 +168,7 @@ def test_lucia_adjunta_el_excel_y_la_agencia_lo_ve_y_lo_baja():
         r = await lider.delete(f"/calendario/adjuntos/{adj['id']}")
         assert r.status_code == 200, r.text
         assert (await _detalle(ana, tarea_id))["adjuntos"] == []
-        assert (await ana.get(f"/calendario/adjuntos/{adj['id']}", params={"desde": tarea_id})).status_code == 404
+        assert (await ana.get(f"/calendario/adjuntos/{adj['id']}")).status_code == 404
     correr(prueba)
 
 
@@ -210,33 +208,19 @@ def test_los_topes_y_los_tipos_se_controlan_en_el_servidor(monkeypatch):
 
 
 @_con_base
-def test_la_pieza_ve_los_archivos_de_la_tarea_de_la_que_cuelga():
+def test_cada_tarea_tiene_sus_archivos():
+    # 0090: una tarea = un pedido. Ya no hay tarea de afuera de la que una
+    # pieza herede el Excel: cada una tiene los suyos (si se piden dos cosas
+    # juntas, la pantalla sube el archivo a cada una).
     async def prueba(d):
-        lider, lucia, ana, bruno = (Cliente(d.http, u) for u in (d.lider, d.lucia, d.a1, d.b1))
-        # «Nueva tarea» con sus piezas: el Excel va una vez, en la tarea.
-        madre = f"ta-{uuid.uuid4().hex[:10]}"
-        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": madre, "titulo": "Mailing de diciembre"})
-        assert r.status_code == 201, r.text
-        r = await _adjuntar(lider, madre, ("Listado.xlsx", _xlsx()))
+        lider, ana, bruno = (Cliente(d.http, u) for u in (d.lider, d.a1, d.b1))
+        banners, _ = await _pedir_banners(d, d.lider)
+        otra, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
+        r = await _adjuntar(lider, banners, ("Listado.xlsx", _xlsx()))
         assert r.status_code == 201, r.text
         adj = r.json()["adjuntos"][0]["id"]
-        pieza, _ = await _pedir_banners(d, d.lider, parentId=madre)
-
-        # La agencia lo ve en su tarjeta, sin el nombre de la tarea del equipo.
-        [visto] = (await _detalle(ana, pieza))["adjuntos"]
-        assert visto["id"] == adj and visto["heredado"] and visto["deLaTarea"] is None
-        assert (await ana.get(f"/calendario/adjuntos/{adj}", params={"desde": pieza})).status_code == 200
-        # Pero solo mirando desde su pieza: la tarea del equipo no la ve.
-        assert (await ana.get(f"/calendario/adjuntos/{adj}")).status_code == 404
-        assert (await ana.get(f"/calendario/tareas/{madre}/adjuntos")).status_code == 404
-        # Otra agencia, desde su propia pieza, tampoco: no es de esa cadena.
-        otra, _ = await _pedir_banners(d, d.lider, agencia=f"Estudio Sur {d.sufijo}")
+        assert [a["id"] for a in (await _detalle(ana, banners))["adjuntos"]] == [adj]
+        assert (await _detalle(lider, otra))["adjuntos"] == []
+        # La otra agencia no lo baja ni diciendo que mira desde su tarjeta.
         assert (await bruno.get(f"/calendario/adjuntos/{adj}", params={"desde": otra})).status_code == 404
-        assert (await bruno.get(f"/calendario/adjuntos/{adj}", params={"desde": pieza})).status_code == 404
-
-        # El equipo ve de qué tarea viene. Lucía no la creó: no lo saca.
-        [visto] = (await _detalle(lucia, pieza))["adjuntos"]
-        assert visto["deLaTarea"] == "Mailing de diciembre" and visto["puedoSacar"] is False
-        assert (await lucia.delete(f"/calendario/adjuntos/{adj}")).status_code == 403
-        assert (await _adjuntar(lucia, madre, ("otro.csv", b"a;b\n"))).status_code == 403
     correr(prueba)

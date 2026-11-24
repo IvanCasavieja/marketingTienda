@@ -646,7 +646,7 @@ export default function TableroPage() {
               <p className="mt-1 max-w-md text-sm text-slate-600 dark:text-slate-400">
                 {externo
                   ? "Cuando el equipo te pida una pieza desde el calendario, aparece acá en «Ingresado» y te llega un aviso a la campanita."
-                  : "Se piden desde la ficha de una acción del calendario: «Pedir una pieza», elegís qué es y quién la hace."}
+                  : "Se piden desde la ficha de una acción del calendario: «Crear tarea», elegís qué se pide y quién la hace."}
               </p>
             </div>
           )}

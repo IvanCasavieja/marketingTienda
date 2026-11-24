@@ -1361,25 +1361,20 @@ def test_la_analista_crea_la_tarea_pide_su_material_y_lo_devuelve_hasta_aprobarl
         nath = await _persona(d, "Nath Analista", permisos=("calendario.view", "calendario.edit", "calendario.pedidos"))
         lucia, nathc = Cliente(d.http, d.lucia), Cliente(d.http, nath)
 
-        # 1. Crear tarea: lo primero, sin tipo.
-        tarea = f"ta-web-{d.sufijo}"
-        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": tarea, "titulo": "Web de Ciberlunes", "asignadoA": d.lucia.id})
-        assert r.status_code == 201, r.text
-
-        # 2. Debajo, su material: banners que hace Nath.
+        # 1 y 2. Una tarea = un pedido (0090): "Nueva tarea", Banners, y la
+        # hace Nath. Ya no hay una tarea de afuera con su material adentro.
         pieza = f"ta-ban-{d.sufijo}"
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": pieza, "parentId": tarea, "tipo": "banners", "opciones": ["Header"],
+            "id": pieza, "tipo": "banners", "opciones": ["Header"],
             "para": "tienda", "asignadoA": nath.id})
         assert r.status_code == 201, r.text
         async with d.Sesion() as s:
-            assert (await s.get(CalendarioTarea, pieza)).parent_id == tarea
+            assert (await s.get(CalendarioTarea, pieza)).parent_id is None
             assert (await s.get(CalendarioEntrega, pieza)).aprobadores == [d.lucia.id]
         assert len(await _avisos(d, nath, pieza)) == 1
         datos = (await lucia.get("/calendario/datos", params={"mundo": MUNDO})).json()
         tareas = next(b for b in datos["barras"] if b["id"] == d.ciber.id)["tareas"]
-        assert next(t for t in tareas if t["id"] == pieza)["parentId"] == tarea
+        assert next(t for t in tareas if t["id"] == pieza)["parentId"] is None
 
         # 3. Ronda 1: Nath entrega, Lucía la devuelve con un texto.
         assert (await _entregar_link(nathc, pieza, f"ve-1-{d.sufijo}")).status_code == 201
@@ -2842,7 +2837,7 @@ def test_la_ia_controla_solo_la_ronda_anterior_de_la_misma_fase(monkeypatch):
     correr(prueba)
 
 
-def test_subtareas_asignaciones_y_estado_de_las_tareas_comunes():
+def test_un_solo_nivel_asignaciones_y_estado_de_las_tareas_comunes():
     async def prueba(d):
         lider, lucia = Cliente(d.http, d.lider), Cliente(d.http, d.lucia)
         madre = f"ta-madre-{d.sufijo}"
@@ -2850,13 +2845,18 @@ def test_subtareas_asignaciones_y_estado_de_las_tareas_comunes():
             "id": madre, "titulo": "Mailing de Ciberlunes", "asignadoA": d.aprob2.id})
         assert r.status_code == 201, r.text
         assert len(await _avisos(d, d.aprob2, madre)) == 1
-        # La subtarea común la arma quien lidera, con aviso a quien la hace.
+        # 0090: una tarea = un pedido. Ya no hay subtareas: una tarea adentro
+        # de otra se rechaza, también para quien lidera, y no se guarda nada.
         hija = f"ta-hija-{d.sufijo}"
         r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
             "id": hija, "parentId": madre, "titulo": "Textos", "asignadoA": d.lucia.id})
-        assert r.status_code == 201, r.text
+        assert r.status_code == 422 and "primer nivel" in r.json()["detail"]
         async with d.Sesion() as s:
-            assert (await s.get(CalendarioTarea, hija)).parent_id == madre
+            assert await s.get(CalendarioTarea, hija) is None
+        # Va como otra tarea, al lado, con aviso a quien la hace.
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": hija, "titulo": "Textos", "asignadoA": d.lucia.id})
+        assert r.status_code == 201, r.text
         assert len(await _avisos(d, d.lucia, hija)) == 1
         # Reasignar y borrar sigue siendo de quien lidera.
         r = await lucia.patch(f"/calendario/tareas/{madre}", json={"asignadoA": d.lider.id})
@@ -2872,22 +2872,23 @@ def test_subtareas_asignaciones_y_estado_de_las_tareas_comunes():
         assert (await d.http.delete(f"{API}/calendario/tareas/{madre}", headers=lucia.headers)).status_code == 403
         assert (await d.http.delete(f"{API}/calendario/tareas/{madre}", headers=lider.headers)).status_code == 200
         async with d.Sesion() as s:
-            assert await s.get(CalendarioTarea, hija) is None  # se fue con su madre
+            assert await s.get(CalendarioTarea, madre) is None
+            assert await s.get(CalendarioTarea, hija) is not None  # la otra queda
     correr(prueba)
 
 
 def test_cambiarle_el_nombre_y_ordenar_las_tareas_arrastrando():
     """Ivan (20/11/2026): "editar el título de una tarea ya creada y ordenar
-    las tareas arrastrando". Lo hace quien gestiona las tareas; se ordenan
-    entre hermanas y las demás no se mueven."""
+    las tareas arrastrando". Lo hace quien gestiona las tareas; las que no
+    se arrastraron no se mueven."""
     async def prueba(d):
         lider, lucia = Cliente(d.http, d.lider), Cliente(d.http, d.lucia)
         ids = [f"ta-ord{i}-{d.sufijo}" for i in range(3)]
         for i, tid in enumerate(ids):
             r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": tid, "titulo": f"Tarea {i}"})
             assert r.status_code == 201, r.text
-        hija = f"ta-ordh-{d.sufijo}"
-        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": hija, "parentId": ids[0], "titulo": "Hija"})
+        otra = f"ta-ordh-{d.sufijo}"
+        r = await lider.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": otra, "titulo": "Otra"})
         assert r.status_code == 201, r.text
 
         async def ordenes():
@@ -2905,20 +2906,18 @@ def test_cambiarle_el_nombre_y_ordenar_las_tareas_arrastrando():
             assert (await s.get(CalendarioTarea, ids[1])).titulo == "Mailing final"
         assert (await lider.patch(f"/calendario/tareas/{ids[1]}", json={"titulo": "   "})).status_code == 422
 
-        # Ordenar: la última pasa primera. La hija no se mueve.
+        # Ordenar: la última pasa primera. La que no se arrastró no se mueve.
         _, antes = await ordenes()
         nuevo = [ids[2], ids[0], ids[1]]
         r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": nuevo})
         assert r.status_code == 200, r.text
         en_orden, despues = await ordenes()
         assert en_orden == nuevo
-        assert despues[hija] == antes[hija]
+        assert despues[otra] == antes[otra]
         assert sorted(despues[i] for i in ids) == sorted(antes[i] for i in ids)
 
-        # Quien no gestiona las tareas, no; ni mezclar niveles, ni una tarea de otra acción.
+        # Quien no gestiona las tareas, no; ni una tarea de otra acción.
         assert (await lucia.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": ids})).status_code == 403
-        r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], hija]})
-        assert r.status_code == 422
         r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], "ta-no-existe"]})
         assert r.status_code == 404
         r = await lider.put(f"/calendario/barras/{d.ciber.id}/tareas/orden", json={"ids": [ids[0], ids[0]]})
@@ -2979,28 +2978,30 @@ def test_un_aviso_contado_desde_la_fecha_de_un_envio():
     correr(prueba)
 
 
-def test_se_pide_un_material_de_redes_sociales_debajo_de_una_tarea():
+def test_se_pide_redes_sociales_en_una_tarea_y_el_nombre_se_puede_cambiar():
     async def prueba(d):
         lucia = Cliente(d.http, d.lucia)
         catalogo = (await lucia.get("/calendario/tipos-de-tarea")).json()
         redes = next(t for t in catalogo if t["clave"] == "redes")
         assert [o["nombre"] for o in redes["opciones"]] == ["1:1", "4:5", "9:16", "16:9"]
-        madre = f"ta-rrss-{d.sufijo}"
-        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": madre, "titulo": "Lanzamiento en redes"})
-        assert r.status_code == 201, r.text
         pieza = f"ta-rrss-p-{d.sufijo}"
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": pieza, "parentId": madre, "tipo": "redes", "opciones": ["9:16", "1:1"],
+            "id": pieza, "tipo": "redes", "opciones": ["9:16", "1:1"],
             "para": "tienda", "asignadoA": d.aprob2.id})
         assert r.status_code == 201, r.text
         assert r.json()["titulo"] == f"{d.ciber.nombre} - Redes sociales"
         async with d.Sesion() as s:
             t = await s.get(CalendarioTarea, pieza)
-            assert t.parent_id == madre and t.opciones == ["1:1", "9:16"]
+            assert t.parent_id is None and t.opciones == ["1:1", "9:16"]
             assert (await s.get(CalendarioEntrega, pieza)).tipo_pieza == "redes"
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": f"ta-rrss-x-{d.sufijo}", "parentId": madre, "tipo": "redes", "opciones": ["3:2"]})
+            "id": f"ta-rrss-x-{d.sufijo}", "tipo": "redes", "opciones": ["3:2"]})
         assert r.status_code == 422
+        # 0090: el nombre se arma solo, pero si se escribió otro al crearla, va ese.
+        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
+            "id": f"ta-rrss-n-{d.sufijo}", "titulo": "  Reels del Ciber  ", "tipo": "redes", "opciones": ["9:16"],
+            "para": "tienda", "asignadoA": d.aprob2.id})
+        assert r.status_code == 201 and r.json()["titulo"] == "Reels del Ciber"
     correr(prueba)
 
 
@@ -3011,12 +3012,9 @@ def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
         push = next(t for t in catalogo if t["clave"] == "push")
         assert [(c["clave"], c["tipo"]) for c in push["campos"]] == [
             ("titulo", "texto"), ("link", "link"), ("envio", "fechaHora")]
-        madre = f"ta-push-m-{d.sufijo}"
-        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={"id": madre, "titulo": "Avisos del Ciberlunes"})
-        assert r.status_code == 201, r.text
         pieza = f"ta-push-{d.sufijo}"
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": pieza, "parentId": madre, "tipo": "push", "para": "tienda", "asignadoA": d.aprob2.id,
+            "id": pieza, "tipo": "push", "para": "tienda", "asignadoA": d.aprob2.id,
             "descripcion": "Hasta 50% en tecnología, solo hoy",
             "detalles": {"titulo": "Llegó el Ciberlunes", "link": "https://www.tiendainglesa.com.uy/ciber",
                          "envio": "2026-11-20T18:30"}})
@@ -3028,7 +3026,7 @@ def test_se_pide_una_push_con_titulo_link_y_fecha_y_hora():
         det = (await lucia.get(f"/calendario/tareas/{pieza}/entregas")).json()
         assert "Fecha y hora de envío: 20/11/2026 18:30" in det["tarea"]["pedido"]
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": f"ta-push-x-{d.sufijo}", "parentId": madre, "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
+            "id": f"ta-push-x-{d.sufijo}", "tipo": "push", "detalles": {"link": "tiendainglesa.com.uy"}})
         assert r.status_code == 422
     correr(prueba)
 
@@ -3091,20 +3089,21 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         assert r.status_code == 200, r.text
         assert [t["nombre"] for t in r.json()] == ["Publicis", "Another Monday", "Diseñadores"]
 
-        # La tarea, con su responsable de Tienda, y su pieza para Publicis.
-        madre = f"ta-tab-m-{d.sufijo}"
-        r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": madre, "titulo": "Web de Ciberlunes", "asignadoA": d.lucia.id})
-        assert r.status_code == 201, r.text
+        # La tarea para Publicis, con su responsable de Tienda (0090: en la
+        # misma tarea, ya no en una tarea de afuera). Aprob2 la lleva.
         pieza = f"ta-tab-p-{d.sufijo}"
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": pieza, "parentId": madre, "tipo": "banners", "opciones": ["Header"],
-            "para": "agencia", "agencia": "  publicis "})
+            "id": pieza, "tipo": "banners", "opciones": ["Header"],
+            "para": "agencia", "agencia": "  publicis ", "responsable": d.aprob2.id})
         assert r.status_code == 201, r.text
         assert r.json()["para"] == "agencia" and r.json()["agencia"] == "Publicis"
+        assert r.json()["responsable"] == d.aprob2.id
         async with d.Sesion() as s:
             t = await s.get(CalendarioTarea, pieza)
-            assert t.asignado_a_id is None and t.parent_id == madre
+            assert t.asignado_a_id is None and t.parent_id is None and t.responsable_id == d.aprob2.id
+        # Al responsable le llega que la lleva, diciendo quién la hace.
+        assert any("te dejó de responsable" in n.mensaje and "la hace Publicis" in n.mensaje
+                   for n in await _avisos(d, d.aprob2, pieza))
 
         # Llega Publicis: sus cuentas ven la tarjeta; otra agencia, no.
         p1 = await _persona(d, "Pedro Publicis", externo=True, empresa="Publicis")
@@ -3116,12 +3115,14 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         r = await c1.get("/calendario/tableros", params={"mundo": MUNDO})
         assert r.json() == [{"nombre": "Publicis", "cuentas": 2}]
 
-        # Comenta Publicis: le llega a quien la pidió y lleva la tarea, no a quien comentó.
+        # Comenta Publicis: le llega a quien la pidió y a quien la lleva por
+        # Tienda, no a quien comentó.
         r = await c1.post(f"/calendario/tareas/{pieza}/comentarios", json={
             "id": f"co-1-{d.sufijo}", "texto": "  ¿El header lleva el precio? "})
         assert r.status_code == 201, r.text
         assert r.json()["comentario"]["texto"] == "¿El header lleva el precio?"
         assert any("comentó en" in n.mensaje for n in await _avisos(d, d.lucia, pieza))
+        assert any("comentó en" in n.mensaje for n in await _avisos(d, d.aprob2, pieza))
         assert not any("comentó en" in n.mensaje for n in await _avisos(d, p1, pieza))
         # Responde Tienda: le llega a todo el tablero de Publicis.
         r = await lucia.post(f"/calendario/tareas/{pieza}/comentarios", json={
@@ -3150,10 +3151,10 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         # Diseñadores y Another Monday también valen sin cuentas; otra agencia sin cuentas, no.
         for tablero in ("Diseñadores", "another monday"):
             r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-                "id": f"ta-tab-{tablero[:3]}-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": tablero})
+                "id": f"ta-tab-{tablero[:3]}-{d.sufijo}", "tipo": "push", "para": "agencia", "agencia": tablero})
             assert r.status_code == 201, r.text
         r = await lucia.post(f"/calendario/barras/{d.ciber.id}/tareas", json={
-            "id": f"ta-tab-x-{d.sufijo}", "parentId": madre, "tipo": "push", "para": "agencia", "agencia": "Otra Agencia SA"})
+            "id": f"ta-tab-x-{d.sufijo}", "tipo": "push", "para": "agencia", "agencia": "Otra Agencia SA"})
         assert r.status_code == 422
     correr(prueba)
 

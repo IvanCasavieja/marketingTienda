@@ -19,10 +19,6 @@ export type Adjunto = {
   tipo: string
   tamano: number
   fecha: string | null
-  /** Es de la tarea de la que cuelga esta (el Excel de «Nueva tarea» que ven sus piezas). */
-  heredado: boolean
-  /** De qué tarea viene, si es heredado (a una agencia no le llega). */
-  deLaTarea: string | null
   puedoSacar: boolean
 }
 

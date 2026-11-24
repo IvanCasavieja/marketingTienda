@@ -9,7 +9,7 @@
  * se sugiere en cada acción.
  */
 import {
-  EJEMPLO_DE_PLANTILLA, conCambios, enOrden, moverAncladas, plantillasParaElegir, plantillasSugeridas,
+  EJEMPLO_DE_PLANTILLA, conCambios, moverAncladas, plantillasParaElegir, plantillasSugeridas,
   problemaDePlantilla, tareasDesdePlantilla, textoDeAncla, venceAnclado,
 } from './plantillas'
 import type { BarraGuardada, Plantilla, Tarea } from './tipos'
@@ -48,17 +48,22 @@ igual('las fechas del ejemplo', tareas.map(t => t.vence),
 igual('el retiro queda anclado al fin', [tareas[5].ancla, tareas[5].anclaDias], ['fin', 1])
 ok('cada tarea dice de qué plantilla vino', tareas.every(t => t.plantillaId === 'pl-1'))
 igual('viaja el id nuevo de cada tarea de la plantilla', Object.keys(mapa), ['t1', 't2', 't3', 't4', 't5', 't6'])
+// 0090: una tarea = un pedido, todas en el primer nivel y en su orden. Si una
+// guardada trajera parentId (la migración las aplanó), no se usa.
 const conSub = tareasDesdePlantilla({
   ...plantilla,
   tareas: [
     { id: 's', parentId: 'p', titulo: 'Header', descripcion: null, asignadoA: null, ancla: 'inicio', dias: -5 },
     { id: 'p', parentId: null, titulo: 'Piezas', descripcion: null, asignadoA: 7, ancla: null, dias: 0 },
+    { id: 'b', parentId: null, titulo: 'Banners', descripcion: null, asignadoA: null, ancla: null, dias: 0,
+      para: 'agencia', agencia: 'Publicis', tipo: 'banners', responsable: 7 },
   ],
 }, { desde: DESDE, hasta: HASTA }, ids)
-igual('la subtarea va después de su tarea', conSub.tareas.map(t => t.titulo), ['Piezas', 'Header'])
-ok('y cuelga del id nuevo', conSub.tareas[1].parentId === conSub.tareas[0].id)
-igual('sin ancla, sin fecha', [conSub.tareas[0].vence, conSub.tareas[0].ancla], [null, null])
-igual('con su responsable', conSub.tareas[0].asignadoA, 7)
+igual('en el orden de la plantilla', conSub.tareas.map(t => t.titulo), ['Header', 'Piezas', 'Banners'])
+ok('todas en el primer nivel', conSub.tareas.every(t => t.parentId === null))
+igual('sin ancla, sin fecha', [conSub.tareas[1].vence, conSub.tareas[1].ancla], [null, null])
+igual('con su responsable', conSub.tareas[1].asignadoA, 7)
+igual('lo que hace una agencia, con su responsable de Tienda', [conSub.tareas[2].responsable, conSub.tareas[0].responsable], [7, null])
 
 console.log('\nmover la acción')
 const base: Tarea[] = tareas.map(t => ({ ...t }))
@@ -105,11 +110,6 @@ igual('si ya se usó, no se insiste',
   plantillasSugeridas(todas, accion('MEGA EVENTO', { tareas: [{ ...tareas[0], plantillaId: 'pl-1' }] })), [])
 igual('para elegir: la de su categoría, las generales y el resto',
   plantillasParaElegir(todas, 'MEGA EVENTO').map(p => p.id), ['pl-1', 'pl-2', 'pl-3'])
-
-console.log('\nel orden en el editor')
-igual('cada una seguida de sus subtareas', enOrden([
-  { id: 'a', parentId: null }, { id: 'b', parentId: null }, { id: 'a1', parentId: 'a' }, { id: 'b1', parentId: 'b' },
-]).map(t => t.id), ['a', 'a1', 'b', 'b1'])
 
 console.log('\nlo que falta para guardar')
 ok('el ejemplo con nombre está listo', problemaDePlantilla({ nombre: 'Promo', tareas: plantilla.tareas }) === null)

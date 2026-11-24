@@ -13,7 +13,7 @@ import { claveDe, hoyIso, mesSiguiente, primerDiaDe, ultimoDiaDe } from './fecha
 import { ZOOM_POR_DEFECTO, limitarZoom } from './rejilla'
 
 export { ZOOMS, ZOOM_POR_DEFECTO } from './rejilla'
-import { SECCIONES_CON_FICHA, conDescendientes, formatosDeCanal } from './tipos'
+import { SECCIONES_CON_FICHA, formatosDeCanal } from './tipos'
 import type {
   AnclaTarea, AreaPieza, Aviso, BarraGuardada, EstadoPieza, EstadoTarea, Mes, Persona, Pieza, Plantilla, Seccion, Tarea,
 } from './tipos'
@@ -119,11 +119,16 @@ export type DatosEntregas = {
   fases: { id?: string | null; nombre: string }[]
 }
 
-/** Lo que se carga de una tarea nueva. */
+/** Lo que se carga de una tarea nueva: un pedido, en el primer nivel (0090:
+ *  "las tareas y el pedido de piezas deberían ser uno"). */
 export type DatosTarea = {
   titulo: string
-  parentId?: string | null
+  /** Con tipo: si el nombre lo escribió la persona. Si no, lo arma el
+   *  servidor ("<Acción> - <Tipo>"). */
+  nombrePropio?: boolean
   asignadoA?: number | null
+  /** Quién la lleva por Tienda si la hace una agencia. */
+  responsable?: number | null
   vence?: string | null
   descripcion?: string | null
   /** Quién la hace (16/11/2026): Tienda, una agencia de la plataforma o una de afuera. */
@@ -136,8 +141,8 @@ export type DatosTarea = {
   /** "N días antes del inicio": el vencimiento se mueve con la acción. */
   ancla?: AnclaTarea | null
   anclaDias?: number | null
-  /** Sin el aviso de "Listo" de cada una: la tarea con sus piezas avisa una
-   *  sola vez, desde el formulario (17/11/2026). */
+  /** Sin el aviso de "Listo" de cada una: si se piden varias cosas juntas,
+   *  el formulario avisa una sola vez. */
   silencioso?: boolean
 }
 
@@ -260,7 +265,7 @@ type Estado = {
   /** El estado de un envío suelto (pendiente → publicado), desde su ficha. */
   cambiarEstadoEnvio: (id: string, estado: EstadoPieza) => void
 
-  /** Una tarea (o subtarea) en la accion `barraId`. Devuelve su id. */
+  /** Una tarea (un pedido, en el primer nivel) en la accion `barraId`. Devuelve su id. */
   crearTarea: (barraId: string, datos: DatosTarea) => string | null
   /** Que una tarea lleve entregas por fases. Va en la cola de su acción, así
    *  sale después del alta de la tarea aunque se pidan seguidas. */
@@ -270,9 +275,9 @@ type Estado = {
    *  después del alta. */
   adjuntar: (barraId: string, tareaId: string, archivos: File[]) => Promise<boolean>
   cambiarTarea: (tareaId: string, cambios: CambiosDeTarea) => void
-  /** Borra la tarea y todo lo que cuelga de ella. */
+  /** Borra la tarea (con su tarjeta y sus entregas, si tiene). */
   borrarTarea: (tareaId: string) => void
-  /** Unas tareas hermanas de la acción `barraId`, en el orden nuevo. */
+  /** Las tareas de la acción `barraId`, en el orden nuevo. */
   ordenarTareas: (barraId: string, ids: string[]) => void
 
   abrirPlantillas: (barraId: string | null) => void
@@ -886,24 +891,30 @@ export const useCalendario = create<Estado>()(
           if (!titulo || !accion) return null
           const pieza = Boolean(datos.tipo) || datos.para === 'agencia' || datos.para === 'fuera'
           const vence = datos.ancla ? venceAnclado(datos.ancla, datos.anclaDias ?? 0, accion.desde, accion.hasta) : datos.vence || null
+          const deAgencia = datos.para === 'agencia' || datos.para === 'fuera'
           const tarea: Tarea = {
-            id: nuevoId('ta'), parentId: datos.parentId ?? null, titulo,
+            id: nuevoId('ta'), parentId: null, titulo,
             descripcion: datos.descripcion?.trim() || null, estado: 'pendiente' as EstadoTarea,
             asignadoA: datos.asignadoA ?? null, vence, creadoPor: null,
             ancla: datos.ancla ?? null, anclaDias: datos.ancla ? datos.anclaDias ?? 0 : null,
             para: datos.para ?? 'tienda', agencia: datos.agencia ?? null, tipo: datos.tipo ?? null,
+            responsable: deAgencia ? datos.responsable ?? null : null,
             opciones: datos.opciones ?? [],
           }
           cambiarBarraLocal(barraId, b => ({ ...b, tareas: [...(b.tareas ?? []), tarea] }))
           void escribir(() => calendarioApi.crearTarea(barraId, {
-            id: tarea.id, parentId: tarea.parentId, titulo: datos.tipo ? '' : titulo, descripcion: tarea.descripcion,
+            // Con tipo y sin nombre escrito, el nombre lo arma el servidor.
+            id: tarea.id, titulo: datos.tipo && !datos.nombrePropio ? '' : titulo, descripcion: tarea.descripcion,
             asignadoA: tarea.asignadoA, vence: datos.ancla ? null : tarea.vence,
-            para: datos.para ?? 'tienda', agencia: datos.agencia ?? null,
+            para: datos.para ?? 'tienda', agencia: datos.agencia ?? null, responsable: tarea.responsable ?? null,
             tipo: datos.tipo ?? null, opciones: datos.opciones ?? null, detalles: datos.detalles ?? null,
             ancla: datos.ancla ?? null, anclaDias: datos.ancla ? datos.anclaDias ?? 0 : null,
           }), barraId).then(r => {
             if (!r) return
-            const res = r as { titulo?: string; vence?: string | null; entrega?: Tarea['entrega']; para?: Tarea['para']; agencia?: string | null }
+            const res = r as {
+              titulo?: string; vence?: string | null; entrega?: Tarea['entrega']; para?: Tarea['para']; agencia?: string | null
+              responsable?: number | null
+            }
             // Lo que armó el servidor (el nombre "<Acción> - <Tipo>", la
             // tarjeta en Ingresado) reemplaza lo de la pantalla.
             if (res.titulo || res.entrega) {
@@ -912,6 +923,7 @@ export const useCalendario = create<Estado>()(
                 tareas: (b.tareas ?? []).map(t => (t.id === tarea.id ? {
                   ...t, titulo: res.titulo || t.titulo, vence: res.vence ?? t.vence, entrega: res.entrega ?? t.entrega,
                   para: res.para ?? t.para, agencia: res.agencia ?? t.agencia,
+                  responsable: res.responsable !== undefined ? res.responsable : t.responsable,
                 } : t)),
               }))
             }
@@ -965,8 +977,7 @@ export const useCalendario = create<Estado>()(
         borrarTarea: tareaId => {
           const duena = duenaDe(get().barras, b => (b.tareas ?? []).some(t => t.id === tareaId))
           if (!duena) return
-          const fuera = conDescendientes(tareaId, duena.tareas ?? [])
-          cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => !fuera.has(t.id)) }))
+          cambiarBarraLocal(duena.id, b => ({ ...b, tareas: (b.tareas ?? []).filter(t => t.id !== tareaId) }))
           void escribir(() => calendarioApi.borrarTarea(tareaId), duena.id)
         },
 

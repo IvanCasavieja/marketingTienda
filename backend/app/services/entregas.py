@@ -1199,12 +1199,16 @@ def es_tarjeta_propia(usuario, tarea, entrega) -> bool:
     la tiene que trabajar con anticipación. Pura.
 
     - Una cuenta externa: la tiene asignada o es de su agencia.
-    - Alguien del equipo: la hace, la pidió o está entre quienes la aprueban."""
+    - Alguien del equipo: la hace, la pidió, la lleva por Tienda (su
+      responsable, 0090) o está entre quienes la aprueban."""
     from app.core import externos
 
     if externos.es_externo(usuario):
         return externos.es_tarea_propia(usuario, tarea)
-    if usuario.id in (tarea.asignado_a_id, tarea.creado_por_id, getattr(entrega, "creado_por_id", None)):
+    if usuario.id in (
+        tarea.asignado_a_id, tarea.creado_por_id, getattr(tarea, "responsable_id", None),
+        getattr(entrega, "creado_por_id", None),
+    ):
         return True
     return usuario.id in list(getattr(entrega, "aprobadores", None) or [])
 
@@ -1219,6 +1223,7 @@ def condicion_tarjeta_propia(usuario):
     return or_(
         CalendarioTarea.asignado_a_id == usuario.id,
         CalendarioTarea.creado_por_id == usuario.id,
+        CalendarioTarea.responsable_id == usuario.id,
         CalendarioEntrega.creado_por_id == usuario.id,
         CalendarioEntrega.aprobadores.contains([usuario.id]),
     )

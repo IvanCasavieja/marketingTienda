@@ -45,7 +45,7 @@ export function moverAncladas(tareas: Tarea[], desde: string, hasta: string): Ta
   })
 }
 
-export type CambiosDeTarea = Partial<Pick<Tarea, 'titulo' | 'descripcion' | 'estado' | 'asignadoA' | 'vence'>>
+export type CambiosDeTarea = Partial<Pick<Tarea, 'titulo' | 'descripcion' | 'estado' | 'asignadoA' | 'responsable' | 'vence'>>
 
 /**
  * Cómo queda una tarea con un cambio, igual que la deja el servidor:
@@ -75,22 +75,11 @@ export function textoDeAncla(ancla: AnclaTarea | null | undefined, dias: number)
   return `${n} ${n === 1 ? 'día' : 'días'} ${dias < 0 ? 'antes' : 'después'} del ${ancla}`
 }
 
-/** Las tareas en el orden en que se muestran: cada una seguida de sus subtareas. */
-export function enOrden<T extends { id: string; parentId: string | null }>(tareas: T[]): T[] {
-  const ids = new Set(tareas.map(t => t.id))
-  const out: T[] = []
-  for (const t of tareas) {
-    if (t.parentId && ids.has(t.parentId)) continue
-    out.push(t, ...tareas.filter(h => h.parentId === t.id))
-  }
-  return out
-}
-
 /**
  * Las tareas que crea una plantilla en una acción, como las guarda el
- * servidor: las sueltas primero y las subtareas después (una subtarea no se
- * puede guardar antes que su tarea), cada una con su id nuevo y su fecha.
- * `ids` es lo que viaja: el id nuevo de cada tarea de la plantilla.
+ * servidor: en el orden de la plantilla y todas en el primer nivel (0090),
+ * cada una con su id nuevo y su fecha. `ids` es lo que viaja: el id nuevo de
+ * cada tarea de la plantilla.
  */
 export function tareasDesdePlantilla(
   plantilla: Plantilla,
@@ -99,11 +88,9 @@ export function tareasDesdePlantilla(
 ): { tareas: Tarea[]; ids: Record<string, string> } {
   const ids: Record<string, string> = {}
   for (const t of plantilla.tareas) ids[t.id] = nuevoId()
-  const sueltas = plantilla.tareas.filter(t => !t.parentId)
-  const subtareas = plantilla.tareas.filter(t => t.parentId)
-  const tareas = [...sueltas, ...subtareas].map((t): Tarea => ({
+  const tareas = plantilla.tareas.map((t): Tarea => ({
     id: ids[t.id],
-    parentId: t.parentId ? ids[t.parentId] ?? null : null,
+    parentId: null,
     titulo: t.titulo,
     descripcion: t.descripcion ?? null,
     estado: 'pendiente' as EstadoTarea,
@@ -117,6 +104,7 @@ export function tareasDesdePlantilla(
     // el servidor y llega en la próxima revisión.
     para: t.para ?? 'tienda',
     agencia: t.agencia ?? null,
+    responsable: t.para === 'agencia' || t.para === 'fuera' ? t.responsable ?? null : null,
     tipo: t.tipo ?? null,
   }))
   return { tareas, ids }

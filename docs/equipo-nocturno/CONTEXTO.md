@@ -72,6 +72,10 @@ Uruguay). La construyó Ivan, de marketing digital, trabajando con Claude.
   debe recibirlo»).
 - Purgas de imágenes de entregas.
 - Tratar a «Diseñadores» como gente de Tienda.
+- Volver a anidar tareas: subtareas, piezas adentro de una tarea o una tarea
+  "de afuera". Desde el 24/11/2026 una tarea = un pedido, todas en un solo
+  nivel (Ivan: "tener así dividido en tarea, pedido de piezas y luego
+  subtareas me parece al pedo y confuso"; migración 0090).
 - Mejoras inventadas que no le sirven a nadie. Cada propuesta responde a una
   necesidad concreta de alguien que usa la plataforma.
 

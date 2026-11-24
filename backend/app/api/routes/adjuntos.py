@@ -1,8 +1,8 @@
 """adjuntos.py — los archivos del pedido de una tarea (0089).
 
-  GET    /calendario/tareas/{id}/adjuntos  — los de la tarea y los de las tareas de las que cuelga
+  GET    /calendario/tareas/{id}/adjuntos  — los de la tarea
   POST   /calendario/tareas/{id}/adjuntos  — adjuntar (multipart: `archivos`, uno o varios)
-  GET    /calendario/adjuntos/{id}?desde=  — bajarlo con su nombre (`desde`: la tarea en la que se ve)
+  GET    /calendario/adjuntos/{id}         — bajarlo con su nombre
   DELETE /calendario/adjuntos/{id}         — sacarlo
 
 Pedido de Ivan (24/11/2026): "en el brief de las tareas deberíamos poder
@@ -11,11 +11,9 @@ app/services/adjuntos.py; la tabla, en app/models/adjuntos.py. Permisos, del
 lado del servidor:
 
 - Ve y baja quien ve la tarea (las mismas reglas que la tarjeta:
-  `_tarea_y_barra` y `_puede_ver`), la agencia de esa pieza incluida. En una
-  pieza se ven también los adjuntos de la tarea de la que cuelga: el Excel de
-  «Nueva tarea» con sus piezas se sube una vez y le llega a cada agencia. Al
-  bajar, `desde` dice en qué tarea se está mirando; el archivo tiene que ser
-  de esa tarea o de una de las que cuelga. Otra agencia: el 404 de siempre.
+  `_tarea_y_barra` y `_puede_ver`), la agencia de esa pieza incluida. Otra
+  agencia: el 404 de siempre. Desde la 0090 cada tarea tiene los suyos: ya no
+  hay tarea de afuera de la que heredarlos.
 - Adjunta y saca quien gestiona las tareas, y quien creó la tarea si pide
   piezas (ver adjuntos.puede_adjuntar). La agencia no adjunta al pedido.
 """
@@ -27,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.calendario import _puede_gestionar_tareas, puede_pedir_piezas
 from app.api.routes.entregas import _adjunto, _puede_ver, _tarea_y_barra
-from app.core import externos
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
@@ -62,7 +59,6 @@ async def lista_para(db: AsyncSession, tarea: CalendarioTarea, usuario: User) ->
     entregas)."""
     return await reglas.lista(
         db, tarea, usuario.id, gestiona=_puede_gestionar_tareas(usuario), pide=puede_pedir_piezas(usuario),
-        externo=externos.es_externo(usuario),
     )
 
 
@@ -151,14 +147,11 @@ async def adjuntar(
 async def bajar_adjunto(
     request: Request,
     adjunto_id: str,
-    desde: str | None = None,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """El archivo, con su nombre. Viaja con la sesión (la pantalla lo pide y
-    arma la descarga), no con un link público. `desde`: la tarea en la que se
-    está mirando (una pieza ve los de la tarea de la que cuelga); sin ella, la
-    del archivo."""
+    arma la descarga), no con un link público."""
     fila = (await db.execute(
         select(CalendarioAdjunto.tarea_id, CalendarioAdjunto.nombre, CalendarioAdjunto.tipo_mime)
         .where(CalendarioAdjunto.id == adjunto_id)
@@ -166,9 +159,7 @@ async def bajar_adjunto(
     if fila is None:
         raise HTTPException(status_code=404, detail=_YA_NO_ESTA)
     de_la_tarea, nombre, tipo = fila
-    tarea = await _tarea_visible(db, desde or de_la_tarea, current_user)
-    if de_la_tarea not in {t.id for t in await reglas.cadena_de(db, tarea)}:
-        raise HTTPException(status_code=404, detail=_YA_NO_ESTA)
+    await _tarea_visible(db, de_la_tarea, current_user)
     datos = (await db.execute(
         select(CalendarioAdjunto.datos).where(CalendarioAdjunto.id == adjunto_id)
     )).scalar_one_or_none()

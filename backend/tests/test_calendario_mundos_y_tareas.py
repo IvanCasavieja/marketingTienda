@@ -18,8 +18,8 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.api.routes.calendario import (
-    _NIVELES_DE_TAREA, BarraNueva, TareaCambios, TareaNueva,
-    mensaje_de_asignacion, mensaje_de_tarea_hecha, nivel_de, referencia_de_tarea, repartir_orden,
+    BarraNueva, TareaCambios, TareaNueva,
+    mensaje_de_asignacion, mensaje_de_responsable, mensaje_de_tarea_hecha, referencia_de_tarea, repartir_orden,
 )
 from app.core.mundos import (
     MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, mundos_iniciales, mundos_que_no_puede_dar,
@@ -206,16 +206,11 @@ def test_una_barra_sin_mundo_es_de_tienda_inglesa():
 
 # --- Tareas ----------------------------------------------------------------
 
-def test_tarea_subtarea_y_subsubtarea_y_no_mas():
-    padres = {"t1": None, "t2": "t1", "t3": "t2"}
-    assert nivel_de(None, padres) == 1
-    assert nivel_de("t1", padres) == 2
-    assert nivel_de("t2", padres) == 3
-    assert nivel_de("t3", padres) > _NIVELES_DE_TAREA
-
-
-def test_un_ciclo_no_cuelga_el_servidor():
-    assert nivel_de("a", {"a": "b", "b": "a"}) > _NIVELES_DE_TAREA
+def test_el_aviso_del_responsable_dice_quien_la_hace():
+    # 0090: quien la lleva por Tienda no la hace; el aviso lo dice.
+    m = mensaje_de_responsable("Lucía", "Ciberlunes - Banners", "Ciberlunes", "Publicis", date(2026, 11, 26))
+    assert m == "Lucía te dejó de responsable de «Ciberlunes - Banners» en Ciberlunes (la hace Publicis). Vence el 26/11."
+    assert mensaje_de_responsable("Lucía", "X", "", None, None) == "Lucía te dejó de responsable de «X» en una acción."
 
 
 def test_ordenar_reusa_los_mismos_lugares():

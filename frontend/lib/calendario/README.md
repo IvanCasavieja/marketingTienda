@@ -48,13 +48,16 @@ El catálogo de mundos está en dos lugares que tienen que coincidir:
 ## Tareas: quién hace qué en cada acción
 
 Pedido de Ivan (12/11/2026): quien lidera abre una acción, le crea tareas y
-subtareas y se las asigna a cada persona. Tabla `calendario_tareas`, una fila
-por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
+se las asigna a cada persona. Tabla `calendario_tareas`, una fila por tarea.
+Desde el 24/11/2026 (0090) **una tarea = un pedido**, todas en un solo nivel:
+"las tareas y el pedido de piezas deberían ser uno... tener así dividido en
+tarea, pedido de piezas y luego subtareas me parece al pedo y confuso". No hay
+más subtareas ni piezas adentro de otra tarea (el servidor lo rechaza).
 
 | Quién | Qué puede |
 |---|---|
-| Con `calendario.tareas` | Crear, asignar, reasignar, poner vencimiento y borrar tareas; subtareas comunes, plantillas y entregas por fases. |
-| Con `calendario.pedidos` | Crear tareas en la acción y pedir sus materiales debajo (Banners, Mailing, Cenefas…). Desde el 17/11/2026 es aparte de `calendario.edit`: la acción la arma quien lidera, y las tareas y sus materiales los crea el equipo de analistas. La 0071 se lo dio a todos los que tenían `calendario.edit`. |
+| Con `calendario.tareas` | Crear, asignar, reasignar, poner vencimiento y borrar tareas; el responsable de Tienda, plantillas y entregas por fases. |
+| Con `calendario.pedidos` | Crear tareas en la acción, también para una agencia (Banners, Mailing, Cenefas…). Desde el 17/11/2026 es aparte de `calendario.edit`: la acción la arma quien lidera, y las tareas las crea el equipo de analistas. La 0071 se lo dio a todos los que tenían `calendario.edit`. |
 | A quien se le asignó | Mover el estado de SUS tareas (pendiente → en proceso → hecha), aunque no tenga `calendario.edit`. |
 | Los demás | Ver. |
 
@@ -64,24 +67,26 @@ por tarea, hasta tres niveles (tarea → subtarea → sub-subtarea).
 - Solo se le puede asignar a alguien que pueda abrir ese mundo.
 - **Mis tareas** (`/mis-tareas`) muestra lo que cada uno tiene asignado en el
   mundo en el que está, ordenado por vencimiento, y avisa si le queda algo
-  pendiente en otro.
+  pendiente en otro. También lo que lleva por Tienda (su responsable) aunque
+  lo haga una agencia.
 - `calendario.tareas` lo recibieron Superadmin y Admin en la 0060. A quien
   lidere el equipo sin ser Admin hay que tildárselo a mano.
 
-**Cómo se arma (17/11/2026).** En la ficha de una acción hay un solo botón
-para empezar: **Crear tarea**. La tarea es la acción principal y sus piezas
-se eligen en el mismo formulario, antes de crearla ("la idea es que antes de
-crear la tarea ya seleccionemos las piezas"): qué hay que hacer, **¿Qué
-piezas lleva?** (cada tipo abre su modal con todas las opciones del catálogo
+**Cómo se arma (24/11/2026).** En la ficha de una acción hay un solo botón:
+**Crear tarea**, que es el pedido entero (`NuevaTarea` en BloqueTareas.tsx):
+**¿Qué se pide?** (cada tipo abre su modal con todas las opciones del catálogo
 de `tipos_de_tarea.py`: Banners con sus medidas, Redes sociales, Mailing, EMM,
-Push, WhatsApp, Cartelería...), el detalle, el **responsable de Tienda
-Inglesa** (quien lleva la tarea) y para cuándo. Se crea todo junto, con un
-solo aviso. Debajo de cada tarea queda **Agregar pieza a esta tarea** para
-sumar más después. Cada pieza nace con su tarjeta en el tablero y sus
-entregas.
+Push, WhatsApp, Cartelería... u **Otra cosa**, sin tipo), **¿Quién la hace?**
+(Publicis, Another Monday, Diseñadores o alguien de Tienda), el detalle, los
+archivos, el **responsable de Tienda** (si la hace una agencia: quien la
+sigue, `responsable_id`) y para cuándo. Se crea UNA tarea; si la hace una
+agencia, esa misma tarea es su tarjeta en el tablero. Con un tipo, el nombre
+se arma solo ("<Acción> - <Tipo>") y se puede cambiar. Con dos tipos a la vez
+se crean dos tareas, una al lado de la otra, con el mismo detalle y archivos.
+Lo que antes colgaba de una tarea de afuera lo aplanó la 0090.
 
-**Los tres tableros (17/11/2026).** En el modal de cada pieza se elige **a
-qué tablero va**: Publicis, Another Monday o Diseñadores
+**Los tres tableros (17/11/2026).** En «¿Quién la hace?» se elige **a qué
+tablero va**: Publicis, Another Monday o Diseñadores
 (`backend/app/core/tableros.py`). La pieza no lleva persona: la toma, la hace
 y la responde cualquiera de ese tablero. Cada tablero es una agencia de la
 0069: sus usuarios son cuentas externas de esa empresa (desde el 19/11/2026 se
@@ -235,9 +240,9 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   tareas de Valentina en cada acción (Lanzar, Cierre, Imprenta...): todavía
   no se cargan, primero se validan con ella.
 - **Tareas minimizadas.** En la ficha, cada tarea muestra solo su título (y
-  cuántas piezas o subtareas tiene); se despliega tocándola.
-- **Una tarea sin piezas.** Las piezas al crear la tarea son opcionales: puede
-  ser solo el nombre y el detalle (idea de Valentina).
+  qué agencia la hace); se despliega tocándola.
+- **Una tarea sin tipo.** «Otra cosa»: puede ser solo el nombre y el detalle
+  (idea de Valentina).
 - **El tablero, libre como Trello** para el equipo (0075): lleva la tarjeta a
   cualquier columna. Si no le toca entregar o decidir, es "a mano": no se
   entrega ni se aprueba nada, y lo próximo que pase de verdad (una entrega,
@@ -380,7 +385,7 @@ en una transacción y con una sola subida de revisión:
 |---|---|
 | La acción | Todos sus campos (categoría, color, formato, hora...), fechas corridas, firmada por quien copia. Un envío suelto vuelve a pendiente. |
 | Piezas | En pendiente, sin la marca de SharePoint, con sus fechas propias corridas lo mismo. |
-| Tareas | Solo si quien copia tiene `calendario.tareas` (si no, se copia el resto y se dice). En pendiente, vencimiento corrido, subtareas con su estructura e ids nuevos. El responsable sigue solo si todavía abre ese mundo. |
+| Tareas | Solo si quien copia tiene `calendario.tareas` (si no, se copia el resto y se dice). En pendiente, vencimiento corrido e ids nuevos, todas en el primer nivel. La persona asignada y el responsable de Tienda siguen solo si todavía abren ese mundo. |
 | Avisos | Los mismos días antes. Sale quien ya no abre el mundo; un aviso que se queda sin nadie no se copia. |
 
 A cada responsable le llega **un** aviso con todas sus tareas, no uno por tarea.
@@ -431,7 +436,7 @@ administración:
 |---|---|
 | `calendario.view` | Entrar. Es el que decide si aparece el link en el menú. |
 | `calendario.edit` | Crear, editar y borrar barras, mover el estado de las piezas y configurar avisos. |
-| `calendario.pedidos` | Pedir piezas y materiales desde una acción. |
+| `calendario.pedidos` | Crear tareas en una acción, también para una agencia. |
 | `calendario.retail_media` | Mover las posiciones que Retail Media tiene reservadas en el header. |
 
 Mover las posiciones de Retail Media las guarda y le avisa a quien lleva Retail

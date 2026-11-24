@@ -173,26 +173,33 @@ def _tarea(id, parent_id=None, **kw) -> CalendarioTarea:
     return CalendarioTarea(**base)
 
 
-def test_tareas_y_subtareas_mantienen_su_estructura_con_ids_nuevos():
-    # Llegan desordenadas: la sub-subtarea antes que su madre y su abuela.
+def test_las_tareas_se_copian_en_un_solo_nivel_con_ids_nuevos():
+    # 0090: una tarea = un pedido. Si llegara algo anidado (no debería: la
+    # migración lo aplanó), la copia va igual en el primer nivel, en el orden
+    # de la ficha.
     tareas = [
-        _tarea("nieta", parent_id="hija", orden=2),
-        _tarea("abuela", orden=0),
-        _tarea("hija", parent_id="abuela", orden=1),
-        _tarea("suelta", orden=3),
+        _tarea("c", parent_id="b", orden=2),
+        _tarea("a", orden=0),
+        _tarea("b", parent_id="a", orden=1),
+        _tarea("d", orden=3),
     ]
     filas = copiar_tareas(tareas, "br-2026", UN_ANIO, set(), 42, _ids()).filas
-    por_titulo = {f["titulo"]: f for f in filas}
-    abuela, hija, nieta = (por_titulo[f"Tarea {x}"] for x in ("abuela", "hija", "nieta"))
-    assert abuela["parent_id"] is None
-    assert hija["parent_id"] == abuela["id"]
-    assert nieta["parent_id"] == hija["id"]
-    assert por_titulo["Tarea suelta"]["parent_id"] is None
+    assert [f["titulo"] for f in filas] == ["Tarea a", "Tarea b", "Tarea c", "Tarea d"]
+    assert all(f["parent_id"] is None for f in filas)
     # Ninguna apunta a una tarea de la acción original.
-    assert not {f["id"] for f in filas} & {"abuela", "hija", "nieta", "suelta"}
-    # Cada madre se guarda antes que sus hijas.
-    orden = [f["id"] for f in filas]
-    assert orden.index(abuela["id"]) < orden.index(hija["id"]) < orden.index(nieta["id"])
+    assert not {f["id"] for f in filas} & {"a", "b", "c", "d"}
+
+
+def test_el_responsable_de_tienda_sigue_si_puede_y_es_del_equipo():
+    # 0090: quien lleva por Tienda lo que hace una agencia.
+    tareas = [
+        _tarea("sigue", para="agencia", agencia="Publicis", responsable_id=5),
+        _tarea("ya-no-ve", para="agencia", agencia="Publicis", responsable_id=6),
+        _tarea("de-agencia", para="agencia", agencia="Publicis", responsable_id=9),
+    ]
+    filas = copiar_tareas(tareas, "br-2026", UN_ANIO, {5, 9}, 42, _ids(), de_agencias={9}).filas
+    assert {f["titulo"]: f["responsable_id"] for f in filas} == {
+        "Tarea sigue": 5, "Tarea ya-no-ve": None, "Tarea de-agencia": None}
 
 
 def test_una_tarea_vuelve_a_pendiente_y_su_vencimiento_se_corre():
@@ -212,6 +219,8 @@ def test_una_tarea_vuelve_a_pendiente_y_su_vencimiento_se_corre():
         # copia de una tarea para la agencia sigue siendo para la agencia (y
         # al guardarla le nace su tarjeta nueva, ver copiar_barra).
         "para": "tienda", "agencia": None, "tipo": None, "opciones": None, "detalles": None,
+        # Quién la lleva por Tienda si la hace una agencia (0090).
+        "responsable_id": None,
     }
 
 

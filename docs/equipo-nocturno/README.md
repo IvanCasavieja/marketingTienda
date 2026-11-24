@@ -192,8 +192,8 @@ variables, y las cuentas se crean solas al arrancar; `/health` dice
   sobre lo descartado en [CONTEXTO.md](CONTEXTO.md).
 - **Migraciones: evitarlas.** Si hace falta una, el número es el siguiente al
   más alto en `backend/migrations/versions` de `main` y además que no lo use
-  ninguna rama abierta (hoy `feat/nombre-con-tarea` tiene la 0088 y
-  `feat/adjuntos-en-el-pedido` la 0089). Va en el informe.
+  ninguna rama abierta (hoy `feat/una-tarea-un-pedido` tiene la 0090). Va en
+  el informe.
 - **Gastar poco.** Buscá con Grep en vez de leer el repo entero; pasale a cada
   agente solo lo que necesita.
 

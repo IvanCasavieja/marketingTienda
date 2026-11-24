@@ -2,19 +2,19 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft, CalendarClock, CornerDownRight, LayoutTemplate, Pencil, Plus, Sparkles, Trash2, UserRound, X,
+  ArrowLeft, CalendarClock, LayoutTemplate, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
 import { esSinCategoria, mismaCategoria } from '@/lib/calendario/categorias'
 import { nuevoId } from '@/lib/calendario/derivar'
 import { fechaCorta } from '@/lib/calendario/fechas'
 import {
-  DIAS_DE_ANCLA, EJEMPLO_DE_PLANTILLA, TAREAS_POR_PLANTILLA, enOrden, plantillasParaElegir, problemaDePlantilla,
+  DIAS_DE_ANCLA, EJEMPLO_DE_PLANTILLA, TAREAS_POR_PLANTILLA, plantillasParaElegir, problemaDePlantilla,
   textoDeAncla, venceAnclado,
 } from '@/lib/calendario/plantillas'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 import { useCalendario, useCategoriasDelMundo } from '@/lib/calendario/store'
 import {
-  agenciasSinRepetir, asignablesPara, mismaEmpresa, nombreConEmpresa,
+  agenciasSinRepetir, asignablesPara, delEquipo, mismaEmpresa, nombreConEmpresa,
   type AnclaTarea, type BarraGuardada, type Persona, type Plantilla, type TareaDePlantilla,
 } from '@/lib/calendario/tipos'
 import { mundoDe } from '@/lib/mundos'
@@ -33,13 +33,14 @@ import { CLASE_MANIJA, useDeslizarParaCerrar } from './useDeslizarParaCerrar'
  * la acción se mueve, se mueven con ella.
  *
  * Lo abre la ficha de una acción, y solo para quien gestiona tareas
- * (`calendario.tareas`): es lo mismo que exige el servidor.
+ * (`calendario.tareas`): es lo mismo que exige el servidor. Como en la
+ * acción, las tareas van todas en un solo nivel (24/11/2026, 0090).
  */
 
 type Borrador = { id: string; nombre: string; categoria: string | null; tareas: TareaDePlantilla[]; nueva: boolean }
 
-const tareaVacia = (parentId: string | null = null): TareaDePlantilla => ({
-  id: nuevoId('tp'), parentId, titulo: '', descripcion: null, asignadoA: null, ancla: 'inicio', dias: parentId ? 0 : -7,
+const tareaVacia = (): TareaDePlantilla => ({
+  id: nuevoId('tp'), parentId: null, titulo: '', descripcion: null, asignadoA: null, ancla: 'inicio', dias: -7,
 })
 
 /** Un botón principal (relleno) o secundario, con el alto de siempre. */
@@ -219,7 +220,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
   const cerrar = useCalendario(s => s.cerrarPlantillas)
   const [confirmando, setConfirmando] = useState(false)
 
-  const tareas = enOrden(plantilla.tareas)
+  const tareas = plantilla.tareas
   const aMostrar = tareas.length > 6 ? tareas.slice(0, 5) : tareas
   const deSuCategoria = !!accion && mismaCategoria(plantilla.categoria, accion.banda)
   const yaUsada = !!accion && (accion.tareas ?? []).some(t => t.plantillaId === plantilla.id)
@@ -242,8 +243,7 @@ function TarjetaDePlantilla({ plantilla, accion, onEditar }: {
 
       <ul className="mt-2.5 space-y-1">
         {aMostrar.map(t => (
-          <li key={t.id} className={`flex items-baseline gap-2 text-sm ${t.parentId ? 'pl-5' : ''}`}>
-            {t.parentId && <CornerDownRight className="h-3.5 w-3.5 shrink-0 self-center text-slate-500" aria-hidden />}
+          <li key={t.id} className="flex items-baseline gap-2 text-sm">
             <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-300">{t.titulo}</span>
             <span className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">
               {accion && t.ancla
@@ -329,17 +329,15 @@ function EditorDePlantilla({ inicial, accion, onVolver }: {
   const categorias = delMundo.filter(c => !esSinCategoria(c))
   if (categoria && !categorias.includes(categoria)) categorias.push(categoria)
   const problema = problemaDePlantilla({ nombre, tareas })
-  const ordenadas = enOrden(tareas)
 
   function cambiar(id: string, cambios: Partial<TareaDePlantilla>) {
     setTareas(ts => ts.map(t => (t.id === id ? { ...t, ...cambios } : t)))
   }
   function quitar(id: string) {
-    // Con sus subtareas: una subtarea sin su tarea no tiene dónde ir.
-    setTareas(ts => ts.filter(t => t.id !== id && t.parentId !== id))
+    setTareas(ts => ts.filter(t => t.id !== id))
   }
-  function agregar(parentId: string | null = null) {
-    const nueva = tareaVacia(parentId)
+  function agregar() {
+    const nueva = tareaVacia()
     setTareas(ts => [...ts, nueva])
     // El foco va al título de la nueva, para escribir derecho.
     requestAnimationFrame(() => document.getElementById(`tp-titulo-${nueva.id}`)?.focus())
@@ -355,8 +353,8 @@ function EditorDePlantilla({ inicial, accion, onVolver }: {
     if (problema) return
     guardar({
       id: inicial.id, nombre: nombre.trim(), categoria,
-      // En el orden en que se ven: cada tarea seguida de sus subtareas.
-      tareas: ordenadas.map(t => ({ ...t, titulo: t.titulo.trim(), descripcion: t.descripcion?.trim() || null })),
+      // Todas en el primer nivel (0090), en el orden en que se ven.
+      tareas: tareas.map(t => ({ ...t, parentId: null, titulo: t.titulo.trim(), descripcion: t.descripcion?.trim() || null })),
     })
     onVolver()
   }
@@ -415,17 +413,15 @@ function EditorDePlantilla({ inicial, accion, onVolver }: {
           <div>
             <p className="etiqueta-campo">Tareas · {tareas.length}</p>
             <ul className="space-y-2">
-              {ordenadas.map(t => (
+              {tareas.map(t => (
                 <FilaDeTarea
                   key={t.id}
                   tarea={t}
                   accion={accion}
                   personas={personas}
                   personasCargadas={personasEstado === 'ok'}
-                  tieneSubtareas={tareas.some(x => x.parentId === t.id)}
                   onCambiar={c => cambiar(t.id, c)}
                   onQuitar={() => quitar(t.id)}
-                  onSubtarea={() => agregar(t.id)}
                   intento={intento}
                 />
               ))}
@@ -468,16 +464,14 @@ const CUANDO: { valor: Cuando; texto: string }[] = [
 ]
 
 function FilaDeTarea({
-  tarea, accion, personas, personasCargadas, tieneSubtareas, onCambiar, onQuitar, onSubtarea, intento,
+  tarea, accion, personas, personasCargadas, onCambiar, onQuitar, intento,
 }: {
   tarea: TareaDePlantilla
   accion: BarraGuardada | null
   personas: Persona[]
   personasCargadas: boolean
-  tieneSubtareas: boolean
   onCambiar: (c: Partial<TareaDePlantilla>) => void
   onQuitar: () => void
-  onSubtarea: () => void
   intento: boolean
 }) {
   // Para qué lado se cuenta. Con 0 días no se ve en `dias` (0 no tiene
@@ -489,6 +483,7 @@ function FilaDeTarea({
   const [texto, setTexto] = useState<string | null>(null)
   const [conDetalle, setConDetalle] = useState(Boolean(tarea.descripcion))
   const asignado = personas.find(p => p.id === tarea.asignadoA)
+  const responsable = personas.find(p => p.id === tarea.responsable)
   const sinTitulo = intento && !tarea.titulo.trim()
   // Quién la hace (16/11/2026): si es una agencia, al aplicar la plantilla le
   // nace sola su tarjeta en el tablero. Las agencias de la plataforma son las
@@ -505,7 +500,8 @@ function FilaDeTarea({
   function elegirQuien(v: string) {
     if (v.startsWith('agencia:')) onCambiar({ para: 'agencia', agencia: v.slice(8), asignadoA: null })
     else if (v === 'fuera') onCambiar({ para: 'fuera', agencia: tarea.para === 'fuera' ? tarea.agencia ?? '' : '' })
-    else onCambiar({ para: 'tienda', agencia: null })
+    // Una tarea de Tienda la lleva quien la tiene asignada: sin responsable aparte (0090).
+    else onCambiar({ para: 'tienda', agencia: null, responsable: null })
   }
 
   function elegirCuando(v: Cuando) {
@@ -527,17 +523,16 @@ function FilaDeTarea({
   const ejemplo = accion && tarea.ancla ? fechaCorta(venceAnclado(tarea.ancla, tarea.dias, accion.desde, accion.hasta)) : null
 
   return (
-    <li className={tarea.parentId ? 'ml-4 border-l-2 border-slate-300 pl-3 dark:border-slate-700' : ''}>
+    <li>
       <div className="space-y-2.5 rounded-2xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
         <div className="flex items-start gap-2">
-          {tarea.parentId && <CornerDownRight className="mt-3 h-4 w-4 shrink-0 text-slate-500" aria-hidden />}
           <input
             id={`tp-titulo-${tarea.id}`}
             value={tarea.titulo}
             onChange={e => onCambiar({ titulo: e.target.value })}
             maxLength={500}
-            placeholder={tarea.parentId ? 'Subtarea. Ej: Versión mobile' : 'Qué hay que hacer. Ej: Brief a la agencia'}
-            aria-label={tarea.parentId ? 'Título de la subtarea' : 'Título de la tarea'}
+            placeholder="Qué hay que hacer. Ej: Brief a la agencia"
+            aria-label="Título de la tarea"
             aria-invalid={sinTitulo || undefined}
             className={`campo min-w-0 flex-1 font-medium ${sinTitulo ? '!border-rose-400' : ''}`}
           />
@@ -545,7 +540,7 @@ function FilaDeTarea({
             type="button"
             onClick={onQuitar}
             aria-label={`Quitar ${tarea.titulo || 'esta tarea'}`}
-            title={tieneSubtareas ? 'Quitar la tarea con sus subtareas' : 'Quitar la tarea'}
+            title="Quitar la tarea"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 active:scale-95 dark:text-slate-400 dark:hover:bg-rose-500/10 dark:hover:text-rose-300 sm:h-10 sm:w-10"
           >
             <Trash2 className="h-4 w-4" />
@@ -618,25 +613,44 @@ function FilaDeTarea({
         <div className="flex flex-wrap items-center gap-2">
           {/* En el teléfono el responsable va solo en su línea: al lado de los
               botones no se leía el nombre. */}
-          <label className="relative flex min-w-0 basis-full items-center sm:basis-auto">
-            <UserRound className="pointer-events-none absolute left-3 h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-            <select
-              value={tarea.asignadoA ?? ''}
-              onChange={e => onCambiar({ asignadoA: e.target.value ? Number(e.target.value) : null })}
-              aria-label={para === 'fuera' ? 'Quién del equipo carga lo que manda' : 'Responsable'}
-              disabled={para === 'agencia'}
-              className="campo !pl-9 sm:!w-64"
-            >
-              <option value="">{para === 'agencia' ? 'La agencia entera' : para === 'fuera' ? '¿Quién la carga?' : 'Sin asignar'}</option>
-              {tarea.asignadoA != null && !asignado && (
-                <option value={tarea.asignadoA}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
-              )}
-              {asignado && !responsables.includes(asignado) && (
-                <option value={asignado.id}>{nombreConEmpresa(asignado)}</option>
-              )}
-              {responsables.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
-            </select>
-          </label>
+          {para === 'agencia' ? (
+            // La hace la agencia entera: lo que se elige es quién la lleva por
+            // Tienda (el responsable de Tienda, 0090).
+            <label className="relative flex min-w-0 basis-full items-center sm:basis-auto">
+              <ShieldCheck className="pointer-events-none absolute left-3 h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
+              <select
+                value={tarea.responsable ?? ''}
+                onChange={e => onCambiar({ responsable: e.target.value ? Number(e.target.value) : null })}
+                aria-label="Responsable de Tienda"
+                className="campo !pl-9 sm:!w-64"
+              >
+                <option value="">Sin responsable de Tienda</option>
+                {tarea.responsable != null && !responsable && (
+                  <option value={tarea.responsable}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Responsable'}</option>
+                )}
+                {delEquipo(personas).map(p => <option key={p.id} value={p.id}>Responsable: {p.nombre}</option>)}
+              </select>
+            </label>
+          ) : (
+            <label className="relative flex min-w-0 basis-full items-center sm:basis-auto">
+              <UserRound className="pointer-events-none absolute left-3 h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
+              <select
+                value={tarea.asignadoA ?? ''}
+                onChange={e => onCambiar({ asignadoA: e.target.value ? Number(e.target.value) : null })}
+                aria-label={para === 'fuera' ? 'Quién del equipo carga lo que manda' : 'Responsable'}
+                className="campo !pl-9 sm:!w-64"
+              >
+                <option value="">{para === 'fuera' ? '¿Quién la carga?' : 'Sin asignar'}</option>
+                {tarea.asignadoA != null && !asignado && (
+                  <option value={tarea.asignadoA}>{personasCargadas ? 'Alguien que ya no ve este calendario' : 'Asignada'}</option>
+                )}
+                {asignado && !responsables.includes(asignado) && (
+                  <option value={asignado.id}>{nombreConEmpresa(asignado)}</option>
+                )}
+                {responsables.map(p => <option key={p.id} value={p.id}>{nombreConEmpresa(p)}</option>)}
+              </select>
+            </label>
+          )}
           <span className="flex items-center gap-1">
             {!conDetalle && (
               <button
@@ -645,15 +659,6 @@ function FilaDeTarea({
                 className="flex h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-9"
               >
                 <Plus className="h-4 w-4" /> Detalle
-              </button>
-            )}
-            {!tarea.parentId && (
-              <button
-                type="button"
-                onClick={onSubtarea}
-                className="flex h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-brand-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200 sm:h-9"
-              >
-                <Plus className="h-4 w-4" /> Subtarea
               </button>
             )}
           </span>

@@ -270,7 +270,7 @@ async def configurar_entregas(
         raise HTTPException(status_code=422, detail=str(exc))
     # En una pieza de una agencia de AFUERA, quien la carga (la persona
     # asignada) es del equipo y puede aprobarla (ver `_autor`): es el camino
-    # por defecto de «Pedir una pieza». Sin esto, «Configurar» y «Más
+    # por defecto de «Nueva tarea». Sin esto, «Configurar» y «Más
     # opciones» no dejaban guardar esa tarjeta (revisión del 16/11/2026).
     if tarea.para != "fuera" and tarea.asignado_a_id is not None and tarea.asignado_a_id in aprobadores:
         raise HTTPException(
@@ -646,11 +646,11 @@ async def ver_entregas(
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
         # Los archivos del pedido (0089, 24/11/2026: "deberíamos poder
-        # adjuntar archivos, como el Excel"): los de la tarea y los de la
-        # tarea de la que cuelga. Se bajan aparte (routes/adjuntos.py).
+        # adjuntar archivos, como el Excel"). Se bajan aparte
+        # (routes/adjuntos.py).
         "adjuntos": await reglas_adjuntos.lista(
             db, tarea, current_user.id, gestiona=_puede_gestionar_tareas(current_user),
-            pide=puede_pedir_piezas(current_user), externo=externo,
+            pide=puede_pedir_piezas(current_user),
         ),
         "puedoAdjuntar": reglas_adjuntos.puede_adjuntar(
             current_user.id, tarea.creado_por_id, gestiona=_puede_gestionar_tareas(current_user),
@@ -682,12 +682,8 @@ async def _huella_de_la_tarjeta(db: AsyncSession, tarea, barra) -> str:
         .join(CalendarioVersion, CalendarioVersion.id == CalendarioDecision.version_id)
         .where(CalendarioVersion.tarea_id == t)
     ).subquery()
-    # Los archivos del pedido (0089), también los de la tarea de la que cuelga.
-    de_la_cadena = CalendarioAdjunto.tarea_id.in_([x.id for x in await reglas_adjuntos.cadena_de(db, tarea)])
-    adjuntos = (
-        select(func.count()).select_from(CalendarioAdjunto).where(de_la_cadena).scalar_subquery(),
-        select(func.max(CalendarioAdjunto.id)).where(de_la_cadena).scalar_subquery(),
-    )
+    # Los archivos del pedido (0089).
+    adjuntos = cuantos_y_ultimo(CalendarioAdjunto, CalendarioAdjunto.id)
     fila = (await db.execute(select(
         select(CalendarioEntrega.updated_at).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
         select(CalendarioEntrega.momento).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
@@ -737,8 +733,9 @@ async def comentar(
     costado, para poder explicar cambios"). Lo escribe cualquiera que ve la
     tarjeta: el equipo y el tablero al que va. Le llega a la campanita de los
     que la siguen: quien la hace (todo el tablero, si es de una agencia),
-    quien la pidió, quienes la aprueban y quien lleva la tarea de la que
-    cuelga. Nunca a quien comentó."""
+    quien la pidió, quienes la aprueban y quien la lleva por Tienda (su
+    responsable, 0090; antes, quien llevaba la tarea de la que colgaba).
+    Nunca a quien comentó."""
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
     if not _puede_ver(current_user, barra.mundo, tarea):
         raise HTTPException(status_code=403, detail="No podés ver esta tarea")
@@ -756,11 +753,7 @@ async def comentar(
     await db.refresh(comentario)
 
     siguen = list(await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo))
-    siguen += [tarea.creado_por_id, *list(entrega.aprobadores or [])]
-    if tarea.parent_id:
-        madre = await db.get(CalendarioTarea, tarea.parent_id)
-        if madre is not None:
-            siguen.append(madre.asignado_a_id)
+    siguen += [tarea.creado_por_id, tarea.responsable_id, *list(entrega.aprobadores or [])]
     mensaje = reglas.mensaje_de_comentario(current_user.full_name, tarea.titulo, payload.texto)
     referencia = reglas.referencia(barra.id, tarea.id, comentario.id, "comentario")
     avisados = 0
