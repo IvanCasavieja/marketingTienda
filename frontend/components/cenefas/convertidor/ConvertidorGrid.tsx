@@ -482,6 +482,17 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
     toast.success(t("convertidor.tinin.cienGramosAplicado", { count: ids.size }));
   }
 
+  // "Está bien así" (Ivan, 24/11/2026: "debería dejarnos elegir cuál sí y cuál
+  // no"): la fila sale del aviso con el precio que vino del listado.
+  function dejarPrecioDelListado(r: ConvertidorRow) {
+    setRows((prev) => (prev ?? []).map((x) =>
+      x.row_id === r.row_id
+        ? { ...x, precioDeKiloEn100g: false,
+            warnings: (x.warnings ?? []).filter((w) => w !== "precioDeKiloEn100g") }
+        : x));
+    toast.success(t("convertidor.tinin.cienGramosDejado", { sku: r.codigo }));
+  }
+
   // Descripciones GUARDADAS que nombran TIENDA INGLESA o TIENDA CASA sin que el
   // listado lo diga. Se aprobaron cuando la marca todavía se deducía sola (antes
   // del 16/11/2026) y ya no pasan por el generador --tienen descripción--, así
@@ -1013,15 +1024,20 @@ export default function ConvertidorGrid({ rows, setRows, maPairs, juntado, onRes
         titulo: t("convertidor.tinin.cienGramosTitulo", { count: rowsPrecioDeKilo.length }),
         detalle: t("convertidor.tinin.cienGramosDetalle"),
         accion: {
-          etiqueta: t("convertidor.tinin.cienGramosBoton"),
+          etiqueta: t("convertidor.tinin.cienGramosBoton", { count: rowsPrecioDeKilo.length }),
           onClick: () => pasarPreciosA100g(new Set(rowsPrecioDeKilo.map((r) => r.row_id))),
         },
+        // Uno por uno: pasarlo a 100 g o dejarlo con el precio del listado.
         items: rowsPrecioDeKilo.slice(0, 40).map((row) => ({
           clave: String(row.row_id),
           texto: `${row.codigo} · ${row.descripcion || row.nombreArticulo || "—"} · `
                + `$${row.precioOferta}${row.decimalPrecioOferta} → `
                + `$${precioA100g(row.precioOferta, row.decimalPrecioOferta)}`,
           onIr: () => scrollToRow(row.row_id),
+          onRevisar: () => pasarPreciosA100g(new Set([row.row_id])),
+          revisarEtiqueta: t("convertidor.tinin.cienGramosUno"),
+          onDescartar: () => dejarPrecioDelListado(row),
+          descartarEtiqueta: t("convertidor.tinin.cienGramosDejar"),
         })),
       });
     }
