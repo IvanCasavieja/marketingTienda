@@ -70,7 +70,6 @@ Uruguay). La construyó Ivan, de marketing digital, trabajando con Claude.
 - Planes pagos o cambio de proveedor (Render, Supabase, Vercel).
 - Plantillas con opciones para tildar («la agencia ya recibe el pedido como
   debe recibirlo»).
-- Una copia de prueba / staging.
 - Purgas de imágenes de entregas.
 - Tratar a «Diseñadores» como gente de Tienda.
 - Mejoras inventadas que no le sirven a nadie. Cada propuesta responde a una
