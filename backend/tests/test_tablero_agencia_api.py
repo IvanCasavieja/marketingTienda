@@ -1583,13 +1583,10 @@ def test_el_analisis_de_entregas_dice_cuanto_tarda_cada_agencia_y_cuantas_se_pas
         # Las rondas siguen viajando como antes.
         assert m["fases"] >= 1 and "porResponsable" in m and "porTipo" in m
 
-        # La agencia: solo lo suyo.
+        # La agencia no lo ve: es solo de Tienda Inglesa (Ivan, 24/11/2026).
         r = await a1.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
-        assert r.status_code == 200, r.text
-        m = r.json()
-        assert [g["clave"] for g in m["porAgencia"]] == [pampa]
-        assert m["tiempos"]["entregadas"] == 1 and m["tiempos"]["vencidas"] == 1 and m["tiempos"]["sePasaron"] == 1
-        assert "Estudio Sur" not in json.dumps(m)
+        assert r.status_code == 403, r.text
+        assert "Estudio Sur" not in r.text
     correr(prueba)
 
 

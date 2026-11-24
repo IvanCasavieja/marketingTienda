@@ -891,7 +891,7 @@ function ListaDeMarcas({ marcas, version }: { marcas: Marca[]; version: Version 
         const nImagen = variasImagenes ? version.imagenes.findIndex(i => i.id === m.imagenId) + 1 : 0
         return (
           <li key={m.id} className="flex items-start gap-2.5 text-sm">
-            <span className="mt-px flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1 text-xs font-bold text-white">
+            <span className="mt-px flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-xs font-bold text-white">
               {m.corregida ? <Check className="h-3.5 w-3.5" strokeWidth={3} aria-label={`Marca ${m.numero}, corregida`} /> : m.numero}
             </span>
             <span className={`min-w-0 leading-relaxed ${m.corregida ? 'text-slate-500 line-through decoration-slate-400 dark:text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>

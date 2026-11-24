@@ -651,6 +651,9 @@ export default function TableroPage() {
             </div>
           )}
 
+          {/* Solo para Tienda Inglesa (Ivan, 24/11/2026: "cada agencia no
+              debería de ver su análisis de entrega"); el servidor también se lo niega. */}
+          {!externo && (
           <section className="mt-6">
             <button
               type="button"
@@ -659,11 +662,12 @@ export default function TableroPage() {
               className="flex min-h-[44px] items-center gap-2 rounded-xl px-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <BarChart3 className="h-4 w-4 text-brand-600 dark:text-brand-300" />
-              {externo ? "Tu análisis de entregas" : "Análisis de entregas"}
+              Análisis de entregas
               <ChevronDown className={`h-4 w-4 transition-transform ${verMetricas ? "rotate-180" : ""}`} />
             </button>
-            {verMetricas && claveMundo && <AnalisisDeEntregas mundo={claveMundo} propio={externo} />}
+            {verMetricas && claveMundo && <AnalisisDeEntregas mundo={claveMundo} />}
           </section>
+          )}
         </>
       )}
 
@@ -896,9 +900,10 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
  * El análisis de entregas (ex «Retrabajo»; Ivan, 20/11/2026: "el retrabajo sí
  * sirve, pero sería más un análisis"): cuánto tarda cada agencia, cuántas
  * piezas se pasan de fecha y cuántas rondas llevó aprobar cada fase. Se pide
- * al abrirlo (no viaja con el tablero). Una agencia ve solo lo suyo.
+ * al abrirlo (no viaja con el tablero). Solo para Tienda Inglesa: la agencia no
+ * lo ve (24/11/2026; antes veía el suyo).
  */
-function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean }) {
+function AnalisisDeEntregas({ mundo }: { mundo: string }) {
   const [dias, setDias] = useState(90);
   // Las métricas quedan atadas al pedido (mundo y días) que las trajo; si
   // falla, se dice y se puede reintentar (antes quedaba el esqueleto para
@@ -917,7 +922,7 @@ function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean 
   const actual = metricas && metricas.clave === clave ? metricas : null;
   const m = actual?.datos ?? null;
   return (
-    <section aria-label={propio ? "Tu análisis de entregas" : "Análisis de entregas"} className="mt-2 rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900 sm:p-5">
+    <section aria-label="Análisis de entregas" className="mt-2 rounded-2xl border border-slate-300 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-900 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="segmentado !p-0.5" role="group" aria-label="Período">
           {[30, 90, 365].map(d => (
@@ -939,7 +944,7 @@ function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean 
         </div>
       ) : (
         <>
-          {m.tiempos && <TiemposYFechas tiempos={m.tiempos} porAgencia={propio ? [] : m.porAgencia ?? []} propio={propio} />}
+          {m.tiempos && <TiemposYFechas tiempos={m.tiempos} porAgencia={m.porAgencia ?? []} />}
           <h3 className={`mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 ${m.tiempos ? "mt-5 border-t border-slate-200 pt-4 dark:border-slate-700" : ""}`}>
             Rondas
           </h3>
@@ -957,13 +962,13 @@ function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean 
               <button type="button" onClick={() => setVerDetalle(v => !v)} aria-expanded={verDetalle}
                 className="-ml-2 mt-3 flex min-h-[40px] items-center gap-1 rounded-xl px-2 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
                 <ChevronDown className={`h-4 w-4 transition-transform ${verDetalle ? "rotate-180" : ""}`} />
-                {verDetalle ? "Ocultar el detalle" : propio ? "Ver por tipo de pieza" : "Ver por tipo de pieza, responsable y mundo"}
+                {verDetalle ? "Ocultar el detalle" : "Ver por tipo de pieza, responsable y mundo"}
               </button>
               {verDetalle && (
-                <div className={`mt-2 grid gap-5 ${propio ? "" : "lg:grid-cols-3"}`}>
+                <div className="mt-2 grid gap-5 lg:grid-cols-3">
                   <TablaDeRondas titulo="Por tipo de pieza" filas={m.porTipo} />
-                  {!propio && <TablaDeRondas titulo="Por responsable" filas={m.porResponsable} />}
-                  {!propio && <TablaDeRondas titulo="Por mundo" filas={m.porMundo} />}
+                  <TablaDeRondas titulo="Por responsable" filas={m.porResponsable} />
+                  <TablaDeRondas titulo="Por mundo" filas={m.porMundo} />
                 </div>
               )}
             </>
@@ -979,12 +984,12 @@ function AnalisisDeEntregas({ mundo, propio }: { mundo: string; propio: boolean 
  * equipo, una fila por agencia (los tres tableros primero, después las demás
  * y el equipo al final: lo ordena el servidor).
  */
-function TiemposYFechas({ tiempos: t, porAgencia, propio }: {
-  tiempos: TiemposDeEntrega; porAgencia: TiemposDeAgencia[]; propio: boolean;
+function TiemposYFechas({ tiempos: t, porAgencia }: {
+  tiempos: TiemposDeEntrega; porAgencia: TiemposDeAgencia[];
 }) {
   const titulo = (
     <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-      {propio ? "Tus tiempos y fechas" : "Tiempos y fechas"}
+      Tiempos y fechas
     </h3>
   );
   if (t.entregadas === 0 && t.aprobadas === 0 && t.vencidas === 0) {
@@ -992,9 +997,7 @@ function TiemposYFechas({ tiempos: t, porAgencia, propio }: {
       <>
         {titulo}
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          {propio
-            ? "Todavía no entregaste nada en este período: cuando entregues, acá se ve cuánto tardás y si llegás a tiempo."
-            : "Todavía no hay entregas en este período: cuando entreguen, acá se ve cuánto tarda cada agencia y cuántas piezas se pasan de fecha."}
+          Todavía no hay entregas en este período: cuando entreguen, acá se ve cuánto tarda cada agencia y cuántas piezas se pasan de fecha.
         </p>
       </>
     );
