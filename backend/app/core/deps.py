@@ -27,7 +27,9 @@ def client_ip(request: Request) -> str:
 
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
-_PASSWORD_MAX_AGE_DAYS = 20
+# Cada cuánto hay que cambiar la contraseña. Ivan (24/11/2026): "que sea de
+# 60 días el cambio" (antes, 20).
+_PASSWORD_MAX_AGE_DAYS = 60
 
 # Rutas que siguen accesibles aunque el usuario tenga la renovación de
 # contraseña pendiente — sin esto, no habría forma de llegar a la pantalla

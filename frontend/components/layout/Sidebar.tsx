@@ -190,9 +190,16 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     const guardado = localStorage.getItem("core-tienda-herramientas");
     return guardado === null ? !plegable : guardado === "1";
   });
-  const verHerramientas = herramientasAbiertas || enHerramienta || !plegable;
+  // Parado en una herramienta arrancan abiertas (se ve dónde se está), pero
+  // el botón igual las cierra (Ivan, 24/11/2026: "el botón Herramientas no
+  // cierra, presionarlo no sirve de nada"; antes quedaban abiertas a la
+  // fuerza). Cerrarlas vale para esa página: en otra herramienta vuelven a
+  // arrancar abiertas.
+  const [cerradasEn, setCerradasEn] = useState<string | null>(null);
+  const verHerramientas = !plegable || (enHerramienta ? cerradasEn !== pathname : herramientasAbiertas);
   function alternarHerramientas() {
     const abiertas = !verHerramientas;
+    if (enHerramienta) setCerradasEn(abiertas ? null : pathname);
     setHerramientasAbiertas(abiertas);
     localStorage.setItem("core-tienda-herramientas", abiertas ? "1" : "0");
   }

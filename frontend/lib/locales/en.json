@@ -138,7 +138,7 @@
   },
   "passwordGate": {
     "title": "You need to update your password",
-    "subtitle": "For security, you need to choose a new password before continuing — either because it's your first time logging in with the one you were given, or because more than 20 days have passed since your last change."
+    "subtitle": "For security, you need to choose a new password before continuing — either because it's your first time logging in with the one you were given, or because more than 60 days have passed since your last change."
   },
   "errorBoundary": {
     "title": "Something went wrong",
