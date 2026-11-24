@@ -138,7 +138,7 @@
   },
   "passwordGate": {
     "title": "Tenés que actualizar tu contraseña",
-    "subtitle": "Por seguridad, necesitamos que elijas una contraseña nueva antes de seguir — o porque es la primera vez que entrás con la que te dieron, o porque ya pasaron más de 20 días desde el último cambio."
+    "subtitle": "Por seguridad, necesitamos que elijas una contraseña nueva antes de seguir — o porque es la primera vez que entrás con la que te dieron, o porque ya pasaron más de 60 días desde el último cambio."
   },
   "errorBoundary": {
     "title": "Algo salió mal",

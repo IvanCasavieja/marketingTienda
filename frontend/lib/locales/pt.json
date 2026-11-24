@@ -138,7 +138,7 @@
   },
   "passwordGate": {
     "title": "Você precisa atualizar sua senha",
-    "subtitle": "Por segurança, você precisa escolher uma nova senha antes de continuar — seja porque é a primeira vez que você entra com a que lhe deram, ou porque já se passaram mais de 20 dias desde a última alteração."
+    "subtitle": "Por segurança, você precisa escolher uma nova senha antes de continuar — seja porque é a primeira vez que você entra com a que lhe deram, ou porque já se passaram mais de 60 dias desde a última alteração."
   },
   "errorBoundary": {
     "title": "Algo deu errado",
