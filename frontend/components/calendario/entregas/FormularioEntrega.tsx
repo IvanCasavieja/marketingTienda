@@ -5,8 +5,10 @@ import { AlertTriangle, Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCc
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import {
-  hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type CambioControlado, type ControlPrevio,
+  conLugar, hayQueControlar, mismasImagenes, observacionesParaAvisar, paraAvisar, textosDelControl,
+  type CambioControlado, type ControlPrevio, type ObservacionDelControl,
 } from '@/lib/calendario/control-previo'
+import { TIPO_OBSERVACION } from '@/lib/calendario/revision-ia'
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
@@ -35,6 +37,10 @@ type Imagen = ImagenLista & { deZip?: number }
  *  medir; null entero si no se leyó el índice), para ver si falta alguna
  *  pieza del pedido. */
 type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: number[]; medidas: (Medidas | null)[] | null }
+
+/** Lo que se avisa antes de mandar (ver AvisoAntesDeMandar). */
+type Avisos = { lista: CambioControlado[]; observaciones: ObservacionDelControl[]; faltan: Pieza[] }
+const soloLoQueFalta = (faltan: Pieza[]): Avisos => ({ lista: [], observaciones: [], faltan })
 
 /**
  * Entregar una ronda: las imágenes (de la cámara o de la galería), un
@@ -85,6 +91,13 @@ type ZipElegido = { archivo: File; entradas: EntradaZip[] | null; sacadas: numbe
  * súper mezcladas, no tiene un formato bonito de ver ni nada"): ocupa el
  * lugar del formulario, que hace scroll, y los botones quedan siempre a la
  * vista abajo (ver AvisoAntesDeMandar).
+ *
+ * Lo que la IA encontró en la pieza (24/11/2026, Ivan: "la IA sigue
+ * encontrando cosas del lado de Tienda que no encuentra del lado de la
+ * agencia (...) la acción era TiendaChecks y le mandaron una placa de
+ * Ciberofertas"): el aviso trae también las observaciones, las mismas que
+ * ve quien aprueba, con la imagen y dónde. La IA mira la pieza aunque no se
+ * haya pedido nada.
  */
 export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -113,8 +126,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // El control de la IA antes de mandar: mientras mira, y lo que encontró.
   const [controlando, setControlando] = useState<AbortController | null>(null)
   // Lo que se avisa antes de mandar: `lista`, lo que vio la IA de lo pedido;
-  // `faltan`, las piezas del pedido que no vienen (las ve la plataforma sola).
-  const [avisos, setAvisos] = useState<{ lista: CambioControlado[]; faltan: Pieza[] } | null>(null)
+  // `observaciones`, lo que encontró en la pieza (24/11/2026); `faltan`, las
+  // piezas del pedido que no vienen (las ve la plataforma sola).
+  const [avisos, setAvisos] = useState<Avisos | null>(null)
   // «¿Por qué no va todo?»: lo que escribe quien entrega si falta alguna pieza.
   const [porQue, setPorQue] = useState('')
   // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
@@ -261,7 +275,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
       // Sin nada para la IA (o ya miró estas): si falta alguna pieza, se avisa igual.
       if (faltan.length > 0) {
-        setAvisos({ lista: [], faltan })
+        setAvisos(soloLoQueFalta(faltan))
         return
       }
       await enviar()
@@ -284,10 +298,11 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     }
     if (ac.signal.aborted) return
     yaControladas.current = grandes
-    // Si la IA no estuvo o no vio nada, la lista viene vacía: lo que falta va igual.
+    // Si la IA no estuvo o no vio nada, las listas vienen vacías: lo que falta va igual.
     const lista = paraAvisar(control)
-    if (lista.length > 0 || faltan.length > 0) {
-      setAvisos({ lista, faltan })
+    const observaciones = observacionesParaAvisar(control)
+    if (lista.length > 0 || observaciones.length > 0 || faltan.length > 0) {
+      setAvisos({ lista, observaciones, faltan })
       return
     }
     await enviar()
@@ -299,7 +314,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     // Sin esperar a la IA. Lo que falta del pedido no la necesita: se avisa igual.
     const faltan = loQueFalta()
     if (faltan.length > 0) {
-      setAvisos({ lista: [], faltan })
+      setAvisos(soloLoQueFalta(faltan))
       return
     }
     void enviar()
@@ -358,7 +373,10 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
           (21/11/2026): hace scroll y los botones quedan abajo, a la vista. */}
       <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
       {avisos ? (
-        <AvisoAntesDeMandar faltan={avisos.faltan} lista={avisos.lista} porQue={porQue} onPorQue={setPorQue} />
+        <AvisoAntesDeMandar
+          faltan={avisos.faltan} lista={avisos.lista} observaciones={avisos.observaciones}
+          fotos={imagenes.map(im => im.vista)} inicial={primera} porQue={porQue} onPorQue={setPorQue}
+        />
       ) : (
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <div>
@@ -604,16 +622,25 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
  * - «Piezas que faltan (10)»: un chip parejo por pieza, con el nombre arriba
  *   y la medida abajo en gris; 3 columnas en la compu y 2 en el teléfono. Si
  *   son muchas, las primeras 6 y «Ver las otras 4» (lib/calendario/piezas.ts);
- * - «Lo que vio la IA (2)»: un renglón por cosa pedida, con su estado, lo
- *   pedido en negrita y lo que vio la IA abajo, en gris (LoQueVioLaIA, el
- *   mismo diseño que ve quien aprueba en el Revisor);
+ * - «Lo que se pidió (2)» (o «Los cambios que se pidieron»): un renglón por
+ *   cosa pedida que falta o no se ve clara, con su estado, lo pedido en
+ *   negrita y lo que vio la IA abajo (LoQueVioLaIA, el mismo diseño que ve
+ *   quien aprueba en el Revisor);
+ * - «Lo que encontró la IA en la pieza (3)» (24/11/2026): cada observación,
+ *   la misma que ve quien aprueba, con la miniatura de su imagen y un punto
+ *   rojo donde la vio; las importantes en rojo, las de revisar en ámbar;
  * - la aclaración chica, el campo «¿Por qué no va todo? (opcional)» si falta
  *   alguna pieza, y los botones abajo, siempre a la vista (los pone
  *   FormularioEntrega en su barra).
  */
-function AvisoAntesDeMandar({ faltan, lista, porQue, onPorQue }: {
+function AvisoAntesDeMandar({ faltan, lista, observaciones, fotos, inicial, porQue, onPorQue }: {
   faltan: Pieza[]
   lista: CambioControlado[]
+  observaciones: ObservacionDelControl[]
+  /** Las imágenes que se van a entregar (blob:), en su orden: para las miniaturas. */
+  fotos: string[]
+  /** La primera entrega de la fase: lo controlado es el pedido inicial. */
+  inicial: boolean
   porQue: string
   onPorQue: (texto: string) => void
 }) {
@@ -631,7 +658,7 @@ function AvisoAntesDeMandar({ faltan, lista, porQue, onPorQue }: {
         tabIndex={-1}
         className="flex items-center gap-2 text-lg font-bold text-slate-900 outline-none dark:text-slate-100"
       >
-        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+        <AlertTriangle className="h-5 w-5 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
         Antes de mandar, revisá esto
       </h3>
 
@@ -667,15 +694,34 @@ function AvisoAntesDeMandar({ faltan, lista, porQue, onPorQue }: {
       {lista.length > 0 && (
         <section aria-labelledby="lo-que-vio-la-ia">
           <h4 id="lo-que-vio-la-ia" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-            Lo que vio la IA <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({lista.length})</span>
+            {inicial ? 'Lo que se pidió' : 'Los cambios que se pidieron'}{' '}
+            <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({lista.length})</span>
           </h4>
           <div className="mt-2.5 rounded-xl border border-slate-300 px-3 dark:border-slate-700">
             <LoQueVioLaIA cambios={lista} />
           </div>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            Lo dice la IA mirando las imágenes y puede equivocarse: si ya está, mandalo igual.
-          </p>
         </section>
+      )}
+
+      {/* Lo que encontró en la pieza (24/11/2026): lo mismo que ve quien aprueba. */}
+      {observaciones.length > 0 && (
+        <section aria-labelledby="lo-que-encontro-la-ia">
+          <h4 id="lo-que-encontro-la-ia" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Lo que encontró la IA en la pieza{' '}
+            <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({observaciones.length})</span>
+          </h4>
+          <ul className="mt-2.5 space-y-2">
+            {observaciones.map((o, i) => (
+              <ObservacionAntesDeMandar key={o.id ?? i} observacion={o} fotos={fotos} />
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {(lista.length > 0 || observaciones.length > 0) && (
+        <p className="text-xs text-slate-600 dark:text-slate-400">
+          Lo dice la IA mirando las imágenes y puede equivocarse: si ya está, mandalo igual.
+        </p>
       )}
 
       {/* El espacio para explicar (Ivan: "estaría bueno que le des el
@@ -694,5 +740,59 @@ function AvisoAntesDeMandar({ faltan, lista, porQue, onPorQue }: {
         </label>
       )}
     </section>
+  )
+}
+
+const TIPOS = TIPO_OBSERVACION as Record<string, string>
+
+/**
+ * Una cosa que encontró la IA en la pieza, antes de mandar (24/11/2026): la
+ * miniatura de su imagen con un punto rojo donde la vio (si la ubicó), la
+ * gravedad («Importante» en rojo, «A revisar» en ámbar), qué es y lo que dice
+ * la IA. Lo mismo que ve quien aprueba (PanelRevisionIA).
+ */
+function ObservacionAntesDeMandar({ observacion: o, fotos }: { observacion: ObservacionDelControl; fotos: string[] }) {
+  const importante = o.gravedad === 'importante'
+  const vista = o.imagen != null ? fotos[o.imagen - 1] : undefined
+  const punto = conLugar(o, fotos.length)
+  return (
+    <li className={`flex items-start gap-3 rounded-xl border p-2.5 ${
+      importante
+        ? 'border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10'
+        : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
+    }`}>
+      {vista && (
+        // La miniatura del tamaño de la imagen (sin bandas), así el punto cae donde la vio.
+        <span className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-black/10 dark:ring-white/15">
+          <span className="relative inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element -- vista previa local (blob:) */}
+            <img src={vista} alt={`Imagen ${o.imagen}`} className="block max-h-[4rem] max-w-[4rem] rounded-lg" />
+            {punto && (
+              <span
+                aria-hidden
+                style={{ left: `${(o.x as number) * 100}%`, top: `${(o.y as number) * 100}%` }}
+                className="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-600 ring-2 ring-white"
+              />
+            )}
+          </span>
+          {/* El número, en la esquina de la caja: sobre la imagen tapaba el punto. */}
+          <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 text-[10px] font-bold leading-4 text-white">{o.imagen}</span>
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-sm leading-snug text-slate-900 dark:text-slate-100">
+          <span className={`mr-1.5 inline-block whitespace-nowrap rounded-full px-2 py-px align-[1px] text-[11px] font-bold leading-4 ${
+            importante ? 'bg-rose-600 text-white' : 'bg-amber-200 text-amber-950 dark:bg-amber-400/25 dark:text-amber-100'
+          }`}>
+            {importante ? 'Importante' : 'A revisar'}
+          </span>
+          <span className="font-semibold">{TIPOS[o.tipo] ?? 'Otro'}</span>
+          {' · '}{o.texto}
+        </p>
+        <p className="mt-0.5 text-xs text-slate-700 dark:text-slate-300">
+          {o.imagen != null && vista ? `En la imagen ${o.imagen}${punto ? ' (el punto rojo)' : ''}` : 'En la pieza en general'}
+        </p>
+      </div>
+    </li>
   )
 }

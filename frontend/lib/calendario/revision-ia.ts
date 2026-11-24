@@ -8,8 +8,9 @@
 // servidor: los aprobadores y quien gestiona, nunca quien entrega.
 //
 // Acá está cómo se muestra. Es una ayuda para el aprobador, no una decisión:
-// nada de lo que dice la IA le llega a la agencia salvo que el aprobador lo
-// convierta en una marca suya.
+// después de entregar, a la agencia le llega solo lo que el aprobador
+// convierta en una marca suya. Antes de entregar, la agencia ve lo mismo que
+// encontró la IA en su control previo (24/11/2026, ver control-previo.ts).
 //
 // Desde el 19/11/2026 dice además, de cada marca de la ronda anterior, si en
 // la pieza nueva se ve hecho (Ivan: "debería de hacerlo"): va al lado de cada

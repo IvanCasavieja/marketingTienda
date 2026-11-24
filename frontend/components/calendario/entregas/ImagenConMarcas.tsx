@@ -15,12 +15,14 @@ export type Pin = { clave: string; numero: number; x: number; y: number; tono: T
 // Las marcas van todas del color de la marca (Ivan, 19/11/2026: "está todo
 // muy colorinche (…) tendría que ser algo mucho más minimalista"). Antes cada
 // tipo tenía su color (rojo, ámbar, verde) y la imagen parecía un semáforo.
-// La sugerencia de la IA sigue en violeta porque NO es una marca.
+// La sugerencia de la IA va de otro color porque NO es una marca: rojo desde
+// el 24/11/2026, como lo que encontró la IA en el costado (Ivan: "que sea
+// azul da impresión de estar bien"); antes, violeta.
 const TONO: Record<TonoPin, string> = {
   nuevo: 'bg-brand-600 text-white ring-white',
   cambio: 'bg-brand-600 text-white ring-white',
   corregida: 'bg-brand-600 text-white ring-white',
-  ia: 'bg-violet-600 text-white ring-violet-200 dark:ring-violet-300/60',
+  ia: 'bg-rose-600 text-white ring-rose-200 dark:ring-rose-300/60',
 }
 
 /**
@@ -103,7 +105,7 @@ export function ImagenConMarcas({
             }`}
           >
             {/* La sugerencia de la IA late, para encontrarla en la pieza. */}
-            {p.tono === 'ia' && <span className="absolute inset-0 animate-ping rounded-full bg-violet-500/40" aria-hidden />}
+            {p.tono === 'ia' && <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" aria-hidden />}
             {p.tono === 'corregida' ? <Check className="h-4 w-4" strokeWidth={3} />
               : p.tono === 'ia' ? <Sparkles className="relative h-4 w-4" /> : p.numero}
           </button>

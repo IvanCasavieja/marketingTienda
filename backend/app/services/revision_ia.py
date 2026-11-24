@@ -36,8 +36,10 @@ Lo que NO hace, a propósito:
   si corrige o manda igual. Desde el 21/11/2026 también en la primera
   entrega, sobre cada punto del pedido inicial (Ivan: "No lo hace en la
   primera entrega, eso está mal. La primera entrega debería compararse
-  contra lo pedido inicialmente"). Las observaciones siguen siendo del
-  equipo. Ver `controlar_antes_de_entregar`, al final.
+  contra lo pedido inicialmente"). Desde el 24/11/2026 ve también las
+  observaciones de ese control, las mismas que vería quien aprueba, y el
+  control corre aunque no haya nada pedido (ver «Lo mismo para la agencia»,
+  abajo). Ver `controlar_antes_de_entregar`, al final.
 - No se paga dos veces: una fila por versión (la clave es la versión), y se
   reclama antes de llamar a la IA. Si la versión se entrega con las mismas
   imágenes de un control previo, su revisión sale de ese control.
@@ -82,8 +84,9 @@ de salida cada uno, más lo que razone el modelo (entre US$0,002 y 0,015); una
 tarjeta del tablero trae 1 a 3 puntos (medio centavo; lo tildado con sus
 medidas ya no es un punto desde el 21/11/2026, ver abajo). Con ~65 primeras
 rondas por mes, entre 30 centavos y un dólar más por mes. Y el control antes
-de entregar ahora corre en casi todas las entregas, no solo en las que
-vuelven con cambios: si se entregan las mismas imágenes, la revisión sale del
+de entregar ahora corre en todas las entregas con imágenes (desde el
+24/11/2026 también sin nada pedido), no solo en las que vuelven con
+cambios: si se entregan las mismas imágenes, la revisión sale del
 control y no se paga de nuevo. Se paga dos veces (4 a 8 centavos más) cuando
 la entrega trae además link o ZIP (eso el control no lo vio y la revisión lo
 mira al entregar), cuando se toca «Mandar sin esperar» y cuando, después del
@@ -186,6 +189,22 @@ arreglos:
   repetidas se sacan solo dentro de la misma imagen, y el tope pasó de 10 a
   MAX_OBSERVACIONES. Cada repetida suma ~100 tokens de salida (US$0,002).
 
+**Lo mismo para la agencia (24/11/2026).** Ivan: "la IA sigue encontrando
+cosas del lado de Tienda que no encuentra del lado de la agencia (...) como
+que la acción era TiendaChecks y le mandaron una placa de Ciberofertas". Eso
+era una observación (otra campaña, otro mundo, un error de ortografía), y a
+la agencia el control antes de entregar le mostraba solo lo pedido; si no
+había nada pedido, ni corría. Ahora:
+
+- El control corre siempre que haya imágenes. Sin nada pedido, es la
+  revisión de siempre sin <cambios_pedidos> (la misma que correría al
+  entregar, así que se reusa igual y no se paga dos veces).
+- A la agencia le vuelven también las observaciones, las mismas que vería
+  quien aprueba si entrega esas imágenes, con el número de imagen y el
+  lugar (`observaciones_para_la_agencia`). Decide ella: "Corregir" o
+  "Mandar igual". La lista de quien aprueba (descartar, hacer marca) sigue
+  siendo solo del equipo (`puede_ver`).
+
 **Lo que viene en un ZIP o en un link (19/11/2026).** Ivan: "¿Qué pasaría si
 en vez de una imagen me hubieran pasado una carpeta o un link? (…) vos
 directamente como plataforma ya descargués todas las cosas, hagas todo el
@@ -222,7 +241,7 @@ import io
 import logging
 import re
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal, Optional
 from zoneinfo import ZoneInfo
@@ -943,7 +962,11 @@ def puede_ver(
     """Quién ve lo que encontró la IA: los aprobadores de la cadena y quien
     gestiona las tareas (`calendario.tareas`). Nunca quien entrega la pieza
     (el responsable de la tarea, ni quien subió esa versión): para la agencia
-    se leería como una decisión, y no lo es. Con la revisión apagada, nadie."""
+    se leería como una decisión, y no lo es. Con la revisión apagada, nadie.
+
+    Esto es la lista de quien aprueba (descartar, hacer marca). Lo que vio la
+    IA antes de entregar, la agencia lo ve en su propio control previo
+    (`observaciones_para_la_agencia`, 24/11/2026)."""
     if not activa or usuario_id is None:
         return False
     if usuario_id in (responsable_id, subida_por_id):
@@ -1122,8 +1145,7 @@ def cambios_para_la_agencia(cambios: list | None, ronda: RondaAnterior | None) -
     """Lo que ve la agencia de su control previo: marca por marca (o, en la
     primera entrega, punto por punto del pedido inicial), el número, lo que
     se le pidió, el veredicto de la IA y su nota, en el orden de las marcas.
-    Nada más: las observaciones (ortografía, legales, logo, QR) las ve solo
-    el equipo. Pura.
+    Las observaciones van aparte (`observaciones_para_la_agencia`). Pura.
 
     Los "no_aplica" no van (21/11/2026): ese punto no era un pedido sobre la
     pieza («Gracias!», «Para el viernes»), así que ni se muestra ni dispara
@@ -1140,6 +1162,43 @@ def cambios_para_la_agencia(cambios: list | None, ronda: RondaAnterior | None) -
         salida.append({
             "numero": c["numero"], "texto": textos[c["numero"]], "veredicto": c["veredicto"],
             "nota": c.get("nota") or "",
+        })
+    return salida
+
+
+def observaciones_para_la_agencia(observaciones: list | None) -> list[dict]:
+    """Lo que encontró la IA en las imágenes que la agencia está por entregar,
+    para su control previo (24/11/2026, Ivan: "la IA sigue encontrando cosas
+    del lado de Tienda que no encuentra del lado de la agencia", como una
+    placa de Ciberofertas en una acción de TiendaChecks). Son las mismas
+    observaciones que vería quien aprueba si entrega esas imágenes, en el
+    mismo orden (las importantes primero):
+
+        [{id, tipo, texto, gravedad, imagen, x, y}]
+
+    `imagen`: el número de la imagen (1, 2...) en el orden en que las va a
+    entregar, o None si la IA no la ubicó en una; `x`, `y` (0 a 1), dónde,
+    solo si hay imagen. Nada de lo que es de quien aprueba (descartada,
+    marca, quién). Lo que no tenga texto se descarta. Pura."""
+    salida: list[dict] = []
+    for o in observaciones or []:
+        if not isinstance(o, dict) or not isinstance(o.get("texto"), str) or not o["texto"].strip():
+            continue
+        numero = None
+        imagen = o.get("imagenId")
+        if isinstance(imagen, str) and imagen.startswith(IMAGEN_PREVIA):
+            try:
+                numero = int(imagen[len(IMAGEN_PREVIA):])
+            except ValueError:
+                numero = None
+            if numero is not None and numero < 1:
+                numero = None
+        x, y = o.get("x"), o.get("y")
+        con_lugar = numero is not None and isinstance(x, (int, float)) and isinstance(y, (int, float))
+        salida.append({
+            "id": o.get("id"), "tipo": o.get("tipo") if o.get("tipo") in TIPOS else "otro", "texto": o["texto"],
+            "gravedad": o.get("gravedad") if o.get("gravedad") in GRAVEDADES else "a_revisar",
+            "imagen": numero, "x": x if con_lugar else None, "y": y if con_lugar else None,
         })
     return salida
 
@@ -1828,17 +1887,22 @@ async def revisar_version(
 #   después de un pedido de cambios. Ivan: "No lo hace en la primera
 #   entrega, eso está mal. La primera entrega debería compararse contra lo
 #   pedido inicialmente": ahora, en la primera ronda de una fase, se
-#   controla el pedido inicial (`pedido_inicial`). Si no hay nada que
-#   controlar (un pedido vacío), 'sin-pedido' sin llamar a la IA.
+#   controla el pedido inicial (`pedido_inicial`). Hasta el 24/11/2026, si no
+#   había nada que controlar (un pedido vacío), contestaba 'sin-pedido' sin
+#   llamar a la IA; ahora mira igual la pieza (ortografía, mundo, campaña,
+#   legales, precio, QR), como la revisión de siempre.
 # - Es la misma revisión de siempre (`pedir_revision`, el mismo pedido y el
 #   mismo esquema), sobre imágenes que todavía no son una versión. Se guarda
 #   entera en `calendario_controles_previos` (0086) con la huella de las
 #   imágenes, y cuenta para el tope del día (`hechas_hoy`).
-# - A la agencia vuelve SOLO el veredicto de cada marca o punto pedido
-#   (`cambios_para_la_agencia`), y si es del pedido inicial (`inicial`, para
-#   los textos de la pantalla). Los "no_aplica" no (21/11/2026: no eran
-#   pedidos sobre la pieza). Las observaciones (ortografía, legales, logo,
-#   QR) siguen siendo del equipo: `puede_ver` no cambia.
+# - A la agencia vuelve el veredicto de cada marca o punto pedido
+#   (`cambios_para_la_agencia`), si es del pedido inicial (`inicial`, para
+#   los textos de la pantalla) y, desde el 24/11/2026, las observaciones
+#   (`observaciones_para_la_agencia`): las mismas que vería quien aprueba.
+#   Ivan: "la IA sigue encontrando cosas del lado de Tienda que no encuentra
+#   del lado de la agencia". Los "no_aplica" no (21/11/2026: no eran pedidos
+#   sobre la pieza). La lista de quien aprueba sigue siendo del equipo:
+#   `puede_ver` no cambia.
 # - Si la agencia entrega exactamente esas imágenes (misma huella, misma
 #   fase y ronda, sin link ni ZIP, dentro de VIGENCIA_DEL_CONTROL), la
 #   revisión de la versión sale del control (`reusar_control`) y no se le
@@ -1862,19 +1926,23 @@ _CONTROLES_A_LA_VEZ = asyncio.Semaphore(2)
 
 @dataclass(frozen=True)
 class ResultadoDelControl:
-    # 'sin-pedido' (no hay nada que controlar: ni cambios pedidos ni, en la
-    # primera ronda, un pedido inicial cargado), 'listo' o 'no-disponible'
-    # (sin clave, apagada, tope, falla o tardó demasiado).
+    # 'sin-pedido' (no hay imágenes que mirar, o ahora no se podría entregar:
+    # el nombre quedó de cuando sin nada pedido no se miraba, hasta el
+    # 24/11/2026), 'listo' o 'no-disponible' (sin clave, apagada, tope, falla
+    # o tardó demasiado).
     estado: str
     cambios: list
     control_id: str | None = None
     # Si lo controlado es el pedido inicial (la primera entrega, 21/11/2026)
     # y no los cambios de la ronda anterior: cambian los textos de la pantalla.
     inicial: bool = False
+    # Lo que encontró la IA en las imágenes (24/11/2026), como lo ve la
+    # agencia (`observaciones_para_la_agencia`).
+    observaciones: list = field(default_factory=list)
 
     def para_la_agencia(self) -> dict:
         return {"estado": self.estado, "cambios": self.cambios, "controlId": self.control_id,
-                "inicial": self.inicial}
+                "inicial": self.inicial, "observaciones": list(self.observaciones)}
 
 
 async def controlar_antes_de_entregar(
@@ -1885,7 +1953,9 @@ async def controlar_antes_de_entregar(
     tipo) de las que la persona va a entregar, en su orden; `ronda`: la que
     va a entregar. En la primera ronda de la fase se controla el pedido
     inicial (21/11/2026), el mismo que controla la revisión de siempre
-    (`cargar_version`). NUNCA levanta: si algo sale mal, 'no-disponible'."""
+    (`cargar_version`). Sin nada pedido (`anterior` None) se mira igual la
+    pieza (24/11/2026): vuelven solo las observaciones. NUNCA levanta: si
+    algo sale mal, 'no-disponible'."""
     from types import SimpleNamespace
 
     from sqlalchemy import text
@@ -1896,6 +1966,8 @@ async def controlar_antes_de_entregar(
     try:
         if not activa():
             return no_disponible
+        if not imagenes:
+            return ResultadoDelControl("sin-pedido", [])
         anterior = await ronda_anterior_de(
             db, SimpleNamespace(fase_id=fase.id, ronda=ronda),
             # Lo mismo que `cargar_version`, sin lo tildado (21/11/2026).
@@ -1903,8 +1975,6 @@ async def controlar_antes_de_entregar(
                 entrega.tipo_pieza, entrega.brief, fase.motivo, tildado=lo_tildado(tarea.tipo, tarea.opciones),
             ),
         )
-        if anterior is None or not imagenes:
-            return ResultadoDelControl("sin-pedido", [])
         modelo = settings.MODELO_IA_REVISION
         contexto = Contexto(
             tipo_pieza=entrega.tipo_pieza, brief=dict(entrega.brief or {}), mundo=barra.mundo,
@@ -1952,11 +2022,12 @@ async def controlar_antes_de_entregar(
             return no_disponible
         await _terminar_control(db, control_id, estado="lista", modelo=modelo, uso=uso, usuario_id=usuario_id,
                                 observaciones=observaciones, cambios=cambios)
+        inicial = bool(anterior and anterior.inicial)
         logger.info("revision_ia: control previo %s%s, %d de %d marca(s) o punto(s) con veredicto, %d observación(es)",
-                    control_id, " (pedido inicial)" if anterior.inicial else "", len(cambios), len(anterior.marcas),
-                    len(observaciones))
+                    control_id, " (pedido inicial)" if inicial else "", len(cambios),
+                    len(anterior.marcas) if anterior else 0, len(observaciones))
         return ResultadoDelControl("listo", cambios_para_la_agencia(cambios, anterior), control_id,
-                                   inicial=anterior.inicial)
+                                   inicial=inicial, observaciones=observaciones_para_la_agencia(observaciones))
     except Exception as exc:
         logger.error("revision_ia: falló el control previo de la tarea %s — %s",
                      getattr(tarea, "id", "?"), exc, exc_info=True)

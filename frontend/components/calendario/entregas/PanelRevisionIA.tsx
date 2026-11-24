@@ -11,18 +11,22 @@ import {
  * Lo que encontró la IA en la pieza, en el Revisor.
  *
  * Es una ayuda para quien aprueba, no una decisión, y se dice así: la IA se
- * puede equivocar, decide la persona, y a la agencia no le llega nada de esta
- * lista (solo las marcas que la persona haga). Por eso cada observación tiene
- * dos salidas y ninguna es automática: "Hacer marca" (pasa a ser una marca
+ * puede equivocar y decide la persona. Por eso cada observación tiene dos
+ * salidas y ninguna es automática: "Hacer marca" (pasa a ser una marca
  * normal, del aprobador, que puede corregir antes de mandar) o "Descartar".
+ * La agencia vio lo mismo antes de mandar (su control previo, 24/11/2026);
+ * esta lista, con lo que se descartó o se hizo marca, es del equipo.
  *
- * Tocar una observación muestra en la imagen dónde la vio la IA (un pin
- * violeta con chispas, que no es una marca).
+ * Tocar una observación muestra en la imagen dónde la vio la IA (un pin rojo
+ * con chispas, que no es una marca).
  *
- * No aparece sola (Ivan, 19/11/2026: "quizás está demasiado inteligencia
- * artificial y puede llegar a provocar confusión"): el Revisor la muestra
- * recién cuando se toca "Ver lo que encontró la IA", y acá hay una X para
- * cerrarla. Cuándo se calcula no cambió: la hace el servidor al entregar.
+ * Se ve abierta, sin tocar nada, en el costado junto con lo que falta y lo
+ * que se pidió (24/11/2026, Ivan: "siempre se debe abrir por defecto lo que
+ * la IA detecta, no esperar que yo presione arriba"). Del 19/11/2026 hasta
+ * ese día había que tocar "Ver lo que encontró la IA" (Ivan: "quizás está
+ * demasiado inteligencia artificial"). El borde lo pone el Revisor, que la
+ * junta con lo demás. Lo que está mal va en rojo y lo dudoso en ámbar (Ivan:
+ * "que sea azul da impresión de estar bien"); antes era violeta.
  *
  * Desde el 19/11/2026 la IA mira también lo que vino en un ZIP o detrás del
  * link: esas observaciones dicen de qué archivo son (no se ven acá, no se
@@ -34,7 +38,7 @@ import {
  * "Pasar al comentario".
  */
 export function PanelRevisionIA({
-  revision, imagenes, elegida, convertidas, pasadas, deshabilitado, onElegir, onConvertir, onDeshacer, onDescartar, onCerrar,
+  revision, imagenes, elegida, convertidas, pasadas, deshabilitado, onElegir, onConvertir, onDeshacer, onDescartar,
 }: {
   revision: RevisionIA | null
   imagenes: { id: string; orden: number }[]
@@ -48,7 +52,6 @@ export function PanelRevisionIA({
   onConvertir: (o: ObservacionIA) => void
   onDeshacer: (o: ObservacionIA) => void
   onDescartar: (o: ObservacionIA, descartada: boolean) => Promise<void>
-  onCerrar: () => void
 }) {
   const [ocupada, setOcupada] = useState<string | null>(null)
 
@@ -56,8 +59,8 @@ export function PanelRevisionIA({
 
   if (revision.estado === 'pendiente') {
     return (
-      <p id="revision-ia" role="status" className="flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600 dark:text-violet-300" aria-hidden />
+      <p id="revision-ia" role="status" className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-rose-600 dark:text-rose-300" aria-hidden />
         La IA está mirando la pieza (ortografía, mundo, legales, precio, QR)…
       </p>
     )
@@ -76,6 +79,8 @@ export function PanelRevisionIA({
   // mismo con lo que se pidió sin marcas, que se ve en su caja (21/11/2026).
   const conCambiosPedidos = cambiosPorMarca(revision).size > 0 || puntosParaMostrar(revision) != null
   const sinImagenes = imagenes.length === 0
+  // Algo para mirar todavía abierto: el título va en rojo.
+  const hayAbiertas = obs.some(o => o.estado === 'nueva')
   const numeroDeImagen = (id: string | null) => {
     const i = imagenes.findIndex(im => im.id === id)
     return i === -1 ? null : i + 1
@@ -87,34 +92,23 @@ export function PanelRevisionIA({
   }
 
   return (
-    <section
-      id="revision-ia"
-      aria-labelledby="revision-ia-titulo"
-      className="rounded-2xl border border-slate-300 p-3 dark:border-slate-700"
-    >
-      <div className="flex items-start gap-2.5">
-        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden />
+    <section id="revision-ia" aria-labelledby="revision-ia-titulo">
+      <div className="flex items-start gap-2">
+        {hayAbiertas
+          ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
+          : <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />}
         <div className="min-w-0 flex-1">
-          <h4 id="revision-ia-titulo" className="text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">
+          <h4 id="revision-ia-titulo" className={`text-sm font-bold leading-snug ${hayAbiertas ? 'text-rose-800 dark:text-rose-200' : 'text-slate-900 dark:text-slate-100'}`}>
             {nadaMirado && obs.length === 0 ? 'La IA no pudo mirar la pieza' : tituloRevisionIA(obs, conCambiosPedidos)}
           </h4>
-          <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-xs leading-snug text-slate-600 dark:text-slate-400">
             {nadaMirado && obs.length === 0
               ? 'No pudo abrir lo que entregó la agencia (abajo, el porqué): revisala vos en el link.'
               : obs.length === 0
                 ? 'Miró ortografía, mundo, legales, precio y QR. Es una ayuda: igual mirala vos.'
-                : 'Es una ayuda y se puede equivocar: decidís vos. La agencia no ve esta lista, solo lo que pases a tus marcas o al comentario.'}
+                : 'Es una ayuda y se puede equivocar: decidís vos. A la agencia le llega lo que pases a tus marcas o al comentario.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onCerrar}
-          aria-label="Cerrar lo que encontró la IA"
-          title="Cerrar"
-          className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:-mr-1.5 sm:-mt-1.5 sm:h-9 sm:w-9"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </div>
 
       {obs.length > 0 && (
@@ -128,11 +122,17 @@ export function PanelRevisionIA({
             const cerrada = o.estado !== 'nueva' || local != null || pasada
             // De un archivo del ZIP o del link (no se ve acá): se dice cuál.
             const archivo = archivoDe(o)
+            // Rojo lo importante, ámbar lo dudoso; lo que ya se resolvió, neutro.
+            const tono = cerrada
+              ? 'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900'
+              : o.gravedad === 'importante'
+                ? 'border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10'
+                : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
             return (
               <li
                 key={o.id}
-                className={`rounded-xl border p-2.5 transition ${
-                  esElegida ? 'border-violet-400 ring-2 ring-violet-200 dark:border-violet-400/70 dark:ring-violet-500/30' : 'border-slate-200 dark:border-slate-700'
+                className={`rounded-xl border p-2.5 transition ${tono} ${
+                  esElegida ? 'ring-2 ring-rose-400 dark:ring-rose-400/70' : ''
                 } ${o.estado === 'descartada' ? 'opacity-60' : ''}`}
               >
                 <button
@@ -144,11 +144,11 @@ export function PanelRevisionIA({
                   {/* La gravedad va adentro del renglón: en la columna angosta
                       (el teléfono, o al lado de la imagen en la notebook) el
                       texto sigue abajo y no queda una columna vacía. */}
-                  <span className={`text-sm leading-snug text-slate-800 dark:text-slate-200 ${o.estado === 'descartada' ? 'line-through decoration-slate-400' : ''}`}>
+                  <span className={`text-sm leading-snug text-slate-900 dark:text-slate-100 ${o.estado === 'descartada' ? 'line-through decoration-slate-400' : ''}`}>
                     <span className={`mr-1.5 inline-block rounded-full px-1.5 py-px align-[1px] text-[11px] font-bold no-underline ${
                       o.gravedad === 'importante'
-                        ? 'bg-violet-100 text-violet-900 dark:bg-violet-500/20 dark:text-violet-100'
-                        : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-amber-200 text-amber-950 dark:bg-amber-400/25 dark:text-amber-100'
                     }`}>
                       {o.gravedad === 'importante' ? 'Importante' : 'A revisar'}
                     </span>
@@ -165,7 +165,7 @@ export function PanelRevisionIA({
                       <span className="min-w-0 break-words">En {archivo} ({o.origen === 'link' ? 'del link' : 'del ZIP'})</span>
                     </span>
                   ) : !cerrada && (
-                    <span className="mt-1 flex items-center gap-1 text-xs font-medium text-violet-700 dark:text-violet-300">
+                    <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-800 dark:text-rose-200">
                       {conLugar ? (
                         <><MapPin className="h-3.5 w-3.5" aria-hidden /> {esElegida ? 'Marcado en la imagen' : 'Tocá para ver dónde'}{nImagen ? ` (imagen ${nImagen})` : ''}</>
                       ) : 'Sin un lugar exacto en la imagen'}
@@ -180,7 +180,7 @@ export function PanelRevisionIA({
                         type="button"
                         onClick={() => onConvertir(o)}
                         disabled={deshabilitado}
-                        className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-violet-600 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-violet-700 active:scale-[.98] disabled:opacity-50"
+                        className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-rose-700 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-rose-800 active:scale-[.98] disabled:opacity-50"
                       >
                         {sinImagenes
                           ? <><MessageSquarePlus className="h-3.5 w-3.5" aria-hidden /> Pasar al comentario</>
@@ -190,7 +190,7 @@ export function PanelRevisionIA({
                         type="button"
                         onClick={() => void descartar(o, true)}
                         disabled={deshabilitado || ocupada === o.id}
-                        className="flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                        className="flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-slate-700 transition hover:bg-white/70 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
                       >
                         {ocupada === o.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" aria-hidden />} Descartar
                       </button>

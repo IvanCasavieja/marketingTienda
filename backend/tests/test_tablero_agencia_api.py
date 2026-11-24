@@ -2345,10 +2345,13 @@ def test_la_ia_recibe_lo_que_se_pidio_en_la_ronda_anterior_y_lo_ve_solo_quien_ap
 def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
     """Ivan (20/11/2026): "que a la agencia, cuando va a subir los archivos,
     la IA le diga 'che, pará, acá faltan estas cositas de los cambios'".
-    Antes de mandar, con las mismas imágenes: a la agencia vuelve solo el
-    veredicto de cada marca pedida; si entrega exactamente esas, la revisión
-    del aprobador sale de ahí (no se paga dos veces); si cambió algo, corre la
-    de siempre. Sin IA, 'no-disponible' (la pantalla manda igual)."""
+    Antes de mandar, con las mismas imágenes: a la agencia vuelve el
+    veredicto de cada marca pedida y, desde el 24/11/2026, lo que encontró la
+    IA en la pieza, lo mismo que ve quien aprueba (Ivan: "la IA sigue
+    encontrando cosas del lado de Tienda que no encuentra del lado de la
+    agencia"); si entrega exactamente esas, la revisión del aprobador sale de
+    ahí (no se paga dos veces); si cambió algo, corre la de siempre. Sin IA,
+    'no-disponible' (la pantalla manda igual)."""
     import json
 
     import ia_simulada as sim
@@ -2417,7 +2420,7 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         # Solo quien entrega la pide.
         assert (await lider.post(control, files=solo_imagenes)).status_code == 403
 
-        # Vuelve: antes de mandar, la IA dice marca por marca. A la agencia, solo eso.
+        # Vuelve: antes de mandar, la IA dice marca por marca, y lo que encontró en la pieza.
         r = await a1.post(control, data={"comentario": "Corregí la tilde"}, files=solo_imagenes)
         assert r.status_code == 200, r.text
         cuerpo = r.json()
@@ -2427,7 +2430,10 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
              "nota": "Sigue diciendo «Valido», sin tilde."},
             {"numero": 2, "texto": "Agrandar el -40%", "veredicto": "hecho", "nota": "El -40% ahora ocupa más lugar."},
         ]
-        assert "observaciones" not in json.dumps(cuerpo) and "OFERTA" not in json.dumps(cuerpo)
+        [para_la_agencia] = cuerpo["observaciones"]
+        assert {k: v for k, v in para_la_agencia.items() if k != "id"} == {
+            "tipo": "ortografia", "texto": "Dice «Valido»: debería ser «Válido».", "gravedad": "importante",
+            "imagen": 2, "x": 0.375, "y": 0.997}
         assert len(api.pedidos) == 1
         texto = api.pedidos[0]["messages"][0]["content"][-1]["text"]
         assert "<cambios_pedidos>" in texto and "Falta la tilde en «Válido»" in texto and "ronda 2" in texto
@@ -2443,6 +2449,8 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         assert revision["estado"] == "lista"
         [obs] = revision["observaciones"]
         assert obs["imagenId"] == de_v2[1]["id"] and (obs["x"], obs["y"]) == (0.375, 0.997)
+        # La misma que vio la agencia antes de mandar, en la misma imagen y el mismo lugar.
+        assert (obs["id"], obs["texto"]) == (para_la_agencia["id"], para_la_agencia["texto"])
         assert [(c["numero"], c["veredicto"]) for c in revision["cambiosPedidos"]] == [(1, "falta"), (2, "hecho")]
         # Lo mismo que vio la agencia, marca por marca, al lado de cada una;
         # no hay puntos aparte (eso es del pedido inicial o del comentario).
@@ -2478,7 +2486,7 @@ def test_la_ia_le_avisa_a_la_agencia_antes_de_entregar(monkeypatch):
         api.respuestas.append(sim.mensaje([sim.texto("")], stop_reason="refusal", entrada=900, salida=10))
         r = await a1.post(control, files=solo_imagenes)
         assert r.status_code == 200 and r.json() == {
-            "estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False}, r.text
+            "estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False, "observaciones": []}, r.text
         async with d.Sesion() as s:
             # Todo corre en una transacción: created_at es igual en todas; se
             # busca por descarte de los dos de antes.
@@ -2652,14 +2660,14 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
     aprueba ve los mismos puntos, con lo mismo que vio la agencia (desde la
     prueba de Ivan del 21/11/2026; antes no los veía, no son marcas). La fase
     que se abre devolviendo la pieza aprobada controla primero lo que se
-    pidió cambiar. Con el pedido vacío, 'sin-pedido' y la IA ni se entera.
+    pidió cambiar. Con el pedido vacío, hasta el 24/11/2026 era 'sin-pedido'
+    y la IA ni se enteraba; ahora mira igual la pieza y a la agencia le
+    vuelve lo que encontró, lo mismo que vería quien aprueba.
 
     Sin ruido (21/11/2026, más tarde): lo tildado con sus medidas no es un
     punto (lo controla la plataforma), un «Gracias!» tampoco, y un plazo
     («Para el viernes», que la IA simulada contesta "no_aplica") queda
     guardado pero no le llega a la agencia."""
-    import json
-
     import ia_simulada as sim
 
     from app.core.config import settings
@@ -2706,8 +2714,10 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
             (1, "CTA: Ver ofertas", "hecho"), (2, "Que se vea bien el logo.", "falta"), (3, "Fondo rojo", "dudoso"),
         ]
         assert cuerpo["cambios"][1]["nota"] == "No se ve en la pieza."
-        # A la agencia, solo eso: la observación de ortografía es del equipo.
-        assert "OFERTA" not in json.dumps(cuerpo, ensure_ascii=False)
+        # Y lo que encontró en la pieza (24/11/2026): la de ortografía, que
+        # antes veía solo el equipo.
+        assert [(o["tipo"], o["texto"], o["imagen"]) for o in cuerpo["observaciones"]] == [
+            ("ortografia", "Dice «OFERAT»: debería ser «OFERTA».", 1)]
         assert len(pedidos) == 1
         texto = pedidos[0]["messages"][0]["content"][-1]["text"]
         assert "Es la primera entrega" in texto and "- Punto 1: CTA: Ver ofertas" in texto and "- Marca" not in texto
@@ -2750,15 +2760,18 @@ def test_en_la_primera_entrega_la_ia_controla_el_pedido_inicial(monkeypatch):
         assert [c["texto"] for c in r.json()["cambios"]][:3] == ["Fondo verde", "Sacar el logo viejo", "CTA: Ver ofertas"]
         assert len(pedidos) == 2
 
-        # Con el pedido vacío no hay nada que controlar: 'sin-pedido', sin llamar a la IA.
+        # Con el pedido vacío no hay puntos que controlar, pero la IA mira
+        # igual la pieza (24/11/2026): vuelve lo que encontró.
         otra, _ = await _pedir_banners(d, d.lider)
         r = await lider.put(f"/calendario/tareas/{otra}/entregas", json={
             "tipoPieza": "banner", "aprobadores": [d.lider.id], "fases": [{"nombre": "Entrega"}]})
         assert r.status_code == 200, r.text
         r = await a1.post(f"/calendario/tareas/{otra}/control-previo", files=solo)
-        assert r.status_code == 200 and r.json() == {
-            "estado": "sin-pedido", "cambios": [], "controlId": None, "inicial": False}, r.text
-        assert len(pedidos) == 2
+        assert r.status_code == 200, r.text
+        sin_pedido = r.json()
+        assert (sin_pedido["estado"], sin_pedido["cambios"], sin_pedido["inicial"]) == ("listo", [], False)
+        assert sin_pedido["controlId"] and [o["tipo"] for o in sin_pedido["observaciones"]] == ["ortografia"]
+        assert len(pedidos) == 3 and "<cambios_pedidos>" not in pedidos[2]["messages"][0]["content"][-1]["text"]
     correr(prueba)
 
 

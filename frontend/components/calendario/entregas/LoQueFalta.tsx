@@ -7,10 +7,10 @@ import { loQueFaltaba, primeras } from '@/lib/calendario/piezas'
 
 /**
  * Las piezas del pedido que no venían en una ronda, y por qué (21/11/2026).
- * La ven quien aprueba (arriba al revisar) y la agencia (en la ficha de la
- * ronda). Lo que falta lo vio la plataforma por las medidas al entregar, y el
- * porqué lo escribió quien entregó (lib/calendario/piezas.ts). Si no faltaba
- * nada, no se muestra.
+ * La ven quien aprueba (al revisar, en el costado) y la agencia (en la ficha
+ * de la ronda). Lo que falta lo vio la plataforma por las medidas al
+ * entregar, y el porqué lo escribió quien entregó (lib/calendario/piezas.ts).
+ * Si no faltaba nada, no se muestra.
  *
  * Era una línea en ámbar con todo seguido («Faltan 10 piezas del pedido:
  * Header (web), Slider fila (normal) (mobile), Carrito, … · La agencia dice:
@@ -18,12 +18,19 @@ import { loQueFaltaba, primeras } from '@/lib/calendario/piezas'
  * "no tiene un formato bonito de ver ni nada"). Ahora es un bloque compacto:
  * el título con la cantidad, las piezas como chips que se acomodan en varias
  * líneas (si son muchas, las primeras y «Ver todas») y, en otro renglón, lo
- * que dijo quien entregó. El ámbar queda solo en el ícono.
+ * que dijo quien entregó.
+ *
+ * En rojo desde el 24/11/2026 (Ivan: "debería tener un color más rojito,
+ * colorado"): es algo que falta. `enPanel`: va adentro del panel del
+ * costado del Revisor, junto con lo de la IA, sin borde propio (Ivan:
+ * "aparece un cartel arriba y lo otro en el costado: debería aparecer todo
+ * en el costado").
  */
-export function LoQueFalta({ detalle, version, className = '' }: {
+export function LoQueFalta({ detalle, version, className = '', enPanel = false }: {
   detalle: DetalleEntregas
   version: Version
   className?: string
+  enPanel?: boolean
 }) {
   const [todas, setTodas] = useState(false)
   // Si la hace alguien de Tienda, lo dice esa persona; si no, la agencia.
@@ -36,17 +43,17 @@ export function LoQueFalta({ detalle, version, className = '' }: {
   return (
     <section
       aria-label={falta.titulo}
-      className={`min-w-0 rounded-xl border border-slate-300 px-3 py-2.5 dark:border-slate-700 ${className}`}
+      className={`min-w-0 ${enPanel ? '' : 'rounded-xl border border-rose-300 px-3 py-2.5 dark:border-rose-500/40'} ${className}`}
     >
-      <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-slate-100">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+      <p className="flex items-center gap-1.5 text-sm font-bold text-rose-800 dark:text-rose-200">
+        <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
         {falta.titulo}
       </p>
       <ul className="mt-2 flex flex-wrap items-center gap-1.5">
         {piezas.map((p, i) => (
           <li
             key={`${i}-${p}`}
-            className="max-w-full break-words rounded-md border border-slate-300 px-2 py-0.5 text-xs text-slate-700 dark:border-slate-700 dark:text-slate-300"
+            className="max-w-full break-words rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-100"
           >
             {p}
           </li>
@@ -65,8 +72,8 @@ export function LoQueFalta({ detalle, version, className = '' }: {
         )}
       </ul>
       {falta.porQue && (
-        <p className="mt-2 break-words text-sm text-slate-600 dark:text-slate-400">
-          <span className="font-semibold text-slate-700 dark:text-slate-300">{falta.quien} dice:</span> «{falta.porQue}»
+        <p className="mt-2 break-words text-sm text-slate-700 dark:text-slate-300">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{falta.quien} dice:</span> «{falta.porQue}»
         </p>
       )}
     </section>

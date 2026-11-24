@@ -1333,7 +1333,7 @@ def test_las_observaciones_del_control_pasan_a_las_imagenes_guardadas():
     assert obs[0]["imagenId"] == "previa:2"  # no toca la lista de entrada
 
 
-def test_a_la_agencia_vuelve_solo_lo_de_los_cambios_pedidos():
+def test_a_la_agencia_vuelve_cada_cambio_pedido():
     cambios = [
         {"marcaId": "mk-2", "numero": 2, "veredicto": "falta", "nota": "Sigue sin tilde."},
         {"marcaId": "mk-1", "numero": 1, "veredicto": "hecho", "nota": ""},
@@ -1346,6 +1346,40 @@ def test_a_la_agencia_vuelve_solo_lo_de_los_cambios_pedidos():
     ]
     assert rv.cambios_para_la_agencia(cambios, None) == []
     assert rv.cambios_para_la_agencia(None, RONDA_1) == []
+
+
+def test_a_la_agencia_le_llegan_las_observaciones_como_a_quien_aprueba():
+    """Ivan (24/11/2026): "la IA sigue encontrando cosas del lado de Tienda que
+    no encuentra del lado de la agencia (...) la acción era TiendaChecks y le
+    mandaron una placa de Ciberofertas". Las observaciones del control van
+    también a la agencia: las mismas, en el mismo orden, con el número de la
+    imagen que está por entregar y el lugar; nada de lo de quien aprueba."""
+    imagenes = [rv.preparar_imagen(f"{rv.IMAGEN_PREVIA}{i}", _jpeg(a, h), "image/jpeg")
+                for i, (a, h) in enumerate([(1600, 1131), (800, 800)], 1)]
+    limpias = rv.limpiar_observaciones({"observaciones": [
+        _obs(tipo="otro", gravedad="a_revisar", imagen=2, x=400, y=200,
+             texto="La placa dice «CIBEROFERTAS» y la acción es TiendaChecks."),
+        _obs(imagen=1),
+        _obs(tipo="legal", texto="No se ven los legales.", imagen=None, x=None, y=None),
+    ]}, imagenes)
+    agencia = rv.observaciones_para_la_agencia(limpias)
+    assert [o["texto"] for o in agencia] == [o["texto"] for o in limpias]  # el mismo orden: importantes primero
+    assert agencia[0] == {"id": limpias[0]["id"], "tipo": "ortografia", "texto": "Dice «OFERAT»: debería ser «OFERTA».",
+                          "gravedad": "importante", "imagen": 1, "x": 0.3, "y": 0.12}
+    assert agencia[1] == {"id": limpias[1]["id"], "tipo": "legal", "texto": "No se ven los legales.",
+                          "gravedad": "importante", "imagen": None, "x": None, "y": None}
+    assert (agencia[2]["tipo"], agencia[2]["gravedad"], agencia[2]["imagen"], agencia[2]["x"], agencia[2]["y"]) == (
+        "otro", "a_revisar", 2, 0.5, 0.25)
+    assert all(set(o) == {"id", "tipo", "texto", "gravedad", "imagen", "x", "y"} for o in agencia)
+    # Lo que venga raro no rompe: sin texto se va; una imagen que no es de
+    # las que va a entregar queda sin número y sin lugar.
+    raras = ["basura", {"texto": "  "}, {"texto": "x", "tipo": "nuevo", "gravedad": "?", "imagenId": "im-a", "x": 0.1,
+                                         "y": 0.2}, {"texto": "y", "imagenId": "previa:cero", "x": 0.1, "y": 0.2}]
+    assert rv.observaciones_para_la_agencia(raras) == [
+        {"id": None, "tipo": "otro", "texto": "x", "gravedad": "a_revisar", "imagen": None, "x": None, "y": None},
+        {"id": None, "tipo": "otro", "texto": "y", "gravedad": "a_revisar", "imagen": None, "x": None, "y": None},
+    ]
+    assert rv.observaciones_para_la_agencia(None) == []
 
 
 def test_el_control_previo_nunca_levanta(monkeypatch):
@@ -1365,7 +1399,8 @@ def test_el_control_previo_nunca_levanta(monkeypatch):
         BaseRota(), tarea=SimpleNamespace(id="ta-1"), entrega=None, barra=None, fase=fase, ronda=2, usuario_id=7,
         imagenes=[(b"x", "image/jpeg")], comentario=None,
     ))
-    assert r.para_la_agencia() == {"estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False}
+    assert r.para_la_agencia() == {"estado": "no-disponible", "cambios": [], "controlId": None, "inicial": False,
+                                   "observaciones": []}
     # Apagada: ni se mira la base.
     monkeypatch.setattr(settings, "IA_REVISION_ACTIVA", False)
     r = asyncio.run(rv.controlar_antes_de_entregar(
@@ -1630,7 +1665,7 @@ def test_quien_aprueba_ve_los_puntos_aparte_de_las_marcas():
 
 def test_la_agencia_sabe_si_el_control_es_del_pedido_inicial():
     assert rv.ResultadoDelControl("listo", [], "cp-1", inicial=True).para_la_agencia() == {
-        "estado": "listo", "cambios": [], "controlId": "cp-1", "inicial": True}
+        "estado": "listo", "cambios": [], "controlId": "cp-1", "inicial": True, "observaciones": []}
     assert rv.ResultadoDelControl("sin-pedido", []).para_la_agencia()["inicial"] is False
 
 
@@ -1831,22 +1866,39 @@ def test_en_el_control_previo_un_no_aplica_no_dispara_el_aviso(ia_prendida):
         "inicial": True, "puntos": agencia["cambios"]}
 
 
-def test_una_tarjeta_con_solo_lo_tildado_no_llama_a_la_ia(ia_prendida):
+def test_una_tarjeta_sin_nada_pedido_igual_mira_la_pieza(ia_prendida):
     # Sin CTA ni descripción (solo cortesía), lo único era lo tildado, y eso
-    # lo controla la plataforma: 'sin-pedido', y la IA ni se entera.
+    # lo controla la plataforma: no hay puntos. Hasta el 24/11/2026 era
+    # 'sin-pedido' y la IA ni se enteraba; ahora mira la pieza igual (Ivan:
+    # "la IA sigue encontrando cosas del lado de Tienda que no encuentra del
+    # lado de la agencia"), como la revisión de siempre, y a la agencia le
+    # vuelve lo que encontró.
+    from app.models.revision_ia import CalendarioControlPrevio
     from app.services.entregas import config_por_defecto
 
-    api = sim.ApiGrabada([])
+    api = sim.ApiGrabada([_respuesta(_obs(tipo="otro", texto="La placa es de Ciberofertas y la acción es TiendaChecks.",
+                                          x=800, y=565))])
     config = config_por_defecto(1, "Gracias!", "banners", ["Header"], None)
+    db = SesionDelControl()
     resultado = asyncio.run(rv.controlar_antes_de_entregar(
-        SesionDelControl(), tarea=SimpleNamespace(id="ta-1", titulo="x", tipo="banners", opciones=["Header"]),
+        db, tarea=SimpleNamespace(id="ta-1", titulo="x", tipo="banners", opciones=["Header"]),
         entrega=SimpleNamespace(tipo_pieza="banner", brief=config["brief"]),
-        barra=SimpleNamespace(mundo="tienda_inglesa", nombre="x", desde=HOY, hasta=HOY),
+        barra=SimpleNamespace(mundo="tienda_inglesa", nombre="TiendaChecks", desde=HOY, hasta=HOY),
         fase=SimpleNamespace(id="fa-1", nombre="Entrega", motivo=None), ronda=1, usuario_id=7,
         imagenes=[(_jpeg(), "image/jpeg")], comentario=None, cliente=api.cliente(),
     ))
-    assert resultado.para_la_agencia() == {"estado": "sin-pedido", "cambios": [], "controlId": None, "inicial": False}
-    assert api.pedidos == []
+    agencia = resultado.para_la_agencia()
+    assert agencia["estado"] == "listo" and agencia["cambios"] == [] and agencia["inicial"] is False
+    [obs] = agencia["observaciones"]
+    assert (obs["tipo"], obs["texto"], obs["imagen"], obs["x"], obs["y"]) == (
+        "otro", "La placa es de Ciberofertas y la acción es TiendaChecks.", 1, 0.5, 0.5)
+    # A la IA le llega la pieza y el pedido, sin puntos que controlar.
+    [pedido] = api.pedidos
+    texto = pedido["messages"][0]["content"][-1]["text"]
+    assert "<cambios_pedidos>" not in texto and "TiendaChecks" in texto
+    # Queda guardado como cualquier control: si entrega esa imagen, se reusa.
+    [control] = [f for f in db.agregadas if isinstance(f, CalendarioControlPrevio)]
+    assert control.estado == "lista" and control.cambios_pedidos == [] and len(control.observaciones) == 1
 
 
 def test_la_ia_simulada_contesta_no_aplica_a_lo_que_no_es_un_pedido():

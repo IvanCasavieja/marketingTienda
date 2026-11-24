@@ -15,12 +15,17 @@ import {
 } from "@/lib/calendario/tablero";
 import { diaEnUruguay, hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
-import { SEGUNDOS_ENTRE_REVISIONES } from "@/lib/calendario/store";
 import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
 import { esExterno } from "@/lib/externos";
 import { useTableros } from "@/store/tiposDeTarea";
 import { useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
+
+/** Cada cuánto pregunta el tablero si cambió algo. Era 15 s, como el
+ *  calendario; Ivan (24/11/2026): "entregué la entrega 2 y no se me
+ *  actualizó en mi tarjeta de Tienda Inglesa instantáneamente, hubo una
+ *  demora hasta que apareció". Sin cambios la respuesta es una línea. */
+const SEGUNDOS_DEL_TABLERO = 6;
 
 /**
  * El tablero de tarjetas, estilo Trello (16/11/2026). Pedido de Ivan: "La
@@ -142,18 +147,28 @@ export default function TableroPage() {
     }
   }, [claveMundo]);
 
-  // Como el calendario: se pregunta cada 15 s si cambió algo (si no, la
-  // respuesta es una línea) y al volver a la pestaña. Después de entregar o
-  // decidir algo en el detalle, se trae todo.
+  // Se pregunta cada SEGUNDOS_DEL_TABLERO si cambió algo (si no, la
+  // respuesta es una línea), al volver a la pestaña y al volver a la ventana
+  // (24/11/2026: antes era cada 15 s, como el calendario, y solo al volver a
+  // la pestaña). Después de entregar o decidir algo en el detalle, se trae
+  // todo.
   useEffect(() => {
     if (!allowed || !claveMundo) return;
     void cargar(true);
-    const revisar = () => { if (document.visibilityState === "visible") void cargar(false); };
-    const intervalo = window.setInterval(revisar, SEGUNDOS_ENTRE_REVISIONES * 1000);
+    // La pestaña y la ventana avisan juntas a veces: una sola pregunta.
+    let ultima = 0;
+    const revisar = () => {
+      if (document.visibilityState !== "visible" || Date.now() - ultima < 1000) return;
+      ultima = Date.now();
+      void cargar(false);
+    };
+    const intervalo = window.setInterval(revisar, SEGUNDOS_DEL_TABLERO * 1000);
     document.addEventListener("visibilitychange", revisar);
+    window.addEventListener("focus", revisar);
     return () => {
       window.clearInterval(intervalo);
       document.removeEventListener("visibilitychange", revisar);
+      window.removeEventListener("focus", revisar);
     };
   }, [allowed, claveMundo, cargar, cambios]);
 
