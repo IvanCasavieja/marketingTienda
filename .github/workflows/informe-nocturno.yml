@@ -1,0 +1,110 @@
+# Informe del Equipo nocturno (docs/equipo-nocturno).
+#
+# El equipo corre en la nube a las 2 AM y sube una rama cuyo último commit
+# empieza con "[Nocturno]" y trae el informe en el mensaje. Este workflow abre
+# un issue con ese informe asignado al dueño del repo: GitHub le manda el mail
+# (y el aviso al celular si tiene la app), igual que el monitor de producción.
+# No depende de ninguna casilla ni de claves.
+#
+# - Noche con cambios: el issue trae el link al PR (o, si el equipo no lo pudo
+#   abrir, el link para abrirlo). Cuando el PR se cierra, mergeado o no, el
+#   issue se cierra solo.
+# - Noche sin cambios: el issue trae el porqué y la rama se borra (solo traía
+#   el informe).
+#
+# Si se sube dos veces la misma rama, no repite el aviso.
+name: Informe del Equipo nocturno
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: informe-nocturno-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  avisar:
+    if: github.event_name == 'push' && startsWith(github.event.head_commit.message, '[Nocturno]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Abrir el issue con el informe
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const rama = context.ref.replace(/^refs\/heads\//, "");
+            const marca = `<!-- rama-nocturna: ${rama} -->`;
+
+            const abiertos = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+            });
+            if (abiertos.some((i) => (i.body || "").includes(marca))) return;
+
+            const mensaje = context.payload.head_commit.message || "";
+            const [primera, ...resto] = mensaje.split("\n");
+            const titulo = primera.trim();
+            const informe = resto.join("\n").trim() || "(el equipo no dejó el detalle)";
+            const sinCambios = /sin cambios/i.test(titulo);
+            const fecha = new Date().toLocaleDateString("es-UY", { timeZone: "America/Montevideo" });
+
+            // El equipo sube la rama y después abre el PR: esperarlo hasta 5 minutos.
+            let pr = null;
+            if (!sinCambios) {
+              for (let intento = 0; intento < 10 && !pr; intento++) {
+                const { data } = await github.rest.pulls.list({
+                  owner, repo, state: "open", head: `${owner}:${rama}`, per_page: 1,
+                });
+                pr = data[0] || null;
+                if (!pr) await new Promise((r) => setTimeout(r, 30000));
+              }
+            }
+
+            const comparar = `${context.serverUrl}/${owner}/${repo}/compare/main...${encodeURIComponent(rama)}?expand=1`;
+            const pie = sinCambios
+              ? "Esta noche no hay nada para revisar. La rama del informe se borra sola."
+              : pr
+                ? `**Para revisar y decidir:** PR #${pr.number} → ${pr.html_url}\n\nSi te sirve, OK y se mergea. Si no, se cierra. Este aviso se cierra solo cuando se cierre el PR.`
+                : `El equipo no pudo abrir el PR. Para verlo y abrirlo: ${comparar}`;
+
+            await github.rest.issues.create({
+              owner, repo,
+              title: `${titulo} (${fecha})`,
+              assignees: [owner],
+              body: [informe, "", "---", pie, "", marca].join("\n"),
+            });
+
+            if (sinCambios) {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${rama}` });
+            }
+
+  cerrar:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cerrar el aviso de la noche
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pr = context.payload.pull_request;
+            const marca = `<!-- rama-nocturna: ${pr.head.ref} -->`;
+            const abiertos = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+            });
+            const aviso = abiertos.find((i) => (i.body || "").includes(marca));
+            if (!aviso) return;
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: aviso.number,
+              body: pr.merged ? `Mergeado (PR #${pr.number}).` : `Cerrado sin mergear (PR #${pr.number}).`,
+            });
+            await github.rest.issues.update({ owner, repo, issue_number: aviso.number, state: "closed" });
