@@ -16,6 +16,7 @@ import { usePermissionGuard } from "@/hooks/usePermissionGuard";
 import { Cocarda } from "@/components/calendario/Cocarda";
 import { nivelDeCategoria } from "@/lib/calendario/categorias";
 import { fechaCorta, hoyIso, sumarDias } from "@/lib/calendario/fechas";
+import { avisosDeFalla, resumenDeEncabezado, vacioQueSeMuestra } from "@/lib/calendario/mis-tareas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { ETIQUETA_ESTADO_TAREA, type EstadoTarea, type Tarea } from "@/lib/calendario/tipos";
 import { mundoEfectivo, mundosDe, useMundoElegido } from "@/lib/mundos";
@@ -92,20 +93,34 @@ export default function MisTareasPage() {
   // Las entregas: lo que espera MI decisión y lo que me devolvieron con cambios.
   const [entregas, setEntregas] = useState<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>({ paraRevisar: [], conCambios: [] });
   const cambiosEnEntregas = useVistaEntregas(s => s.cambios);
+  // Lo que no se pudo traer queda avisado arriba, fijo, hasta que ande: un
+  // cartel que se va solo no alcanza, y sin esto la pantalla decía «Estás al día».
+  const [falloTareas, setFalloTareas] = useState(false);
+  const [falloEntregas, setFalloEntregas] = useState(false);
+  const [cargando, setCargando] = useState(false);
 
   const cargar = useCallback(async () => {
+    setCargando(true);
     try {
-      const { data } = await calendarioApi.misTareas();
-      setTareas(data as MiTarea[]);
-    } catch {
-      setTareas(prev => prev ?? []);
-      toast.error("No se pudieron traer tus tareas. Probá de nuevo en un momento.");
-    }
-    try {
-      const { data } = await entregasApi.misEntregas();
-      setEntregas(data);
-    } catch {
-      // Sin esto la página igual sirve: se ven las tareas.
+      try {
+        const { data } = await calendarioApi.misTareas();
+        setTareas(data as MiTarea[]);
+        setFalloTareas(false);
+      } catch {
+        // Si ya había tareas se dejan las de antes; si no, la lista vacía para salir del esqueleto.
+        setTareas(prev => prev ?? []);
+        setFalloTareas(true);
+      }
+      try {
+        const { data } = await entregasApi.misEntregas();
+        setEntregas(data);
+        setFalloEntregas(false);
+      } catch {
+        // La página igual sirve con las tareas, pero se avisa que faltan las piezas.
+        setFalloEntregas(true);
+      }
+    } finally {
+      setCargando(false);
     }
   }, []);
 
@@ -178,6 +193,11 @@ export default function MisTareasPage() {
   ].filter(g => g.lista.length > 0);
   const vencidas = pendientes.filter(t => t.vence && t.vence < hoy).length;
   const estaSemana = pendientes.filter(t => t.vence && t.vence >= hoy && t.vence <= enUnaSemana).length;
+  // Con una falla no va ningún cartel de vacío: no sabemos si de verdad no hay nada.
+  const vacio = vacioQueSeMuestra({
+    falloTareas, falloEntregas, cantidadDelMundo: deEsteMundo.length, cantidadAbiertas: abiertas.length, hayEntregasArriba,
+  });
+  const avisos = avisosDeFalla({ falloTareas, falloEntregas });
 
   return (
     <div className="mx-auto max-w-3xl animate-fade-in">
@@ -188,12 +208,7 @@ export default function MisTareasPage() {
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Mis tareas</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            {pendientes.length === 0 && paraRevisar.length === 0
-              ? `No tenés nada pendiente${mundo ? ` en ${mundo.nombre}` : ""}.`
-              : `Tenés ${[
-                pendientes.length > 0 ? (pendientes.length === 1 ? "1 tarea pendiente" : `${pendientes.length} tareas pendientes`) : "",
-                paraRevisar.length > 0 ? (paraRevisar.length === 1 ? "1 pieza para revisar" : `${paraRevisar.length} piezas para revisar`) : "",
-              ].filter(Boolean).join(" y ")}${mundo ? ` en ${mundo.nombre}` : ""}.`}
+            {resumenDeEncabezado({ falloTareas, falloEntregas, pendientes: pendientes.length, paraRevisar: paraRevisar.length, nombreMundo: mundo?.nombre })}
           </p>
         </div>
         {/* Lo urgente, contado: se ve antes de leer la lista */}
@@ -212,6 +227,27 @@ export default function MisTareasPage() {
           </div>
         )}
       </header>
+
+      {avisos.length > 0 && (
+        <div
+          role="alert"
+          className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+          <div className="min-w-0 flex-1 font-medium">
+            {avisos.map(aviso => <p key={aviso}>{aviso}</p>)}
+          </div>
+          <button
+            type="button"
+            onClick={() => void cargar()}
+            disabled={cargando}
+            className="btn-secondary min-h-[44px] font-semibold"
+          >
+            <RotateCcw className={`h-4 w-4 ${cargando ? "animate-spin" : ""}`} aria-hidden />
+            {cargando ? "Probando…" : "Probar de nuevo"}
+          </button>
+        </div>
+      )}
 
       {enOtros.length > 0 && (
         <div className="mb-6 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
@@ -263,7 +299,7 @@ export default function MisTareasPage() {
         </div>
       )}
 
-      {deEsteMundo.length === 0 && !hayEntregasArriba && (
+      {vacio === "sinAsignar" && (
         <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-900">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
             <ListChecks className="h-6 w-6" />
@@ -276,7 +312,7 @@ export default function MisTareasPage() {
       )}
 
       {/* Todo hecho: se festeja, apenas */}
-      {deEsteMundo.length > 0 && abiertas.length === 0 && !hayEntregasArriba && (
+      {vacio === "alDia" && (
         <div className="flex animate-rise flex-col items-center rounded-2xl border border-emerald-200 bg-emerald-50/70 px-6 py-12 text-center dark:border-emerald-500/20 dark:bg-emerald-500/[.06]">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300">
             <PartyPopper className="h-6 w-6" />
