@@ -2,7 +2,7 @@
 
 Pedido de Ivan (15/11/2026): las acciones comerciales se repiten cada año
 (Ciberlunes, Día de la Madre...) y el Ciberlunes 2026 tiene que poder nacer
-del 2025 con todo lo que tenía: sus piezas, sus tareas con sus subtareas y sus
+del 2025 con todo lo que tenía: sus piezas, sus tareas y sus
 avisos. Lo que estaba hecho el año pasado vuelve a pendiente; lo que tenía
 fecha se corre lo mismo que la acción.
 
@@ -160,27 +160,14 @@ def copiar_piezas(
 
 
 def en_orden_de_alta(tareas: Iterable[Any]) -> list[Any]:
-    """Las tareas con cada madre antes que sus hijas: la subtarea apunta a su
-    madre, que tiene que estar guardada primero. Dentro de cada nivel, en el
-    orden de la ficha."""
-    lista = list(tareas)
-    padres = {t.id: t.parent_id for t in lista}
-
-    def nivel(t) -> int:
-        n, actual, vistos = 0, t.parent_id, set()
-        # `vistos` corta un ciclo: no debería haber, pero no puede colgar esto.
-        while actual is not None and actual in padres and actual not in vistos:
-            vistos.add(actual)
-            n += 1
-            actual = padres[actual]
-        return n
-
-    return sorted(lista, key=lambda t: (nivel(t), t.orden or 0, t.id))
+    """Las tareas en el orden de la ficha. Desde la 0090 van todas en un solo
+    nivel: no hay madres que guardar primero."""
+    return sorted(tareas, key=lambda t: (t.orden or 0, t.id))
 
 
 @dataclass
 class TareasCopiadas:
-    # En orden de alta (madres primero), listas para guardar.
+    # En el orden de la ficha, listas para guardar.
     filas: list[dict[str, Any]] = field(default_factory=list)
     # Cuántas perdieron a su responsable porque ya no puede abrir el mundo,
     # o porque es de una agencia y la tarea es de Tienda (19/11/2026).
@@ -193,10 +180,11 @@ def copiar_tareas(
     hacer_id: Callable[[str], str] = nuevo_id,
     *, de_agencias: Iterable[int] = (),
 ) -> TareasCopiadas:
-    """Las tareas, en pendiente y con el vencimiento corrido. La estructura
-    de subtareas se mantiene con ids nuevos. El responsable sigue solo si
-    todavía puede abrir el mundo (`responsables_validos`): asignarle una tarea
-    a alguien que no la vería no sirve, igual que al crearla.
+    """Las tareas, en pendiente, con el vencimiento corrido y todas en el
+    primer nivel (0090). La persona asignada sigue solo si todavía puede abrir
+    el mundo (`responsables_validos`): asignarle una tarea a alguien que no la
+    vería no sirve, igual que al crearla. Lo mismo el responsable de Tienda
+    de lo que hace una agencia, que además tiene que seguir siendo del equipo.
 
     `de_agencias`: las cuentas externas (Publicis, Another Monday,
     Diseñadores... agencias de afuera de Tienda). Una tarea que no es "para
@@ -211,7 +199,6 @@ def copiar_tareas(
     le llega el aviso cuando alguien termina una."""
     externas = set(de_agencias)
     ordenadas = en_orden_de_alta(tareas)
-    ids = {t.id: hacer_id("ta") for t in ordenadas}
     out = TareasCopiadas()
     for t in ordenadas:
         responsable = t.asignado_a_id
@@ -219,13 +206,15 @@ def copiar_tareas(
         if responsable is not None and (responsable not in responsables_validos or de_tienda_a_una_agencia):
             responsable = None
             out.sin_responsable += 1
+        lleva = getattr(t, "responsable_id", None)
+        if lleva is not None and (lleva not in responsables_validos or lleva in externas):
+            lleva = None
         out.filas.append(valores_copiados(t, corrimiento, {
-            "id": ids[t.id], "barra_id": barra_id,
-            # Una madre que no es de esta acción no debería existir; si
-            # aparece, la copia queda suelta en vez de apuntar a otra acción.
-            "parent_id": ids.get(t.parent_id) if t.parent_id else None,
+            "id": hacer_id("ta"), "barra_id": barra_id,
+            "parent_id": None,
             "estado": "pendiente",
             "asignado_a_id": responsable,
+            "responsable_id": lleva,
             "creado_por_id": creado_por,
         }))
     return out

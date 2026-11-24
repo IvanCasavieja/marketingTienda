@@ -12,7 +12,7 @@
   POST   /calendario/barras/{id}/avisos       — configura un aviso en una acción
   DELETE /calendario/avisos/{id}
   PUT    /calendario/posiciones-rm/{clave}    — mueve las posiciones de RM de un mes
-  POST   /calendario/barras/{id}/tareas       — una tarea (o subtarea) de una acción
+  POST   /calendario/barras/{id}/tareas       — una tarea de una acción (un pedido, en el primer nivel)
   PATCH  /calendario/tareas/{id}              — título, estado, a quién, cuándo vence
   DELETE /calendario/tareas/{id}
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
@@ -136,9 +136,13 @@ EstadoTarea = Literal["pendiente", "en-proceso", "hecha"]
 ParaQuien = Literal["tienda", "agencia", "fuera"]
 Ancla = Literal["inicio", "fin"]
 _DIAS_DE_ANCLA = 365
-# Tarea → subtarea → sub-subtarea, y no más hondo.
-_NIVELES_DE_TAREA = 3
 PERMISO_TAREAS = "calendario.tareas"
+# Desde el 24/11/2026 (0090) las tareas van todas en un solo nivel: "una
+# tarea = un pedido". Lo que pide una tarea adentro de otra se rechaza con esto.
+_UN_SOLO_NIVEL = (
+    "Las tareas van todas en el primer nivel: ya no hay subtareas ni piezas adentro de otra tarea. "
+    "Recargá la página."
+)
 
 _YA_NO_EXISTE = "Esta acción ya no existe: la borró otra persona. Se recargó el calendario."
 
@@ -328,6 +332,9 @@ def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
     if t.para != "tienda":
         out["para"] = t.para
         out["agencia"] = t.agencia
+    # Quién la lleva por Tienda cuando la hace una agencia (0090).
+    if t.responsable_id is not None:
+        out["responsable"] = t.responsable_id
     if t.tipo:
         out["tipo"] = t.tipo
         out["opciones"] = list(t.opciones or [])
@@ -1368,14 +1375,12 @@ def mensaje_de_tareas_copiadas(quien: str, titulos: list[str], accion: str, venc
     return f"{quien} te asignó {len(titulos)} tareas en {accion or 'una acción'}: {lista}.{cuando}"
 
 
-def nivel_de(tarea_id: str | None, padres: dict[str, str | None]) -> int:
-    """A qué profundidad queda algo que cuelga de `tarea_id`: 1 si no cuelga
-    de nada. Pura, para probarla sin base. El tope corta un ciclo."""
-    nivel = 1
-    while tarea_id is not None and nivel <= _NIVELES_DE_TAREA + 1:
-        nivel += 1
-        tarea_id = padres.get(tarea_id)
-    return nivel
+def mensaje_de_responsable(quien: str, titulo: str, accion: str, agencia: str | None, vence: date | None) -> str:
+    """El aviso a quien queda de responsable de Tienda de una tarea que hace
+    una agencia (0090). No la hace: la sigue."""
+    hace = f" (la hace {agencia})" if agencia else ""
+    cuando = f" Vence el {vence.strftime('%d/%m')}." if vence else ""
+    return f"{quien} te dejó de responsable de «{titulo}» en {accion or 'una acción'}{hace}.{cuando}"
 
 
 def repartir_orden(ordenes: dict[str, int], ids: list[str]) -> dict[str, int]:
@@ -1453,11 +1458,22 @@ async def _asignable_o_422(db: AsyncSession, user_id: int, mundo: str) -> User:
     return usuario
 
 
+async def _responsable_o_422(db: AsyncSession, user_id: int, mundo: str) -> User:
+    """El responsable de Tienda de una tarea que hace una agencia (0090):
+    alguien del equipo que abre este mundo. Una cuenta de una agencia no."""
+    usuario = await _asignable_o_422(db, user_id, mundo)
+    if externos.es_externo(usuario):
+        raise HTTPException(status_code=422, detail="El responsable es alguien de Tienda Inglesa, no de una agencia")
+    return usuario
+
+
 class TareaNueva(BaseModel):
     id: str = Field(..., pattern=_ID)
+    # Desde la 0090 no hay tareas adentro de otra: si viene, se rechaza
+    # (_UN_SOLO_NIVEL). Queda para decirle eso a una pantalla vieja.
     parentId: str | None = Field(None, pattern=_ID)
-    # Con `tipo`, el título lo arma el servidor ("<Acción> - <Tipo>") y este
-    # se ignora: puede venir vacío.
+    # Con `tipo` y sin título, el título lo arma el servidor ("<Acción> -
+    # <Tipo>"). Con título, va ese: el nombre se puede cambiar al crearla (0090).
     titulo: str = Field("", max_length=500)
     descripcion: str | None = Field(None, max_length=5000)
     asignadoA: int | None = None
@@ -1467,6 +1483,9 @@ class TareaNueva(BaseModel):
     # `agencia`, y `asignadoA` es quien del equipo carga sus entregas).
     para: ParaQuien = "tienda"
     agencia: str | None = Field(None, max_length=120)
+    # Quién la lleva por Tienda si la hace una agencia (0090): alguien del
+    # equipo. En una tarea de Tienda no va (la lleva quien la tiene asignada).
+    responsable: int | None = None
     # El tipo de tarea (app/services/tipos_de_tarea.py) y lo que se tildó.
     # Con tipo, es una pieza: le nace su tarjeta.
     tipo: str | None = Field(None, max_length=20)
@@ -1498,17 +1517,19 @@ class TareaNueva(BaseModel):
 
 
 class TareaCambios(BaseModel):
-    """Solo viaja lo que cambió. `asignadoA`, `vence` y `descripcion` pueden
-    venir en null a propósito: es sacarle la persona, la fecha o el detalle."""
+    """Solo viaja lo que cambió. `asignadoA`, `responsable`, `vence` y
+    `descripcion` pueden venir en null a propósito: es sacarle la persona, el
+    responsable, la fecha o el detalle."""
     titulo: str | None = Field(None, min_length=1, max_length=500)
     descripcion: str | None = Field(None, max_length=5000)
     estado: EstadoTarea | None = None
     asignadoA: int | None = None
+    responsable: int | None = None
     vence: Fecha | None = None
 
 
 class OrdenDeTareas(BaseModel):
-    """Unas tareas hermanas (cuelgan de lo mismo), en el orden nuevo."""
+    """Las tareas de una acción, en el orden nuevo."""
     ids: list[str] = Field(..., min_length=1, max_length=500)
 
 
@@ -1547,13 +1568,17 @@ async def crear_tarea(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Una tarea (o subtarea) de una acción. Si es una pieza (0070: tiene
-    tipo, o la hace una agencia), le nace su tarjeta en el tablero, con el
-    nombre "<Acción> - <Tipo>", sus entregas por defecto y el aviso a quien
-    la hace (ver `_nacer_tarjetas`)."""
+    """Una tarea de una acción: un pedido (0090, "una tarea = un pedido"),
+    siempre en el primer nivel. Si es una pieza (0070: tiene tipo, o la hace
+    una agencia), le nace su tarjeta en el tablero, con el nombre "<Acción> -
+    <Tipo>" (o el que se escribió), sus entregas por defecto y el aviso a
+    quien la hace (ver `_nacer_tarjetas`); si la hace una agencia, puede
+    llevar su responsable de Tienda, que también se entera."""
     pieza = es_pieza(payload)
     if not puede_crear_tarea(current_user, pieza):
         raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_PEDIDOS}")
+    if payload.parentId is not None:
+        raise HTTPException(status_code=422, detail=_UN_SOLO_NIVEL)
     barra = await _barra_o_404(db, barra_id, current_user, bloquear=True)
     if barra.seccion not in _CON_AVISOS:
         raise HTTPException(
@@ -1569,12 +1594,6 @@ async def crear_tarea(
     # clave primaria lo frenaría con un 500 sin explicación.
     if await db.get(CalendarioTarea, payload.id) is not None:
         raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
-    padres = {t.id: t.parent_id for t in existentes}
-    if payload.parentId is not None:
-        if payload.parentId not in padres:
-            raise HTTPException(status_code=404, detail="La tarea de la que cuelga ya no existe: la borraron.")
-        if nivel_de(payload.parentId, padres) > _NIVELES_DE_TAREA:
-            raise HTTPException(status_code=422, detail="Una sub-subtarea no puede tener más tareas adentro")
     if payload.tipo and not tipos_de_tarea.vale_en(payload.tipo, barra.mundo):
         # Imprenta, Video monitores... son de Redexpres (18/11/2026).
         raise HTTPException(status_code=422, detail="Ese tipo de pieza no se pide en este mundo")
@@ -1584,6 +1603,11 @@ async def crear_tarea(
         # Una tarea común: quien lidera, o quien crea tareas y pide sus
         # materiales (calendario.pedidos, 17/11/2026).
         raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_PEDIDOS}")
+    # El responsable de Tienda, solo si la hace una agencia: en una de Tienda
+    # la lleva quien la tiene asignada.
+    responsable = None
+    if payload.responsable is not None and para in ("agencia", "fuera"):
+        responsable = await _responsable_o_422(db, payload.responsable, barra.mundo)
 
     if payload.ancla is not None:
         dias = payload.anclaDias or 0
@@ -1596,14 +1620,16 @@ async def crear_tarea(
     else:
         vence, ancla, ancla_dias = payload.vence, None, None
 
-    # Con tipo, el nombre se arma solo: "Ciberlunes - Banners" (así se
-    # encuentra escribiendo el nombre de la acción, un guión y lo que se busca).
-    titulo = tipos_de_tarea.nombre_de_tarjeta(barra.nombre, payload.tipo) if payload.tipo else payload.titulo
+    # Con tipo y sin nombre escrito, el nombre se arma solo: "Ciberlunes -
+    # Banners" (así se encuentra escribiendo el nombre de la acción, un guión
+    # y lo que se busca). Si se escribió otro al crearla, va ese (0090).
+    titulo = payload.titulo or (tipos_de_tarea.nombre_de_tarjeta(barra.nombre, payload.tipo) if payload.tipo else "")
     tarea = CalendarioTarea(
-        id=payload.id, barra_id=barra_id, parent_id=payload.parentId, titulo=titulo,
+        id=payload.id, barra_id=barra_id, parent_id=None, titulo=titulo,
         descripcion=(payload.descripcion or "").strip() or None,
         asignado_a_id=payload.asignadoA, vence=vence, ancla=ancla, ancla_dias=ancla_dias,
-        para=para, agencia=agencia, tipo=payload.tipo, opciones=payload.opciones, detalles=payload.detalles,
+        para=para, agencia=agencia, responsable_id=responsable.id if responsable else None,
+        tipo=payload.tipo, opciones=payload.opciones, detalles=payload.detalles,
         orden=max((t.orden for t in existentes), default=-1) + 1,
         creado_por_id=current_user.id,
     )
@@ -1616,6 +1642,11 @@ async def crear_tarea(
         avisados = await _nacer_tarjetas(db, current_user, barra, [tarea])
         await db.flush()
         entrega = (await resumenes_de_entregas(db, [tarea.id])).get(tarea.id)
+        if responsable is not None and responsable.id != current_user.id:
+            _avisar(db, responsable.id, mensaje_de_responsable(
+                current_user.full_name, titulo, barra.nombre, agencia, vence,
+            ), barra_id, payload.id)
+            avisados += 1
     elif payload.asignadoA is not None and payload.asignadoA != current_user.id:
         _avisar(db, payload.asignadoA, mensaje_de_asignacion(
             current_user.full_name, titulo, barra.nombre, vence,
@@ -1626,7 +1657,7 @@ async def crear_tarea(
     return {
         "id": payload.id, "rev": _rev_para(current_user, rev), "avisados": avisados,
         "titulo": titulo, "para": para, "agencia": agencia, "vence": vence.isoformat() if vence else None,
-        "entrega": entrega,
+        "responsable": tarea.responsable_id, "entrega": entrega,
     }
 
 
@@ -1790,8 +1821,10 @@ async def cambiar_tarea(
             tarea.para, tarea.agencia = "agencia", await agencias.como_ya_esta(db, nuevo.empresa)
         elif nuevo is not None and era_de_la_agencia:
             # A alguien de Tienda: deja de ser de la agencia (sus entregas
-            # quedan, las entrega esta persona).
+            # quedan, las entrega esta persona). La lleva quien la hace: ya no
+            # hay responsable aparte (0090).
             tarea.para, tarea.agencia = "tienda", None
+            tarea.responsable_id = None
         tarea.asignado_a_id = payload.asignadoA
         if tarea.para == "agencia" and (not era_de_la_agencia or nuevo is not None):
             # Le nace la tarjeta si no la tenía, y el aviso va como "tarjeta
@@ -1816,6 +1849,20 @@ async def cambiar_tarea(
                     current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
                 ), barra.id, tarea.id)
                 avisados += 1
+    if "responsable" in campos and payload.responsable != tarea.responsable_id:
+        # El responsable de Tienda (0090): solo en lo que hace una agencia.
+        if payload.responsable is not None and tarea.para not in ("agencia", "fuera"):
+            raise HTTPException(
+                status_code=422,
+                detail="Solo una tarea que hace una agencia lleva responsable de Tienda: esta la lleva quien la tiene asignada",
+            )
+        nuevo_resp = await _responsable_o_422(db, payload.responsable, barra.mundo) if payload.responsable is not None else None
+        tarea.responsable_id = payload.responsable
+        if nuevo_resp is not None and nuevo_resp.id != current_user.id:
+            _avisar(db, nuevo_resp.id, mensaje_de_responsable(
+                current_user.full_name, tarea.titulo, barra.nombre, tarea.agencia, tarea.vence,
+            ), barra.id, tarea.id)
+            avisados += 1
     if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
         era = tarea.estado
         if tarea.estado == "hecha" and "vence" not in campos:
@@ -1879,7 +1926,9 @@ async def mis_tareas(
     db: AsyncSession = Depends(get_db),
 ):
     """Lo que la persona tiene asignado, en todos los mundos que puede abrir,
-    con la acción de cada tarea. Es lo que muestra el inicio.
+    con la acción de cada tarea. Es lo que muestra el inicio. También lo que
+    hace una agencia y ella lleva por Tienda (`responsable_id`, 0090): antes
+    lo tenía como la tarea de afuera de esas piezas.
 
     Las abiertas, todas; las hechas, solo las de los últimos
     DIAS_DE_HECHAS_EN_MIS_TAREAS días. Antes venía todo lo de siempre: con el
@@ -1906,7 +1955,7 @@ async def mis_tareas(
         select(CalendarioTarea, CalendarioBarra)
         .join(CalendarioBarra, CalendarioBarra.id == CalendarioTarea.barra_id)
         .where(
-            CalendarioTarea.asignado_a_id == current_user.id,
+            or_(CalendarioTarea.asignado_a_id == current_user.id, CalendarioTarea.responsable_id == current_user.id),
             CalendarioBarra.mundo.in_(mundos),
             or_(
                 CalendarioTarea.estado != "hecha",
@@ -1973,8 +2022,8 @@ _TAREAS_POR_PLANTILLA = 60
 
 
 class TareaDePlantilla(BaseModel):
-    """Una tarea de la plantilla. `parentId` es otra tarea de la MISMA
-    plantilla: una subtarea, de un nivel nomás."""
+    """Una tarea de la plantilla. Van todas en un solo nivel, como las de una
+    acción (0090): `parentId` queda solo para rechazar una pantalla vieja."""
     id: str = Field(..., pattern=_ID)
     parentId: str | None = Field(None, pattern=_ID)
     titulo: str = Field(..., min_length=1, max_length=500)
@@ -1989,6 +2038,8 @@ class TareaDePlantilla(BaseModel):
     # nace sola su tarjeta.
     para: ParaQuien = "tienda"
     agencia: str | None = Field(None, max_length=120)
+    # Quién la lleva por Tienda si la hace una agencia (0090).
+    responsable: int | None = None
     # El tipo de tarea (Banners, Cenefas...), lo tildado y los datos de más:
     # con tipo, la tarea nace como pieza, con su tarjeta y el nombre
     # "<Acción> - <Tipo>" de la acción donde se aplica.
@@ -2019,6 +2070,7 @@ class TareaDePlantilla(BaseModel):
                 raise ValueError(f"Elegí qué agencia hace «{self.titulo}»")
         else:
             self.agencia = None
+            self.responsable = None
         if self.para == "fuera" and self.asignadoA is None:
             raise ValueError(f"«{self.titulo}» la hace una agencia de afuera: elegí quién del equipo carga sus entregas")
         if self.tipo is not None:
@@ -2031,20 +2083,14 @@ class TareaDePlantilla(BaseModel):
 
 
 def revisar_estructura(tareas: list[TareaDePlantilla]) -> None:
-    """Que la plantilla se pueda aplicar tal cual: ids sin repetir, y cada
-    subtarea colgando de una tarea de la plantilla que no es a su vez una
-    subtarea. Pura; un ValueError trae el mensaje para la persona."""
+    """Que la plantilla se pueda aplicar tal cual: ids sin repetir y todas en
+    el primer nivel (0090: ya no hay subtareas). Pura; un ValueError trae el
+    mensaje para la persona."""
     ids = [t.id for t in tareas]
     if len(set(ids)) != len(ids):
         raise ValueError("Hay dos tareas con el mismo id en la plantilla")
-    padres = {t.id: t.parentId for t in tareas}
-    for t in tareas:
-        if t.parentId is None:
-            continue
-        if t.parentId == t.id or t.parentId not in padres:
-            raise ValueError(f"La subtarea «{t.titulo}» cuelga de una tarea que no está en la plantilla")
-        if padres[t.parentId] is not None:
-            raise ValueError("En una plantilla las subtareas son de un nivel: una subtarea no lleva otras adentro")
+    if any(t.parentId is not None for t in tareas):
+        raise ValueError("En una plantilla las tareas van todas en el primer nivel: ya no hay subtareas. Recargá la página.")
 
 
 def categoria_de_plantilla(v: str | None) -> str | None:
@@ -2112,23 +2158,22 @@ def tareas_de_plantilla(
     tareas: list[dict], ids: dict[str, str], desde: date, hasta: date, accion: str = "",
 ) -> list[dict]:
     """Las tareas que crea una plantilla en una acción que va de `desde` a
-    `hasta`, con el vencimiento calculado y anclado. Las tareas sueltas
-    primero y las subtareas después, cada grupo en el orden de la plantilla:
-    una subtarea no se puede guardar antes que la tarea de la que cuelga. Pura.
+    `hasta`, con el vencimiento calculado y anclado, en el orden de la
+    plantilla y todas en el primer nivel (0090: una plantilla guardada antes
+    se aplanó en esa migración; si igual trae `parentId`, no se usa). Pura.
 
     Si `ids` no trae exactamente las tareas de la plantilla, lo que vio el
     front ya no es lo guardado: PlantillaCambio, y que vuelva a mirar."""
     if set(ids) != {t["id"] for t in tareas}:
         raise PlantillaCambio("La plantilla cambió")
-    sueltas = [t for t in tareas if not t.get("parentId")]
-    subtareas = [t for t in tareas if t.get("parentId")]
     out = []
-    for t in sueltas + subtareas:
+    for t in tareas:
         ancla = t.get("ancla") or None
         dias = int(t.get("dias") or 0)
+        de_agencia = t.get("para") in ("agencia", "fuera") and bool(t.get("agencia"))
         out.append({
             "id": ids[t["id"]],
-            "parent_id": ids.get(t["parentId"]) if t.get("parentId") else None,
+            "parent_id": None,
             "titulo": t["titulo"],
             "descripcion": t.get("descripcion") or None,
             "asignado_a_id": t.get("asignadoA"),
@@ -2136,8 +2181,9 @@ def tareas_de_plantilla(
             "ancla": ancla,
             "ancla_dias": dias if ancla else None,
             # Una plantilla guardada antes de la 0070 no dice quién la hace: Tienda.
-            "para": t["para"] if t.get("para") in ("agencia", "fuera") and t.get("agencia") else "tienda",
-            "agencia": t.get("agencia") if t.get("para") in ("agencia", "fuera") and t.get("agencia") else None,
+            "para": t["para"] if de_agencia else "tienda",
+            "agencia": t.get("agencia") if de_agencia else None,
+            "responsable_id": t.get("responsable") if de_agencia else None,
             "tipo": t.get("tipo") or None,
             "opciones": list(t.get("opciones") or []) if t.get("tipo") else None,
             "detalles": dict(t.get("detalles") or {}) or None if t.get("tipo") else None,
@@ -2339,6 +2385,18 @@ async def aplicar_plantilla(
         if t["asignado_a_id"] in externas and t["para"] != "agencia":
             t["asignado_a_id"] = None
             sin_asignar += 1
+    # El responsable de Tienda de lo que hace una agencia (0090): alguien del
+    # equipo que abre este mundo. Si ya no, la tarea se crea sin responsable.
+    responsables = {t["responsable_id"] for t in plan if t["responsable_id"] is not None}
+    del_equipo = set()
+    if responsables:
+        del_equipo = set((await db.execute(
+            select(User.id).where(User.id.in_(list(await _asignables(db, responsables, barra.mundo))),
+                                  User.es_externo.is_(False))
+        )).scalars())
+    for t in plan:
+        if t["responsable_id"] is not None and t["responsable_id"] not in del_equipo:
+            t["responsable_id"] = None
     # La agencia de cada pieza, como ya está escrita: una plantilla guardada
     # antes con «disenadores» crea las tarjetas de Diseñadores.
     como_estan: dict[str, str] = {}
@@ -2357,12 +2415,8 @@ async def aplicar_plantilla(
                         creado_por_id=current_user.id)
         for i, t in enumerate(plan)
     ]
-    # Primero las tareas sueltas y después las subtareas, cada tanda en su
-    # INSERT: la subtarea apunta a una tarea de esta misma tanda, que tiene
-    # que existir antes.
-    db.add_all([t for t in nuevas if t.parent_id is None])
+    db.add_all(nuevas)
     await db.flush()
-    db.add_all([t for t in nuevas if t.parent_id is not None])
 
     # Las que son para la agencia (0070): les nace su tarjeta, y a la agencia
     # le llega UN aviso por persona con todas sus tarjetas nuevas. Una agencia
@@ -2391,12 +2445,23 @@ async def aplicar_plantilla(
         _avisar(db, user_id, mensaje_de_asignaciones(
             current_user.full_name, [(t["titulo"], t["vence"]) for t in suyas], barra.nombre,
         ), barra_id, suyas[0]["id"])
+    # Y a cada responsable de Tienda, uno con lo que lleva (0090).
+    lleva: dict[int, list[dict]] = {}
+    for t in plan:
+        if t["responsable_id"] is not None and t["responsable_id"] != current_user.id:
+            lleva.setdefault(t["responsable_id"], []).append(t)
+    for user_id, suyas in lleva.items():
+        _avisar(db, user_id, mensaje_de_responsable(
+            current_user.full_name, ", ".join(t["titulo"] for t in suyas), barra.nombre,
+            suyas[0]["agencia"] if len({t["agencia"] for t in suyas}) == 1 else None,
+            min((t["vence"] for t in suyas if t["vence"]), default=None),
+        ), barra_id, suyas[0]["id"])
 
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
     return {
         "id": barra_id, "rev": _rev_para(current_user, rev), "creadas": len(plan),
-        "avisados": len(por_persona) + tarjetas_avisadas, "sinAsignar": sin_asignar,
+        "avisados": len(por_persona) + len(lleva) + tarjetas_avisadas, "sinAsignar": sin_asignar,
         "tarjetas": sum(1 for t in plan if es_pieza(SimpleNamespace(tipo=t["tipo"], para=t["para"]))),
         # Las agencias nombradas que no tienen ninguna cuenta que entre a este
         # mundo: sus tarjetas nacieron, pero nadie de ellas las ve.
@@ -2448,7 +2513,7 @@ async def copiar_barra(
     db: AsyncSession = Depends(get_db),
 ):
     """Una acción nueva, en el MISMO mundo y a partir de `desde`, con todo lo
-    de la original: sus campos, sus piezas, sus tareas (con sus subtareas) y
+    de la original: sus campos, sus piezas, sus tareas y
     sus avisos. Lo hecho vuelve a pendiente y lo que tenía fecha se corre lo
     mismo que la acción.
 
@@ -2496,6 +2561,8 @@ async def copiar_barra(
 
     # Quién sigue pudiendo ver ese mundo, de una sola consulta.
     pedidos = {t.asignado_a_id for t in tareas if t.asignado_a_id is not None} if copia_tareas else set()
+    if copia_tareas:
+        pedidos.update(t.responsable_id for t in tareas if t.responsable_id is not None)
     for a in avisos:
         pedidos.update(ids_de_personas(a.destinatarios))
     personas = (await db.execute(select(User).where(User.id.in_(pedidos)))).scalars().all() if pedidos else []
@@ -2557,7 +2624,6 @@ async def copiar_barra(
             return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
         raise
     nuevas_piezas = [CalendarioPieza(**f) for f in filas_piezas]
-    # En orden de alta: cada tarea madre antes que sus subtareas.
     nuevas_tareas = [CalendarioTarea(**f) for f in copiadas_tareas.filas]
     nuevos_avisos = [CalendarioAviso(**f) for f in copiados_avisos.filas]
     db.add_all(nuevas_piezas)

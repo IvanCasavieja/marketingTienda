@@ -42,7 +42,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import false, true
+from sqlalchemy import false, or_, true
 
 URUGUAY = ZoneInfo("America/Montevideo")
 
@@ -189,12 +189,12 @@ def le_llega_siempre(usuario, tarea) -> bool:
     no, vencen sin que las vea nunca). Es la regla de Mis tareas, y la misma
     que usa Don Tino (19/11/2026, Ivan: "Don Tino debe amoldarse a cada
     usuario"). A una cuenta externa no: lo suyo es el tablero (ver
-    es_tarjeta_propia en app/services/entregas.py). Pura."""
-    return (
-        not getattr(usuario, "es_externo", False)
-        and tarea.asignado_a_id is not None and tarea.asignado_a_id == usuario.id
-        and tarea.estado != "hecha"
-    )
+    es_tarjeta_propia en app/services/entregas.py). Sus tareas son las que
+    tiene asignadas y las que lleva por Tienda (`responsable_id`, 0090). Pura."""
+    mias = (usuario.id is not None and usuario.id in (
+        getattr(tarea, "asignado_a_id", None), getattr(tarea, "responsable_id", None),
+    ))
+    return not getattr(usuario, "es_externo", False) and mias and tarea.estado != "hecha"
 
 
 def condicion_le_llega_siempre(modelo, usuario):
@@ -202,4 +202,4 @@ def condicion_le_llega_siempre(modelo, usuario):
     sobre las tareas."""
     if getattr(usuario, "es_externo", False):
         return false()
-    return (modelo.asignado_a_id == usuario.id) & (modelo.estado != "hecha")
+    return or_(modelo.asignado_a_id == usuario.id, modelo.responsable_id == usuario.id) & (modelo.estado != "hecha")

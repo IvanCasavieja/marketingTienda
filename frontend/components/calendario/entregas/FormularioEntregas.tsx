@@ -79,7 +79,7 @@ export function FormularioEntregas({ valor, onCambiar, personas, responsableId, 
   personas: Persona[]
   responsableId: number | null
   usuarioId: number | null
-  /** Sin el selector "Tipo de pieza": en "Pedir una pieza" ya sale de lo
+  /** Sin el selector "Tipo de pieza": en "Nueva tarea" ya sale de lo
    *  elegido en "¿Qué es?" (un segundo catálogo de 5, con el Mailing en
    *  "Otro" al lado de "Email marketing", invitaba a confundirlos). */
   ocultarTipo?: boolean

@@ -250,7 +250,7 @@ export function CopiarAccion({ accion, onCerrar }: {
                   ) : resumen.tareas === 0 ? 'Sin tareas' : (
                     <>
                       {cuantas(resumen.tareas, 'tarea', 'tareas')}
-                      <span className="text-slate-500 dark:text-slate-400"> · en Pendiente, con sus subtareas y el vencimiento corrido</span>
+                      <span className="text-slate-500 dark:text-slate-400"> · en Pendiente y con el vencimiento corrido</span>
                     </>
                   )}
                   {resumen.sinResponsable > 0 && (

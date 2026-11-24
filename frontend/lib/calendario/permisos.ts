@@ -20,7 +20,7 @@ export const PERMISOS_CALENDARIO = {
   retailMedia: "calendario.retail_media",
   /** Crear, asignar y borrar las tareas de cada acción. */
   tareas: "calendario.tareas",
-  /** Pedir piezas y materiales desde una acción (Banners, Mailing, Cenefas…).
+  /** Crear tareas en una acción, también para una agencia (Banners, Mailing, Cenefas…).
    *  Desde el 17/11/2026 es un permiso aparte de `editar`. */
   pedidos: "calendario.pedidos",
 } as const;

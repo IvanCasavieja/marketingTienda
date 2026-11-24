@@ -108,11 +108,12 @@ export type EstadoTarea = 'pendiente' | 'en-proceso' | 'hecha'
 
 /**
  * Lo que quien lidera le asigna a una persona dentro de una accion (pedido de
- * Ivan, 12/11/2026). Una tarea puede colgar de otra: tarea, subtarea y
- * sub-subtarea, y no mas hondo.
+ * Ivan, 12/11/2026). Desde el 24/11/2026 una tarea es un pedido y van todas en
+ * un solo nivel (0090: "las tareas y el pedido de piezas deberian ser uno").
  */
 export type Tarea = {
   id: string
+  /** Siempre null desde la 0090: ya no hay tareas adentro de otra. */
   parentId: string | null
   titulo: string
   descripcion: string | null
@@ -133,6 +134,9 @@ export type Tarea = {
    *  plataforma o una de afuera (`agencia` es su nombre). */
   para?: 'tienda' | 'agencia' | 'fuera'
   agencia?: string | null
+  /** Quién la lleva por Tienda cuando la hace una agencia (0090): el
+   *  "Responsable de Tienda". No la hace: la sigue. */
+  responsable?: number | null
   /** Si es una pieza: su tipo (Banners, Cenefas…), lo tildado y los datos de más. */
   tipo?: string | null
   opciones?: string[]
@@ -148,7 +152,7 @@ export type AnclaTarea = 'inicio' | 'fin'
 /** Una tarea de una plantilla: su vencimiento es relativo a la acción. */
 export type TareaDePlantilla = {
   id: string
-  /** Otra tarea de la misma plantilla: subtareas de un nivel nomás. */
+  /** Siempre null desde la 0090: en una plantilla tampoco hay subtareas. */
   parentId: string | null
   titulo: string
   descripcion: string | null
@@ -161,6 +165,8 @@ export type TareaDePlantilla = {
   /** Quién la hace: si es una agencia, al aplicar la plantilla nace su tarjeta. */
   para?: 'tienda' | 'agencia' | 'fuera'
   agencia?: string | null
+  /** Quién la lleva por Tienda si la hace una agencia (0090). */
+  responsable?: number | null
   /** El tipo de pieza: la tarjeta se llama "<Acción> - <Tipo>". */
   tipo?: string | null
   opciones?: string[]
@@ -180,37 +186,12 @@ export type Plantilla = {
   tareas: TareaDePlantilla[]
 }
 
-export const NIVELES_DE_TAREA = 3
-
 export const ETIQUETA_ESTADO_TAREA: Record<EstadoTarea, string> = {
   pendiente: 'Pendiente',
   'en-proceso': 'En proceso',
   hecha: 'Hecha',
 }
 
-/** A que profundidad esta una tarea: 1 si no cuelga de nada. */
-export function nivelDeTarea(tarea: Tarea, todas: Tarea[]): number {
-  let nivel = 1
-  let padre = tarea.parentId
-  while (padre && nivel <= NIVELES_DE_TAREA) {
-    nivel++
-    padre = todas.find(t => t.id === padre)?.parentId ?? null
-  }
-  return nivel
-}
-
-/** La tarea y todo lo que cuelga de ella. */
-export function conDescendientes(id: string, todas: Tarea[]): Set<string> {
-  const ids = new Set([id])
-  let crecio = true
-  while (crecio) {
-    crecio = false
-    for (const t of todas) {
-      if (t.parentId && ids.has(t.parentId) && !ids.has(t.id)) { ids.add(t.id); crecio = true }
-    }
-  }
-  return ids
-}
 
 // ---------------------------------------------------------------------------
 // Avisos

@@ -150,8 +150,13 @@ class CalendarioTarea(Base):
 
     Pedido de Ivan (12/11/2026): quien lidera el equipo abre una acción y
     "crea subtareas, y esas subtareas van a estar asignadas a determinadas
-    personas", que se enteran por la campanita. Una tarea puede colgar de otra
-    (`parent_id`): tarea → subtarea → sub-subtarea, y no más hondo.
+    personas", que se enteran por la campanita.
+
+    Desde el 24/11/2026 (0090) van todas en un solo nivel: "una tarea = un
+    pedido". Ivan: "las tareas y el pedido de piezas deberían ser uno...
+    tener así dividido en tarea, pedido de piezas y luego subtareas me parece
+    al pedo y confuso". `parent_id` queda en la tabla, siempre vacío: el
+    servidor no acepta más tareas adentro de otra.
 
     Es una fila aparte por lo mismo que las piezas: dos personas tildando dos
     tareas de la misma acción no se pisan."""
@@ -184,6 +189,14 @@ class CalendarioTarea(Base):
     # - 'tienda': la gente de Tienda Inglesa (la persona asignada).
     para: Mapped[str] = mapped_column(String(8), nullable=False, default="tienda", server_default="tienda")
     agencia: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Quién la lleva por Tienda Inglesa cuando la hace una agencia (0090): el
+    # "Responsable de Tienda". Antes era la persona asignada a la tarea de
+    # afuera, de la que colgaba la pieza. No la hace (eso es `para`/`agencia`
+    # y `asignado_a_id`): la sigue. La tiene en Mis tareas, la tarjeta es
+    # "suya" en el tablero y le llegan sus comentarios.
+    responsable_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # El tipo de tarea ('banners', 'cenefas'... ver app/services/tipos_de_tarea.py)
     # y lo que se tildó de él (["Header", "Slider"]). Con tipo, la tarea es una
     # pieza: tiene su tarjeta en el tablero y se llama "<Acción> - <Tipo>".

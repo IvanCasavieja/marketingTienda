@@ -150,21 +150,21 @@ def test_una_tarea_sin_titulo_no_se_guarda():
         _plantilla([{"id": "t1", "titulo": "  "}])
 
 
-def test_las_subtareas_son_de_un_nivel():
-    _plantilla([{"id": "t1", "titulo": "Piezas"}, {"id": "t2", "titulo": "Header", "parentId": "t1"}])
-    with pytest.raises(ValidationError):
-        _plantilla([
-            {"id": "t1", "titulo": "Piezas"},
-            {"id": "t2", "titulo": "Header", "parentId": "t1"},
-            {"id": "t3", "titulo": "Mobile", "parentId": "t2"},
-        ])
+def test_ya_no_hay_subtareas_en_una_plantilla():
+    # 0090: una tarea = un pedido, también en las plantillas.
+    _plantilla([{"id": "t1", "titulo": "Piezas"}, {"id": "t2", "titulo": "Header"}])
+    for anidada in (
+        [{"id": "t1", "titulo": "Piezas"}, {"id": "t2", "titulo": "Header", "parentId": "t1"}],
+        [{"id": "t2", "titulo": "Header", "parentId": "otra"}],
+        [{"id": "t1", "titulo": "Ella misma", "parentId": "t1"}],
+    ):
+        with pytest.raises(ValidationError, match="primer nivel"):
+            _plantilla(anidada)
 
 
-def test_una_subtarea_de_algo_que_no_esta_no_se_guarda():
-    with pytest.raises(ValidationError):
-        _plantilla([{"id": "t2", "titulo": "Header", "parentId": "otra"}])
-    with pytest.raises(ValidationError):
-        _plantilla([{"id": "t1", "titulo": "Ella misma", "parentId": "t1"}])
+def test_el_responsable_de_tienda_va_solo_en_lo_que_hace_una_agencia():
+    assert TareaDePlantilla(id="t1", titulo="x", para="agencia", agencia="Publicis", responsable=5).responsable == 5
+    assert TareaDePlantilla(id="t1", titulo="x", responsable=5).responsable is None
 
 
 def test_dos_tareas_con_el_mismo_id_no():
@@ -204,15 +204,18 @@ def test_aplicar_calcula_cada_fecha_y_la_deja_anclada():
     assert [t["id"] for t in plan] == list(ids.values())
 
 
-def test_las_subtareas_van_despues_de_la_tarea_de_la_que_cuelgan():
+def test_aplicada_va_toda_en_el_primer_nivel_en_su_orden():
+    # Si una guardada trajera `parentId` (la 0090 las aplanó), no se usa.
     tareas = [
         {"id": "s1", "titulo": "Header", "parentId": "p1", "ancla": "inicio", "dias": -5},
         {"id": "p1", "titulo": "Piezas", "ancla": "inicio", "dias": -7},
-        {"id": "p2", "titulo": "Retiro", "ancla": "fin", "dias": 1},
+        {"id": "p2", "titulo": "Banners", "ancla": "fin", "dias": 1, "para": "agencia", "agencia": "Publicis",
+         "tipo": "banners", "responsable": 5},
     ]
-    plan = tareas_de_plantilla(tareas, {"s1": "n1", "p1": "n2", "p2": "n3"}, DESDE, HASTA)
-    assert [t["id"] for t in plan] == ["n2", "n3", "n1"]
-    assert plan[2]["parent_id"] == "n2"
+    plan = tareas_de_plantilla(tareas, {"s1": "n1", "p1": "n2", "p2": "n3"}, DESDE, HASTA, "Ciberlunes")
+    assert [t["id"] for t in plan] == ["n1", "n2", "n3"]
+    assert all(t["parent_id"] is None for t in plan)
+    assert [t["responsable_id"] for t in plan] == [None, None, 5]
 
 
 def test_una_tarea_sin_ancla_se_crea_sin_fecha():

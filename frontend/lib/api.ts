@@ -2449,10 +2449,10 @@ export const adjuntosApi = {
         headers: { "Content-Type": "multipart/form-data" },
       });
   },
-  /** El archivo, con la sesión. `desde`: la tarea en la que se está mirando. */
-  bajar: (adjuntoId: string, desde: string) =>
+  /** El archivo, con la sesión. */
+  bajar: (adjuntoId: string) =>
     api.get<Blob>(`/calendario/adjuntos/${encodeURIComponent(adjuntoId)}`, {
-      params: { desde }, responseType: "blob", timeout: 120_000,
+      responseType: "blob", timeout: 120_000,
     }),
   sacar: (adjuntoId: string) =>
     api.delete<{ id: string; sacado: boolean }>(`/calendario/adjuntos/${encodeURIComponent(adjuntoId)}`, ESPERA),

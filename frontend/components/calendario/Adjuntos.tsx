@@ -14,8 +14,9 @@ import { pesoLegible } from '@/lib/calendario/zip'
  * Los archivos del pedido de una tarea (24/11/2026). Ivan: "en el brief de
  * las tareas deberíamos poder adjuntar archivos, como el Excel por ejemplo".
  *
- * - `ElegirAdjuntos`: en «Nueva tarea» y «Pedir una pieza», antes de crearla.
- *   Se suben solos después del alta (ver `adjuntar` en el store).
+ * - `ElegirAdjuntos`: en «Nueva tarea», antes de crearla. Se suben solos
+ *   después del alta (ver `adjuntar` en el store); si se pidieron varias
+ *   cosas juntas, a cada tarea.
  * - `ListaDeAdjuntos`: en la tarjeta («Lo que se pidió») y en la ficha de la
  *   acción, con su ícono, nombre, peso y «Bajar»; quien puede, adjunta más o
  *   saca alguno.
@@ -79,7 +80,7 @@ function BotonAdjuntar({ onElegidos, cargando = false, etiqueta = 'Adjuntar arch
   )
 }
 
-/** Los archivos elegidos al crear la tarea o la pieza, antes de que existan. */
+/** Los archivos elegidos al crear la tarea, antes de que exista. */
 export function ElegirAdjuntos({ valor, onCambiar, ayuda }: {
   valor: File[]
   onCambiar: (archivos: File[]) => void
@@ -129,8 +130,7 @@ export function ElegirAdjuntos({ valor, onCambiar, ayuda }: {
 
 /**
  * Los archivos del pedido, para bajar (y, quien puede, adjuntar más o sacar
- * alguno). `desde`: la tarea en la que se están mirando (una pieza ve también
- * los de la tarea de la que cuelga).
+ * alguno). `desde`: la tarea de la que son.
  */
 export function ListaDeAdjuntos({ desde, adjuntos, puedeAdjuntar, onCambio, conAyuda = true }: {
   desde: string
@@ -147,13 +147,13 @@ export function ListaDeAdjuntos({ desde, adjuntos, puedeAdjuntar, onCambio, conA
   const [sacando, setSacando] = useState<string | null>(null)
   const [confirmando, setConfirmando] = useState<string | null>(null)
   const [avisos, setAvisos] = useState<string[]>([])
-  const propios = adjuntos.filter(a => !a.heredado).length
+  const propios = adjuntos.length
 
   async function bajar(a: Adjunto) {
     if (bajando) return
     setBajando(a.id)
     try {
-      const { data } = await adjuntosApi.bajar(a.id, desde)
+      const { data } = await adjuntosApi.bajar(a.id)
       const url = URL.createObjectURL(data)
       const enlace = document.createElement('a')
       enlace.href = url
@@ -211,10 +211,7 @@ export function ListaDeAdjuntos({ desde, adjuntos, puedeAdjuntar, onCambio, conA
               <IconoDe nombre={a.nombre} />
               <span className="min-w-0 flex-1 text-sm">
                 <span className="block truncate font-semibold text-slate-900 dark:text-slate-100" title={a.nombre}>{a.nombre}</span>
-                <span className="block truncate text-xs text-slate-600 dark:text-slate-400">
-                  {pesoLegible(a.tamano)}
-                  {a.heredado && (a.deLaTarea ? ` · de la tarea «${a.deLaTarea}»` : ' · de la tarea principal')}
-                </span>
+                <span className="block truncate text-xs text-slate-600 dark:text-slate-400">{pesoLegible(a.tamano)}</span>
               </span>
               <button
                 type="button"
@@ -236,8 +233,7 @@ export function ListaDeAdjuntos({ desde, adjuntos, puedeAdjuntar, onCambio, conA
                   disabled={sacando === a.id}
                   className="min-h-[44px] shrink-0 animate-scale-in rounded-lg bg-rose-600 px-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-70 sm:min-h-[36px]"
                 >
-                  {/* Uno de la tarea de la que cuelga lo dejan de ver todas sus piezas. */}
-                  {sacando === a.id ? 'Sacando…' : a.heredado ? 'Sacar de toda la tarea' : 'Sí, sacar'}
+                  {sacando === a.id ? 'Sacando…' : 'Sí, sacar'}
                 </button>
               ) : (
                 <button
@@ -270,9 +266,9 @@ export function ListaDeAdjuntos({ desde, adjuntos, puedeAdjuntar, onCambio, conA
 }
 
 /**
- * En la ficha de la acción, adentro de una tarea abierta: sus archivos (y
- * los de la tarea de la que cuelga). Los pide al abrirse, y de nuevo cuando
- * terminan de subir los que se eligieron al crearla.
+ * En la ficha de la acción, adentro de una tarea abierta: sus archivos. Los
+ * pide al abrirse, y de nuevo cuando terminan de subir los que se eligieron
+ * al crearla.
  */
 export function AdjuntosDeLaTarea({ tareaId }: { tareaId: string }) {
   const [datos, setDatos] = useState<{ adjuntos: Adjunto[]; puedoAdjuntar: boolean } | null>(null)

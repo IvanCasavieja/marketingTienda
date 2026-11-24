@@ -1,5 +1,6 @@
-"""Los archivos del pedido de una tarea: qué se acepta, cuánto, y de qué
-tareas se ven (0089, ver app/models/adjuntos.py).
+"""Los archivos del pedido de una tarea: qué se acepta y cuánto (0089, ver
+app/models/adjuntos.py). Cada tarea ve los suyos: desde la 0090 no hay
+tareas adentro de otra.
 
 Pedido de Ivan (24/11/2026): "en el brief de las tareas deberíamos poder
 adjuntar archivos, como el Excel por ejemplo".
@@ -10,7 +11,7 @@ Qué se acepta: Excel (.xlsx, .xls), CSV, PDF, Word (.docx, .doc), imágenes
 MAX_BYTES_ADJUNTO por archivo y MAX_ADJUNTOS por tarea; entre todos, el tope
 ADJUNTOS_TOPE_MB de app/core/config.py.
 
-Lo de la base (`cadena_de`, `lista`) y lo puro (`validar`, `nombre_limpio`,
+Lo de la base (`lista`) y lo puro (`validar`, `nombre_limpio`,
 `puede_adjuntar`) están juntos; lo puro se prueba sin base
 (tests/test_adjuntos_del_pedido.py). Las rutas están en
 app/api/routes/adjuntos.py.
@@ -31,11 +32,8 @@ MB = 1024 * 1024
 # Un Excel de 1.000 productos pesa unos 140 KB; un PDF con referencias, unos
 # pocos MB. Más grande que esto, va como link en el detalle.
 MAX_BYTES_ADJUNTO = 10 * MB
-# Por tarea (los que se le adjuntaron a ella; los que vienen de la tarea de
-# la que cuelga no cuentan acá).
+# Por tarea.
 MAX_ADJUNTOS = 5
-# Tarea → subtarea → sub-subtarea (calendario._NIVELES_DE_TAREA).
-_NIVELES = 3
 
 _OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"  # .xls y .doc (los de antes de 2007)
 
@@ -138,44 +136,23 @@ def nuevo_id() -> str:
     return f"ad-{secrets.token_hex(8)}"
 
 
-async def cadena_de(db: AsyncSession, tarea: CalendarioTarea) -> list[CalendarioTarea]:
-    """La tarea y las tareas de las que cuelga, de abajo para arriba: sus
-    adjuntos son los que ve quien mira esta tarea. El Excel de una tarea lo
-    ven sus piezas (las tarjetas de las agencias)."""
-    cadena = [tarea]
-    actual = tarea
-    while actual.parent_id and len(cadena) < _NIVELES:
-        actual = await db.get(CalendarioTarea, actual.parent_id)
-        if actual is None:
-            break
-        cadena.append(actual)
-    return cadena
-
-
 async def lista(
-    db: AsyncSession, tarea: CalendarioTarea, usuario_id: int, *, gestiona: bool, pide: bool, externo: bool,
+    db: AsyncSession, tarea: CalendarioTarea, usuario_id: int, *, gestiona: bool, pide: bool,
 ) -> list[dict]:
-    """Los adjuntos que se ven en `tarea`: los suyos primero y después los de
-    las tareas de las que cuelga (`heredado`), sin los bytes. A una cuenta
-    externa no le viaja el nombre de la tarea de la que viene (es del
-    equipo)."""
-    cadena = await cadena_de(db, tarea)
-    de = {t.id: t for t in cadena}
+    """Los adjuntos de `tarea`, sin los bytes. Desde la 0090 cada tarea tiene
+    los suyos: ya no hay tarea de afuera de la que heredarlos."""
     filas = (await db.execute(
-        select(CalendarioAdjunto.id, CalendarioAdjunto.tarea_id, CalendarioAdjunto.nombre,
+        select(CalendarioAdjunto.id, CalendarioAdjunto.nombre,
                CalendarioAdjunto.tipo_mime, CalendarioAdjunto.tamano, CalendarioAdjunto.created_at)
-        .where(CalendarioAdjunto.tarea_id.in_(list(de)))
+        .where(CalendarioAdjunto.tarea_id == tarea.id)
         .order_by(CalendarioAdjunto.created_at, CalendarioAdjunto.id)
     )).all()
-    out = []
-    for aid, tid, nombre, mime, tamano, fecha in filas:
-        heredado = tid != tarea.id
-        out.append({
+    puedo_sacar = puede_adjuntar(usuario_id, tarea.creado_por_id, gestiona=gestiona, pide=pide)
+    return [
+        {
             "id": aid, "nombre": nombre, "tipo": mime, "tamano": tamano,
             "fecha": fecha.isoformat() if fecha else None,
-            "heredado": heredado,
-            "deLaTarea": de[tid].titulo if heredado and not externo else None,
-            "puedoSacar": puede_adjuntar(usuario_id, de[tid].creado_por_id, gestiona=gestiona, pide=pide),
-        })
-    out.sort(key=lambda a: a["heredado"])
-    return out
+            "puedoSacar": puedo_sacar,
+        }
+        for aid, nombre, mime, tamano, fecha in filas
+    ]
