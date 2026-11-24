@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import SelectorMes from "@/components/redexpres/SelectorMes";
 import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
 import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
+import { conEdicion, sinLoGuardado, type Ediciones } from "@/lib/redexpres/ediciones";
 
 type ColKey = string;
 
@@ -52,7 +53,14 @@ export default function PlanillaPedidosPage() {
   const [filterOnly, setFilterOnly] = useState(false);
 
   // Local editing state (key = local_nombre, value = partial row data)
-  const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
+  const [edits, setEdits] = useState<Ediciones>({});
+  // Lo último escrito, para el guardado que sale 800 ms después: leer `edits`
+  // desde ese momento daba lo de ANTES de la última tecla ("12" guardaba "1").
+  const editsRef = useRef<Ediciones>({});
+  function ponerEdits(next: Ediciones) {
+    editsRef.current = next;
+    setEdits(next);
+  }
   const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
@@ -78,7 +86,7 @@ export default function PlanillaPedidosPage() {
 
   async function loadPlanilla(year: number, month: number) {
     setLoading(true);
-    setEdits({});
+    ponerEdits({});
     try {
       const { data } = await redexpresApi.getPlanilla(year, month);
       setRows(data);
@@ -101,7 +109,7 @@ export default function PlanillaPedidosPage() {
 
   async function flushRowSave(localNombre: string) {
     if (!selectedMes) return;
-    const rowEdits = edits[localNombre];
+    const rowEdits = editsRef.current[localNombre];
     if (!rowEdits || Object.keys(rowEdits).length === 0) return;
 
     setSavingRow(localNombre);
@@ -111,11 +119,9 @@ export default function PlanillaPedidosPage() {
         selectedMes.year, selectedMes.month, localNombre, payload as any
       );
       setRows((prev) => prev.map((r) => r.local_nombre === localNombre ? updated : r));
-      setEdits((prev) => {
-        const next = { ...prev };
-        delete next[localNombre];
-        return next;
-      });
+      // Sale de pendientes solo lo que se mandó: lo que se siguió escribiendo
+      // mientras se guardaba queda para el próximo guardado.
+      ponerEdits(sinLoGuardado(editsRef.current, localNombre, rowEdits));
     } catch {
       toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
     } finally {
@@ -132,10 +138,7 @@ export default function PlanillaPedidosPage() {
         toast.warning(t("redexpres.limiteMaximo", { max }));
       }
     }
-    setEdits((prev) => ({
-      ...prev,
-      [localNombre]: { ...(prev[localNombre] || {}), [colKey]: value },
-    }));
+    ponerEdits(conEdicion(editsRef.current, localNombre, colKey, value));
     scheduleRowSave(localNombre);
   }
 
