@@ -82,6 +82,9 @@ from app.api.routes.calendario import (
     _ID, _exigir_gestion_de_tareas, _nueva_revision, _puede_gestionar_tareas, _puede_ver_el_mundo,
     _rev_para, _ve_una_parte, ids_de_aprobadores_de, nombre_sin_mail, nombres_para_externo, vence_al_reabrir,
 )
+from app.api.routes.calendario import puede_pedir_piezas
+from app.models.adjuntos import CalendarioAdjunto
+from app.services import adjuntos as reglas_adjuntos
 from app.core.config import settings
 from app.core import alcance, externos
 from app.core.database import AsyncSessionLocal, get_db
@@ -642,6 +645,17 @@ async def ver_entregas(
         },
         # La conversación de la tarjeta, al costado como en Trello (0073).
         "comentarios": [_comentario_json(c, current_user, nombres) for c in comentarios],
+        # Los archivos del pedido (0089, 24/11/2026: "deberíamos poder
+        # adjuntar archivos, como el Excel"): los de la tarea y los de la
+        # tarea de la que cuelga. Se bajan aparte (routes/adjuntos.py).
+        "adjuntos": await reglas_adjuntos.lista(
+            db, tarea, current_user.id, gestiona=_puede_gestionar_tareas(current_user),
+            pide=puede_pedir_piezas(current_user), externo=externo,
+        ),
+        "puedoAdjuntar": reglas_adjuntos.puede_adjuntar(
+            current_user.id, tarea.creado_por_id, gestiona=_puede_gestionar_tareas(current_user),
+            pide=puede_pedir_piezas(current_user),
+        ),
     }
 
 
@@ -668,6 +682,12 @@ async def _huella_de_la_tarjeta(db: AsyncSession, tarea, barra) -> str:
         .join(CalendarioVersion, CalendarioVersion.id == CalendarioDecision.version_id)
         .where(CalendarioVersion.tarea_id == t)
     ).subquery()
+    # Los archivos del pedido (0089), también los de la tarea de la que cuelga.
+    de_la_cadena = CalendarioAdjunto.tarea_id.in_([x.id for x in await reglas_adjuntos.cadena_de(db, tarea)])
+    adjuntos = (
+        select(func.count()).select_from(CalendarioAdjunto).where(de_la_cadena).scalar_subquery(),
+        select(func.max(CalendarioAdjunto.id)).where(de_la_cadena).scalar_subquery(),
+    )
     fila = (await db.execute(select(
         select(CalendarioEntrega.updated_at).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
         select(CalendarioEntrega.momento).where(CalendarioEntrega.tarea_id == t).scalar_subquery(),
@@ -675,6 +695,7 @@ async def _huella_de_la_tarjeta(db: AsyncSession, tarea, barra) -> str:
         *cuantos_y_ultimo(CalendarioComentario, CalendarioComentario.created_at),
         *cuantos_y_ultimo(CalendarioMarca, CalendarioMarca.created_at),
         *decisiones.c,
+        *adjuntos,
     ))).one()
     return huella_de(
         tuple(fila), tarea.estado, tarea.titulo, tarea.vence, tarea.asignado_a_id, tarea.descripcion,

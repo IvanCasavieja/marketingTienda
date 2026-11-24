@@ -7,6 +7,7 @@ import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 import type { MiAgenda } from "@/lib/calendario/mi-agenda";
 import type { ControlPrevio } from "@/lib/calendario/control-previo";
 import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
+import type { Adjunto } from "@/lib/calendario/adjuntos";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2429,4 +2430,30 @@ export const entregasApi = {
       `/calendario/tareas/${encodeURIComponent(tareaId)}/mover`, datos, ESPERA),
   misEntregas: () =>
     api.get<{ paraRevisar: Tarjeta[]; conCambios: Tarjeta[] }>("/calendario/mis-entregas", ESPERA),
+};
+
+/** Los archivos del pedido de una tarea (0089, 24/11/2026: "deberíamos poder
+ *  adjuntar archivos, como el Excel"). Ver lib/calendario/adjuntos.ts. */
+export const adjuntosApi = {
+  /** Los de la tarea y los de la tarea de la que cuelga. */
+  listar: (tareaId: string) =>
+    api.get<{ adjuntos: Adjunto[]; puedoAdjuntar: boolean }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/adjuntos`, ESPERA),
+  /** Hasta 10 MB cada uno: se espera según lo que se sube, como una entrega. */
+  subir: (tareaId: string, archivos: File[]) => {
+    const form = new FormData();
+    for (const a of archivos) form.append("archivos", a, a.name);
+    return api.post<CalendarioEscrito & { adjuntos: Adjunto[]; puedoAdjuntar: boolean }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/adjuntos`, form, {
+        timeout: esperaDeEntrega(pesoDelFormulario(form)),
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+  },
+  /** El archivo, con la sesión. `desde`: la tarea en la que se está mirando. */
+  bajar: (adjuntoId: string, desde: string) =>
+    api.get<Blob>(`/calendario/adjuntos/${encodeURIComponent(adjuntoId)}`, {
+      params: { desde }, responseType: "blob", timeout: 120_000,
+    }),
+  sacar: (adjuntoId: string) =>
+    api.delete<{ id: string; sacado: boolean }>(`/calendario/adjuntos/${encodeURIComponent(adjuntoId)}`, ESPERA),
 };
