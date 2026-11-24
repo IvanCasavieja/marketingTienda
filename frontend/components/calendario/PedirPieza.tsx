@@ -14,6 +14,7 @@ import { venceAnclado } from '@/lib/calendario/plantillas'
 import type { BarraGuardada, Persona } from '@/lib/calendario/tipos'
 import { useCatalogoDeTipos, useTableros, type Tablero } from '@/store/tiposDeTarea'
 import { useDialogo } from './useDialogo'
+import { ElegirAdjuntos } from './Adjuntos'
 import {
   FormularioEntregas, configInicial, configParaEnviar, faltaEnConfig, type ConfigEntregas,
 } from './entregas/FormularioEntregas'
@@ -53,6 +54,9 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
 }) {
   const crear = useCalendario(s => s.crearTarea)
   const configurarEntregas = useCalendario(s => s.configurarEntregas)
+  const adjuntar = useCalendario(s => s.adjuntar)
+  // Los archivos del pedido (24/11/2026: "como el Excel"): suben después del alta.
+  const [archivos, setArchivos] = useState<File[]>([])
   const catalogo = useCatalogoDeTipos()
   const { error, reintentar } = catalogo
   const tipos = tiposDelMundo(catalogo.tipos, accion.mundo)
@@ -172,6 +176,8 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
         if (ok) toast.success('Se guardaron las fases y quiénes aprueban.')
       })
     }
+    // En la cola de la acción, detrás del alta: la tarjeta nace con su Excel.
+    if (id && archivos.length > 0) void adjuntar(accion.id, id, archivos)
     onListo()
   }
 
@@ -364,6 +370,8 @@ export function PedirPieza({ accion, parentId = null, tareaMadre, personas, usua
             maxLength={5000} placeholder="Lo que no entra en lo tildado: tono, referencias, qué no puede faltar…" className="campo !h-auto py-2.5" />
         )}
       </div>
+
+      <ElegirAdjuntos valor={archivos} onCambiar={setArchivos} ayuda="Los baja quien la hace, desde su tarjeta" />
 
       {pedido && (
         <div className="rounded-xl bg-white/80 px-3 py-2.5 text-xs leading-relaxed text-slate-700 ring-1 ring-slate-300 dark:bg-slate-900/70 dark:text-slate-200 dark:ring-slate-700">

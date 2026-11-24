@@ -40,6 +40,7 @@ from app.models.entregas import (
     CalendarioVersionImagen, CalendarioVersionZip,
 )
 from app.models.revision_ia import CalendarioRevisionIA
+from app.models.adjuntos import CalendarioAdjunto
 from app.models.agenda import AgendaExterna
 
 __all__ = [
@@ -59,6 +60,6 @@ __all__ = [
     "CalendarioTarea",
     "ColocacionPedido", "ColocacionLocal", "ColocacionFoto",
     "CalendarioEntrega", "CalendarioFase", "CalendarioVersion", "CalendarioVersionImagen", "CalendarioVersionZip", "CalendarioMarca",
-    "CalendarioDecision", "CalendarioRevisionIA", "CalendarioComentario",
+    "CalendarioDecision", "CalendarioRevisionIA", "CalendarioComentario", "CalendarioAdjunto",
     "AgendaExterna",
 ]
