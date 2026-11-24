@@ -1,0 +1,95 @@
+# Ivan decide desde el mail del informe nocturno (docs/equipo-nocturno).
+#
+# Cuando responde el mail, GitHub lo guarda como un comentario suyo en el
+# issue del informe. Si la primera palabra es:
+#   - "ok" (o "dale", "sí"): mergea el PR de esa noche, solo si todas las
+#     pruebas están en verde. Si no lo están, avisa y no hace nada.
+#   - "no": cierra el PR (la rama queda: así Sofía sabe que ya se propuso).
+# Cualquier otra cosa se ignora. Solo cuenta lo que escribe el DUEÑO del repo:
+# el repo es público y cualquiera puede comentar.
+#
+# Ojo: lo que hace este workflow con GITHUB_TOKEN no dispara otros workflows,
+# así que el aviso lo cierra él mismo (el job "cerrar" de informe-nocturno.yml
+# no se entera). Render y Vercel publican igual: escuchan a GitHub, no a Actions.
+name: OK por mail al informe nocturno
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: ok-por-mail-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  decidir:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.issue.state == 'open' &&
+      github.event.comment.user.login == github.repository_owner &&
+      contains(github.event.issue.body, '<!-- rama-nocturna:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mergear o cerrar según la respuesta
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const aviso = context.payload.issue;
+            const primeraLinea = (context.payload.comment.body || "").trim().split("\n")[0].trim().toLowerCase();
+            const palabra = primeraLinea.replace(/[^a-záéíóúñ]+.*$/u, "");
+            const esOk = ["ok", "okay", "okey", "dale", "si", "sí"].includes(palabra);
+            const esNo = palabra === "no";
+            if (!esOk && !esNo) return;
+
+            const rama = ((aviso.body || "").match(/<!-- rama-nocturna: (.+?) -->/) || [])[1];
+            const decir = (body) => github.rest.issues.createComment({ owner, repo, issue_number: aviso.number, body });
+            const cerrarAviso = () => github.rest.issues.update({ owner, repo, issue_number: aviso.number, state: "closed" });
+
+            const { data: prs } = await github.rest.pulls.list({ owner, repo, state: "open", head: `${owner}:${rama}`, per_page: 1 });
+            const pr = prs[0];
+            if (!pr) {
+              await decir(`No encontré un PR abierto de la rama \`${rama}\`: no hice nada.`);
+              return;
+            }
+
+            if (esNo) {
+              await github.rest.pulls.update({ owner, repo, pull_number: pr.number, state: "closed" });
+              await decir(`Cerrado sin mergear por tu respuesta (PR #${pr.number}). Sofía no lo vuelve a proponer.`);
+              await cerrarAviso();
+              return;
+            }
+
+            // Solo con todas las pruebas terminadas y en verde.
+            const sha = pr.head.sha;
+            const corridas = await github.paginate(github.rest.checks.listForRef, { owner, repo, ref: sha, per_page: 100 });
+            const { data: estado } = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref: sha });
+            const pendientes = corridas.filter((c) => c.status !== "completed").map((c) => c.name)
+              .concat(estado.statuses.filter((s) => s.state === "pending").map((s) => s.context));
+            const rotas = corridas.filter((c) => c.status === "completed" && !["success", "skipped", "neutral"].includes(c.conclusion)).map((c) => c.name)
+              .concat(estado.statuses.filter((s) => ["failure", "error"].includes(s.state)).map((s) => s.context));
+            if (rotas.length) {
+              await decir(`No lo mergeé: hay pruebas que fallaron (${rotas.join(", ")}). Mirá el PR #${pr.number}.`);
+              return;
+            }
+            if (pendientes.length) {
+              await decir(`Todavía no: las pruebas siguen corriendo (${pendientes.join(", ")}). Respondé **ok** de nuevo en unos minutos.`);
+              return;
+            }
+
+            try {
+              await github.rest.pulls.merge({ owner, repo, pull_number: pr.number, merge_method: "merge" });
+            } catch (e) {
+              await decir(`No lo pude mergear (PR #${pr.number}): ${e.message}`);
+              return;
+            }
+            await decir(`Mergeado por tu OK (PR #${pr.number}). Se publica solo en unos minutos.`);
+            await cerrarAviso();

@@ -74,7 +74,7 @@ jobs:
             const pie = sinCambios
               ? "Esta noche no hay nada para revisar. La rama del informe se borra sola."
               : pr
-                ? `**Para revisar y decidir:** PR #${pr.number} → ${pr.html_url}\n\nSi te sirve, OK y se mergea. Si no, se cierra. Este aviso se cierra solo cuando se cierre el PR.`
+                ? `**Para revisar:** PR #${pr.number} → ${pr.html_url}\n\n**Para decidir, respondé este mail con una sola palabra:**\n- **ok** → se mergea (si las pruebas están en verde) y se publica solo.\n- **no** → se cierra y Sofía no lo vuelve a proponer.`
                 : `El equipo no pudo abrir el PR. Para verlo y abrirlo: ${comparar}`;
 
             await github.rest.issues.create({
