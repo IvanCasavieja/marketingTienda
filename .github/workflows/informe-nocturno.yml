@@ -2,9 +2,11 @@
 #
 # El equipo corre en la nube a las 2 AM y sube una rama cuyo último commit
 # empieza con "[Nocturno]" y trae el informe en el mensaje. Este workflow abre
-# un issue con ese informe asignado al dueño del repo: GitHub le manda el mail
-# (y el aviso al celular si tiene la app), igual que el monitor de producción.
-# No depende de ninguna casilla ni de claves.
+# un issue con ese informe que menciona al dueño del repo: GitHub le manda UN
+# mail con el informe entero (y el aviso al celular si tiene la app). No se
+# asigna: asignarlo mandaba un segundo mail que solo decía "Assigned #55 to
+# @IvanCasavieja" y tapaba al del informe (24/11/2026). No depende de ninguna
+# casilla ni de claves.
 #
 # - Noche con cambios: el issue trae el link al PR (o, si el equipo no lo pudo
 #   abrir, el link para abrirlo). Cuando el PR se cierra, mergeado o no, el
@@ -78,8 +80,7 @@ jobs:
             await github.rest.issues.create({
               owner, repo,
               title: `${titulo} (${fecha})`,
-              assignees: [owner],
-              body: [informe, "", "---", pie, "", marca].join("\n"),
+              body: [informe, "", "---", pie, "", `Aviso para @${owner}.`, "", marca].join("\n"),
             });
 
             if (sinCambios) {
