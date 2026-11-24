@@ -17,7 +17,7 @@ from app.services.cenefas.data_engine import load_products_con_headers
 from app.services.cenefas.pptx_importer import import_pptx
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas import conocimiento as saber
-from app.services.cenefas.revision_previa import revisar
+from app.services.cenefas.revision_previa import listado_sin_convertir, revisar
 from app.services.cenefas.validation_engine import build_summary, validate_products
 
 logger = logging.getLogger(__name__)
@@ -244,6 +244,11 @@ async def _run_generation_job(
             products, headers = await asyncio.to_thread(
                 load_products_con_headers, excel_bytes, vigencia, legales, usar_legales
             )
+            # El listado de gestión subido directo (24/11/2026): se frena con
+            # qué hacer, en vez de dibujar cenefas que salen solo con el código.
+            sin_convertir = listado_sin_convertir(headers, products)
+            if sin_convertir:
+                raise ValueError(sin_convertir)
             validation = validate_products(products)
             summary    = build_summary(validation)
 
