@@ -34,8 +34,11 @@ instrucciones.
 
 0. **Preparar.** `git fetch origin`. Fecha de hoy en Montevideo:
    `TZ=America/Montevideo date +%F`. Instalá las dependencias (ver *Cómo
-   probar*) antes de que las necesite Ramiro.
-1. **Sofía** propone una mejora (con dos de reserva).
+   probar*) y levantá la plataforma con sus tres cuentas (ver *La
+   plataforma andando*), en segundo plano, antes de lanzar a Sofía.
+1. **Sofía** recorre la plataforma con las tres cuentas (como el equipo, como
+   la agencia y como un local de Redexpres) y propone una mejora (con dos de
+   reserva). Pasale la dirección y las tres contraseñas.
 2. **Tomás** la revisa. Si la frena, pasale la siguiente de reserva o pedile a
    Sofía otra. Máximo 3 propuestas; si ninguna pasa, es una noche sin cambios
    (paso 7b).
@@ -44,7 +47,9 @@ instrucciones.
 4. **Bruno** programa siguiendo el plan de Tomás. Si hay pantalla de por medio,
    **Lucía** hace o revisa la parte visual. Commits chicos, mensajes en
    castellano.
-5. **Ramiro** prueba. Si algo falla, vuelve a Bruno o a Lucía con el detalle.
+5. **Ramiro** prueba, también en el navegador con la cuenta que corresponda
+   (reiniciá el servidor y la web para que tomen la rama nueva). Si algo
+   falla, vuelve a Bruno o a Lucía con el detalle.
    Máximo 3 vueltas. Si no queda verde, no se sube código: noche sin cambios
    (7b) contando qué se intentó y qué falló.
 6. **Clara** escribe el informe (formato abajo).
@@ -94,12 +99,89 @@ python -c "import app.main"
 python -m pytest tests/ -q
 ```
 
-Sin base, las pruebas que la necesitan se saltean. Si en el entorno se puede
-levantar un Postgres (por ejemplo `apt-get install postgresql` o un binario
-portable), crealo, exportá `DATABASE_URL` y `TEST_DATABASE_URL`
-(`postgresql+asyncpg://...`), corré `alembic upgrade head` y después todas las
-pruebas. Si no se puede, decilo en el informe: el CI de GitHub las corre con
-base cuando se abre el PR.
+Sin base, las pruebas que la necesitan se saltean. Con el Postgres de *La
+plataforma andando*, creá otra base vacía solo para las pruebas
+(`createdb core_tests`), corré `alembic upgrade head` con `DATABASE_URL`
+apuntando a ella y después todas las pruebas con
+`TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/core_tests`.
+Si no se pudo levantar Postgres, decilo en el informe: el CI de GitHub las
+corre con base cuando se abre el PR.
+
+## La plataforma andando (entorno de pruebas)
+
+Pedido de Ivan (24/11/2026): que el equipo no mire solo el código, que
+**use** la plataforma como la usa la gente, también como la agencia, con
+usuarios propios. Se levanta entera dentro de esta nube, desde cero cada
+noche: base vacía, servidor, web y tres cuentas. Nada sale de acá ni toca
+producción, y al terminar se borra sola.
+
+| Cuenta | Usuario | Qué ve |
+|---|---|---|
+| Equipo nocturno (superadmin) | `equipo-nocturno@example.com` | Todo, como el equipo de Tienda |
+| Agencia de prueba (externa) | `agencia-de-prueba@example.com` | Solo su tablero y sus tareas, como Publicis |
+| Local de prueba (Redexpres) | `local-de-prueba@example.com` | Solo "Mi pedido" de su local |
+
+Las contraseñas se inventan cada noche (abajo); no van al repo ni al informe.
+Las cuentas las crea `backend/scripts/cuentas_de_prueba.py`
+(`app/services/cuentas_de_prueba.py`), que se niega a correr sin
+`ENTORNO_DE_PRUEBAS=true`.
+
+```bash
+S=<tu scratchpad>
+# 1. Postgres. Si apt no anda, probá `pip install postgresql-wheel` (un
+#    Postgres que se instala con pip) y si tampoco, seguí sin base y decilo.
+apt-get update -qq && apt-get install -y -qq postgresql > $S/pg.log 2>&1
+service postgresql start
+su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\""
+su postgres -c "createdb core_pruebas"
+
+# 2. Base y cuentas (desde backend/, con las dependencias ya instaladas)
+export APP_SECRET_KEY=solo-pruebas ENCRYPTION_KEY="Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="
+export REDIS_URL=redis://localhost:6379/0
+export DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/core_pruebas
+alembic upgrade head
+export ENTORNO_DE_PRUEBAS=true
+for v in CLAVE_EQUIPO_NOCTURNO CLAVE_AGENCIA_DE_PRUEBA CLAVE_LOCAL_DE_PRUEBA; do
+  echo "export $v=Np-$(python -c 'import secrets; print(secrets.token_urlsafe(12))')"
+done > $S/cuentas.env
+. $S/cuentas.env && python scripts/cuentas_de_prueba.py
+
+# 3. El servidor, con la IA simulada: Don Tino y la revisión de piezas
+#    contestan con reglas, sin clave y sin gastar (sirve para pantallas y
+#    permisos, no para juzgar lo que diría Claude).
+APP_ENV=development APP_ALLOWED_ORIGINS=http://localhost:3000 MANTENIMIENTO_AL_ARRANCAR=false \
+SYNC_INTERVAL_HOURS=0 WATCHLIST_CHECK_INTERVAL_HOURS=0 CAMPAIGN_ALERTS_CHECK_INTERVAL_HOURS=0 \
+COTIZACION_AUTO_UPDATE=false CENEFAS_CURADURIA=false MANTENER_DESPIERTO_MIN=0 \
+  nohup python scripts/servidor_ia_simulada.py --port 8000 > $S/backend.log 2>&1 &
+
+# 4. La web (desde frontend/, con npm ci ya hecho). El cartel amarillo de
+#    abajo dice que es el entorno de pruebas.
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 NEXT_PUBLIC_ENTORNO=pruebas \
+  nohup npx next dev -p 3000 > $S/frontend.log 2>&1 &
+
+# 5. El navegador, en el scratchpad (no en el repo)
+pip install -q playwright && python -m playwright install --with-deps chromium
+```
+
+Se entra por `http://localhost:3000/login`; el equipo elige el mundo (Tienda
+Inglesa o Redexpres) al entrar. La base arranca vacía: lo que se quiera ver
+hay que crearlo como lo haría la gente, por ejemplo:
+
+- **Como el equipo:** crear una acción en el calendario y, en su pestaña
+  Tareas, pedirle una pieza a "Agencia de prueba". Abrir el mes en la Planilla
+  de Redexpres.
+- **Como la agencia:** ver esa tarjeta en su tablero, leer el pedido y
+  entregar imágenes. Volver como el equipo a revisar y pedir cambios.
+- **Como el local:** cargar "Mi pedido" del mes abierto.
+
+Mirá también en el teléfono (ancho 390) y sacá capturas al scratchpad. Si el
+servidor o la web no levantan, mirá `backend.log` / `frontend.log`, y si no
+se arregla en unos minutos, seguí con el código y contalo en el informe.
+
+Si algún día hay un servidor de pruebas fijo (Render con su propia base, nunca
+la de producción): `ENTORNO_DE_PRUEBAS=true` y las tres `CLAVE_...` en sus
+variables, y las cuentas se crean solas al arrancar; `/health` dice
+`"entorno": "pruebas"`. Su web lleva `NEXT_PUBLIC_ENTORNO=pruebas`.
 
 ## Límites
 

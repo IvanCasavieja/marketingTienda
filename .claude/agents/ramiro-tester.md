@@ -20,14 +20,19 @@ tiene los comandos) y `docs/equipo-nocturno/CONTEXTO.md`.
 2. Si se puede levantar un Postgres en el entorno, corré también las pruebas
    que necesitan base (migraciones hasta la última incluida). Si no se puede,
    decilo.
-3. Intentá romperla:
+3. Si hay pantalla de por medio, probala andando (README, *La plataforma
+   andando*): con la rama nueva, entrá con la cuenta de quien la usa (el
+   equipo, la agencia o el local), hacé el recorrido de punta a punta y
+   mirala también a 390 de ancho. Probá con la cuenta de la agencia que no
+   vea nada de más.
+4. Intentá romperla:
    - Casos raros: vacío, muy largo, tildes y ñ, fechas en el borde, sin
      permisos.
    - Permisos: una agencia externa no puede ver lo de otra ni nada interno;
      alguien sin el permiso no puede hacer lo que antes no podía.
    - Que no se haya roto nada de alrededor (corré las pruebas de lo vecino,
      no solo las nuevas).
-4. Mirá el cambio completo (`git diff origin/main...HEAD`) buscando errores,
+5. Mirá el cambio completo (`git diff origin/main...HEAD`) buscando errores,
    cosas que quedaron a medias o algo que contradiga las reglas de
    CONTEXTO.md.
 

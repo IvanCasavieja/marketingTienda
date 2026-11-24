@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     MANTENER_DESPIERTO_MIN: int = 10
     URL_PUBLICA: str = ""
 
+    # El entorno de pruebas (24/11/2026; cómo se levanta: "La plataforma
+    # andando" en docs/equipo-nocturno/README.md): una copia de la plataforma
+    # con su propia base, donde el Equipo nocturno entra con cuentas propias.
+    # Con esto en true se crean (o se ponen al día) esas cuentas, con las
+    # contraseñas de las tres variables de abajo, que nunca van al repo: al
+    # arrancar un servidor desplegado, o con scripts/cuentas_de_prueba.py. En
+    # producción va en false (el valor por defecto): ahí no existen.
+    ENTORNO_DE_PRUEBAS: bool = False
+    CLAVE_EQUIPO_NOCTURNO: str = ""
+    CLAVE_AGENCIA_DE_PRUEBA: str = ""
+    CLAVE_LOCAL_DE_PRUEBA: str = ""
+
     # Retención de archivos de cenefas (0 = desactivada). El PPTX de una
     # corrida SIN verificar se borra a los N días; el número de la corrida
     # queda para siempre, y el archivo de una corrida VERIFICADA también.
