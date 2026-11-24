@@ -10,6 +10,7 @@ import { hasPermission } from "@/lib/permissions";
 import SelectorMes from "@/components/redexpres/SelectorMes";
 import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
 import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
+import { conEdicion, sinLoGuardado, type Ediciones } from "@/lib/redexpres/ediciones";
 
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
 // pero con una sola fila — la del local asignado al usuario logueado — en
@@ -45,7 +46,14 @@ export default function MiPedidoPage() {
   const [savingRow, setSavingRow]   = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
+  const [edits, setEdits] = useState<Ediciones>({});
+  // Lo último escrito, para el guardado que sale 800 ms después: leer `edits`
+  // desde ese momento daba lo de ANTES de la última tecla ("12" guardaba "1").
+  const editsRef = useRef<Ediciones>({});
+  function ponerEdits(next: Ediciones) {
+    editsRef.current = next;
+    setEdits(next);
+  }
   const pendingSaves = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Local "activo": para sucursales es la propia (fija), para superadmin es
@@ -91,7 +99,7 @@ export default function MiPedidoPage() {
 
   async function loadPlanilla(year: number, month: number, local: string) {
     setLoading(true);
-    setEdits({});
+    ponerEdits({});
     try {
       const { data } = await redexpresApi.getMiPlanilla(year, month, isSuperuser ? local : undefined);
       setRows(data);
@@ -109,7 +117,7 @@ export default function MiPedidoPage() {
 
   async function flushRowSave(localNombre: string) {
     if (!selectedMes) return;
-    const rowEdits = edits[localNombre];
+    const rowEdits = editsRef.current[localNombre];
     if (!rowEdits || Object.keys(rowEdits).length === 0) return;
 
     setSavingRow(localNombre);
@@ -119,11 +127,9 @@ export default function MiPedidoPage() {
         selectedMes.year, selectedMes.month, localNombre, payload as any
       );
       setRows((prev) => prev.map((r) => r.local_nombre === localNombre ? updated : r));
-      setEdits((prev) => {
-        const next = { ...prev };
-        delete next[localNombre];
-        return next;
-      });
+      // Sale de pendientes solo lo que se mandó: lo que se siguió escribiendo
+      // mientras se guardaba queda para el próximo guardado.
+      ponerEdits(sinLoGuardado(editsRef.current, localNombre, rowEdits));
     } catch {
       toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
     } finally {
@@ -140,7 +146,7 @@ export default function MiPedidoPage() {
         toast.warning(t("redexpres.limiteMaximo", { max }));
       }
     }
-    setEdits((prev) => ({ ...prev, [localNombre]: { ...(prev[localNombre] || {}), [colKey]: value } }));
+    ponerEdits(conEdicion(editsRef.current, localNombre, colKey, value));
     scheduleRowSave(localNombre);
   }
 
