@@ -28,5 +28,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Config local de Claude Code — específica de cada máquina/sesión, no del proyecto
-.claude/
+# Config local de Claude Code — específica de cada máquina/sesión, no del proyecto.
+# Los agentes del Equipo nocturno (docs/equipo-nocturno) sí son del proyecto.
+.claude/*
+!.claude/agents/
