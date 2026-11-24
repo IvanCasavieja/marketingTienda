@@ -234,14 +234,16 @@ export default function MisTareasPage() {
           className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-100"
         >
           <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-          <div className="min-w-0 flex-1 font-medium">
+          {/* basis-56: sin un ancho mínimo el texto se apretaba al lado del botón en
+              vez de mandarlo abajo (celular, palabra por renglón). */}
+          <div className="min-w-0 grow basis-56 space-y-1 font-medium">
             {avisos.map(aviso => <p key={aviso}>{aviso}</p>)}
           </div>
           <button
             type="button"
             onClick={() => void cargar()}
             disabled={cargando}
-            className="btn-secondary min-h-[44px] font-semibold"
+            className="btn-secondary ml-auto min-h-[44px] font-semibold"
           >
             <RotateCcw className={`h-4 w-4 ${cargando ? "animate-spin" : ""}`} aria-hidden />
             {cargando ? "Probando…" : "Probar de nuevo"}
