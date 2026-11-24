@@ -12,16 +12,18 @@ export type TonoPin = 'nuevo' | 'cambio' | 'corregida' | 'ia'
 
 export type Pin = { clave: string; numero: number; x: number; y: number; tono: TonoPin; texto?: string }
 
-// Las marcas van todas del color de la marca (Ivan, 19/11/2026: "está todo
+// Las marcas van todas del mismo color (Ivan, 19/11/2026: "está todo
 // muy colorinche (…) tendría que ser algo mucho más minimalista"). Antes cada
 // tipo tenía su color (rojo, ámbar, verde) y la imagen parecía un semáforo.
-// La sugerencia de la IA va de otro color porque NO es una marca: rojo desde
+// Ese color es rojo desde el 24/11/2026 (Ivan: "el color debe ser rojo"):
+// son cambios pedidos; antes, el violeta de la marca.
+// La sugerencia de la IA va de otro tono porque NO es una marca: rojo desde
 // el 24/11/2026, como lo que encontró la IA en el costado (Ivan: "que sea
 // azul da impresión de estar bien"); antes, violeta.
 const TONO: Record<TonoPin, string> = {
-  nuevo: 'bg-brand-600 text-white ring-white',
-  cambio: 'bg-brand-600 text-white ring-white',
-  corregida: 'bg-brand-600 text-white ring-white',
+  nuevo: 'bg-red-600 text-white ring-white',
+  cambio: 'bg-red-600 text-white ring-white',
+  corregida: 'bg-red-600 text-white ring-white',
   ia: 'bg-rose-600 text-white ring-rose-200 dark:ring-rose-300/60',
 }
 

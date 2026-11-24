@@ -2263,6 +2263,12 @@ async def metricas(
     cada pregunta. Se sigue llamando /metricas para no romper una pantalla
     que todavía no se actualizó (Vercel y Render despliegan por separado)."""
     exigir_mundo(current_user, mundo)
+    # Solo para Tienda Inglesa (Ivan, 24/11/2026: "cada agencia no debería de
+    # ver su análisis de entrega, solo accesible para Tienda Inglesa"). Antes
+    # la agencia veía el suyo; lo de `externo` en _metricas y _tiempos quedó
+    # de esa época y ya no se usa desde acá.
+    if externos.es_externo(current_user):
+        raise HTTPException(status_code=403, detail=externos.SIN_ACCESO)
     if not (7 <= dias <= 730):
         raise HTTPException(status_code=422, detail="El período va de 7 a 730 días")
     return await _metricas(db, current_user, mundo, dias)

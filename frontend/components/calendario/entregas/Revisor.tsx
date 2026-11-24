@@ -410,7 +410,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           {pedidoAntes.map(m => {
             const dice = version.corregidas.includes(m.id)
             const ia = iaDeCadaMarca.get(m.id)
-            const numero = ia ? NUMERO_DEL_VEREDICTO[ia.veredicto] : dice ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white'
+            const numero = ia ? NUMERO_DEL_VEREDICTO[ia.veredicto] : dice ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
             return (
               <li key={m.id} className="flex items-start gap-2 text-sm">
                 <span className={`mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold ${numero}`}>
@@ -496,7 +496,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           >
             <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className={comparar ? 'h-12 w-12' : 'h-16 w-16'} />
             {cuantas > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">{cuantas}</span>
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{cuantas}</span>
             )}
           </button>
         )
@@ -630,7 +630,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             <ul className="space-y-1">
               {version.marcas.map(m => (
                 <li key={m.id} className="flex items-start gap-2 text-sm">
-                  <span className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">
+                  <span className="mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">
                     {m.numero}
                   </span>
                   <span className="min-w-0 text-slate-700 dark:text-slate-300">{m.texto}</span>
@@ -653,7 +653,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 <button
                   type="button"
                   onClick={() => { setActiva(n.imagenId); setElegido(n.clave) }}
-                  className="relative mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white"
+                  className="relative mt-1.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white"
                   aria-label={`Ver la marca ${numeroDe(i)} en la imagen${n.observacionIA ? ' (la armaste con lo que vio la IA)' : ''}`}
                   title={n.observacionIA ? 'La armaste con lo que vio la IA: es tu marca, corregila si hace falta' : undefined}
                 >

@@ -538,8 +538,9 @@ def test_el_tablero_solo_lo_suyo_y_su_propio_retrabajo():
             if marca != "FUERA":
                 assert marca not in r.text, marca
         assert "@" not in r.text
-        metricas = (await Cliente(d.http, d.a1).get("/calendario/entregas/metricas", params={"mundo": MUNDO})).json()
-        assert {g["clave"] for g in metricas["porResponsable"]} <= {d.a1.id}
+        # El análisis de entregas es solo de Tienda Inglesa (24/11/2026).
+        r = await Cliente(d.http, d.a1).get("/calendario/entregas/metricas", params={"mundo": MUNDO})
+        assert r.status_code == 403, r.text
         # El equipo ve las de todos y el retrabajo de todos.
         todo = (await Cliente(d.http, d.promo).get("/calendario/entregas", params={"mundo": MUNDO})).json()
         assert {d.t_b1.id, d.t_fuera.id} <= {t["tareaId"] for t in todo["tarjetas"]}
