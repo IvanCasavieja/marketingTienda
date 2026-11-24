@@ -5,7 +5,8 @@ tablero de tarjetas estilo Trello (0070).
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
   POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ve hecho lo pedido? (la IA; los cambios
-                                                  o, en la primera ronda, el pedido inicial)
+                                                  o, en la primera ronda, el pedido inicial) y lo que
+                                                  encontró en la pieza, como lo vería quien aprueba
   POST   /calendario/tareas/{id}/versiones    — entregar una ronda (multipart: imágenes y/o un link, y un ZIP)
   POST   /calendario/tareas/{id}/mover        — arrastrar la tarjeta a otra columna del tablero
   POST   /calendario/versiones/{id}/decision  — aprobar o pedir cambios
@@ -1028,16 +1029,21 @@ async def control_previo(
     21/11/2026: "La primera entrega debería compararse contra lo pedido
     inicialmente").
 
+    Desde el 24/11/2026 le muestra también lo que encontró en la pieza, lo
+    mismo que vería quien aprueba (Ivan: "la IA sigue encontrando cosas del
+    lado de Tienda que no encuentra del lado de la agencia"), y mira aunque
+    no haya nada pedido.
+
     Recibe las mismas imágenes que se van a entregar (sin las miniaturas: no
     se guarda nada de ellas) y no crea ninguna versión. Contesta
-    {estado, cambios, controlId, inicial}: 'sin-pedido' si no hay nada que
-    controlar (la primera ronda con el pedido vacío, o la anterior volvió sin
-    marcas ni comentario; o si ahora no se podría entregar: eso lo dice la
-    entrega), 'listo' con cada marca o punto pedido [{numero, texto,
-    veredicto, nota}], o 'no-disponible' (sin IA, tope, falla, demora): la
-    pantalla manda igual. `inicial`: si lo controlado es el pedido inicial.
-    Nunca traba la entrega. Solo quien la hace (`puede_entregar`). Ver
-    revision_ia.controlar_antes_de_entregar."""
+    {estado, cambios, controlId, inicial, observaciones}: 'sin-pedido' si no
+    hay imágenes o si ahora no se podría entregar (eso lo dice la entrega),
+    'listo' con cada marca o punto pedido [{numero, texto, veredicto, nota}]
+    (vacío si no se pidió nada) y lo que encontró en las imágenes [{id, tipo,
+    texto, gravedad, imagen, x, y}], o 'no-disponible' (sin IA, tope, falla,
+    demora): la pantalla manda igual. `inicial`: si lo controlado es el
+    pedido inicial. Nunca traba la entrega. Solo quien la hace
+    (`puede_entregar`). Ver revision_ia.controlar_antes_de_entregar."""
     imagenes = imagenes or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
     if not puede_entregar(current_user, tarea):
@@ -2017,7 +2023,8 @@ async def tablero(
     aunque su alcance del calendario sea "No lo ve": es su trabajo.
 
     Como /datos, si nada de este mundo cambió desde `rev`, contesta "sin
-    cambios" y no viaja nada más: el tablero pregunta cada 15 s. Quien ve una
+    cambios" y no viaja nada más: el tablero pregunta cada 6 s (15 s hasta
+    el 24/11/2026). Quien ve una
     parte (la agencia, un alcance limitado) recibe la huella de lo que ve,
     no el contador de todos. Que una tarjeta pase sola a Archivado no cambia
     la revisión hasta que el loop diario lo anota: por eso la respuesta dice

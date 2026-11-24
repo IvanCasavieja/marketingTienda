@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
+import { imagenParaComparar } from '@/lib/calendario/comparar'
 import {
   fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
@@ -15,7 +16,7 @@ import {
 } from '@/lib/calendario/revision-ia'
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { LoQueFalta } from './LoQueFalta'
-import { LoQueVioLaIA } from './LoQueVioLaIA'
+import { COLOR_DEL_VEREDICTO, LoQueVioLaIA } from './LoQueVioLaIA'
 import { PanelRevisionIA } from './PanelRevisionIA'
 
 /** Una marca que se está poniendo. `observacionIA`: si salió de lo que vio la IA. */
@@ -28,20 +29,22 @@ type Nueva = { clave: string; imagenId: string; x: number; y: number; texto: str
 const CADA_MS = 5_000
 const MAX_VUELTAS = 36
 
-// Lo que dice la IA de cada marca de la ronda anterior (19/11/2026): verde si
-// se ve hecho, rojo suave si falta, gris si no se puede saber. Chico y con
-// buen contraste en claro y en oscuro.
-const COLOR_VEREDICTO: Record<VeredictoIA, string> = {
-  hecho: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
-  falta: 'bg-rose-50 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300',
-  dudoso: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+// El número de cada marca de la ronda anterior, del color de lo que dice la
+// IA (24/11/2026, Ivan: "que sea azul da impresión de estar bien"): rojo si
+// falta, ámbar si no se ve claro, verde si se ve hecho. Sin lo de la IA,
+// azul como las marcas. La etiqueta de al lado, COLOR_DEL_VEREDICTO.
+const NUMERO_DEL_VEREDICTO: Record<VeredictoIA, string> = {
+  falta: 'bg-rose-600 text-white',
+  dudoso: 'bg-amber-500 text-white',
+  hecho: 'bg-emerald-600 text-white',
 }
 
 // La notebook (lg de Tailwind): la imagen a la izquierda y todo lo demás a la
-// derecha. Ahí lo de la IA va arriba de la columna de la derecha, al lado de
-// la imagen: arriba de la imagen la empujaba media pantalla para abajo y el
-// pin de algo que está abajo en la pieza (los legales) quedaba fuera de la
-// vista. En el teléfono, una columna sola: va arriba de la imagen.
+// derecha. Ahí lo que hay que mirar (lo que falta, lo que se pidió y lo de la
+// IA) va arriba de la columna de la derecha, al lado de la imagen: arriba de
+// la imagen la empujaba media pantalla para abajo y el pin de algo que está
+// abajo en la pieza (los legales) quedaba fuera de la vista. En el teléfono,
+// una columna sola: va arriba de la imagen.
 const NOTEBOOK = '(min-width: 1024px)'
 function useEsNotebook(): boolean {
   return useSyncExternalStore(
@@ -77,16 +80,23 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * confundía): sin marcas, «Aprobar»; con marcas, «Pedir cambios» y la pieza
  * vuelve a la agencia. La línea de arriba de los botones dice cuál va.
  *
- * Lo que encontró la IA no aparece solo (Ivan, 19/11/2026: "quizás está
- * demasiado inteligencia artificial y puede llegar a provocar confusión"):
- * hay un botón discreto arriba, "Ver lo que encontró la IA (3)", y recién al
- * tocarlo se muestra la lista. Cuándo se calcula no cambió (el servidor, al
- * entregar): acá solo cambió cuándo se muestra.
+ * Lo que hay que mirar va todo junto y abierto, en el costado (en el
+ * teléfono, arriba de la imagen): las piezas del pedido que faltan, lo que
+ * se pidió con lo que vio la IA de cada cosa, y lo que encontró la IA en la
+ * pieza. Ivan (24/11/2026): "siempre se debe abrir por defecto lo que la IA
+ * detecta, no esperar que yo presione arriba, y unifiquemos: aparece un
+ * cartel arriba y lo otro en el costado, debería aparecer todo en el
+ * costado, y debería tener un color más rojito, colorado: que sea azul da
+ * impresión de estar bien". Del 19/11/2026 hasta ese día lo de la IA se
+ * abría con un botón arriba, "Ver lo que encontró la IA (3)" (Ivan, ese día:
+ * "quizás está demasiado inteligencia artificial"), y lo que faltaba iba en
+ * un cartel arriba de todo. Si hay algo mal (falta una pieza, algo pedido no
+ * está o la IA encontró algo), el bloque va con borde rojo; lo que falta en
+ * rojo, lo dudoso en ámbar y lo hecho en verde.
  *
- * Lo único de la IA que se ve sin tocar ese botón es, en «Lo que se pidió en
- * la ronda N», si se ve hecho lo que pedía cada marca (19/11/2026, Ivan:
- * "debería de hacerlo"): una etiqueta chica al lado de cada una, con la nota
- * abajo. Es justo el control que hace quien aprueba.
+ * En «Lo que se pidió en la ronda N», si se ve hecho lo que pedía cada marca
+ * (19/11/2026, Ivan: "debería de hacerlo"): una etiqueta chica al lado de
+ * cada una, con la nota abajo. Es justo el control que hace quien aprueba.
  *
  * Y, desde el 21/11/2026, lo mismo de lo que se pidió sin marcas: en la
  * primera ronda, cada punto del pedido inicial («Lo que se pidió»); si los
@@ -95,7 +105,11 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * aprobaba ninguna ("estaría bueno que se reconozcan los mismos"). Se ve con
  * el mismo diseño que el aviso de la agencia (LoQueVioLaIA), más lo que la
  * IA ve hecho. Si la agencia entregó las mismas imágenes que controló, la
- * revisión sale de ese control: es lo mismo que vio ella.
+ * revisión sale de ese control: es lo mismo que vio ella (desde el
+ * 24/11/2026, también lo que encontró en la pieza).
+ *
+ * Comparar con la ronda anterior: cada columna con su tira de miniaturas, y
+ * si la de ahora no tiene pareja se dice (lib/calendario/comparar.ts).
  */
 export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   detalle: DetalleEntregas
@@ -120,8 +134,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const verIA = !!detalle.puedo.verRevisionIA
   const [revisionIA, setRevisionIA] = useState<RevisionIA | null>(null)
   const [obsElegida, setObsElegida] = useState<string | null>(null)
-  // Si la persona pidió ver la lista de la IA (cerrada hasta que la toque).
-  const [mostrarIA, setMostrarIA] = useState(false)
+  // Comparando: la de la ronda anterior que se eligió en su tira, para la
+  // imagen de ahora que se estaba mirando (si se cambia, vuelve a su pareja).
+  const [anteriorElegida, setAnteriorElegida] = useState<{ para: string; id: string } | null>(null)
   // Las observaciones que se pasaron al comentario (ronda sin imágenes: no hay dónde marcar).
   const [pasadas, setPasadas] = useState<string[]>([])
 
@@ -168,9 +183,13 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   }, [obsElegida])
 
   const ordenActiva = version.imagenes.find(i => i.id === activa)?.orden ?? 0
-  const imagenAnterior = anterior
-    ? (anterior.imagenes.find(i => i.orden === ordenActiva) ?? anterior.imagenes[0])?.id ?? null
-    : null
+  const numeroActiva = version.imagenes.findIndex(i => i.id === activa) + 1
+  // La de la ronda anterior que va al lado (24/11/2026): la elegida en su
+  // tira, si no la del mismo lugar, y si no hay, la primera avisando.
+  const comparada = imagenParaComparar(
+    anterior?.imagenes ?? [], ordenActiva, anteriorElegida?.para === activa ? anteriorElegida.id : null,
+  )
+  const imagenAnterior = comparada.id
   const siguienteNumero = Math.max(0, ...version.marcas.map(m => m.numero)) + 1
   const numeroDe = (i: number) => siguienteNumero + i
   const pinesNuevos: Pin[] = nuevas.flatMap((n, i) => (n.imagenId === activa
@@ -180,10 +199,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const convertidas: Record<string, number> = Object.fromEntries(
     nuevas.flatMap((n, i) => (n.observacionIA ? [[n.observacionIA, numeroDe(i)]] : [])),
   )
-  // Dónde vio la IA lo que se tocó en la lista: un pin violeta que no es una
+  // Dónde vio la IA lo que se tocó en la lista: un pin rojo que no es una
   // marca. Si ya se hizo marca, se ve la marca y no hace falta.
-  // Con la lista cerrada, el pin tampoco: la IA no aparece sola.
-  const observacion = mostrarIA ? (revisionIA?.observaciones.find(o => o.id === obsElegida) ?? null) : null
+  const observacion = revisionIA?.observaciones.find(o => o.id === obsElegida) ?? null
   const pinIA: Pin[] = observacion && observacion.imagenId === activa && observacion.estado !== 'marca'
     && convertidas[observacion.id] == null && tieneLugar(observacion, version.imagenes)
     ? [{ clave: `ia-${observacion.id}`, numero: 0, x: observacion.x as number, y: observacion.y as number, tono: 'ia', texto: observacion.texto }]
@@ -205,15 +223,15 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // vio la IA de cada cosa (21/11/2026).
   const puntos = puntosParaMostrar(revisionIA)
   const respaldoDe = detalle.puedo.comoRespaldo ? detalle.resumen.aprobadorDeTurno : null
-  // El botón que abre lo de la IA: qué dice según cómo viene la revisión.
+  // Lo de la IA se ve siempre abierto (24/11/2026), mientras mira también.
   const hayIA = verIA && !!revisionIA && revisionIA.estado !== 'nada'
-  // Mientras la IA mira, se dice eso (no "Revisar con IA", que promete una
-  // acción: la revisión ya arrancó sola al entregar).
-  const textoBotonIA = !revisionIA || revisionIA.estado === 'pendiente'
-    ? 'La IA está revisando…'
-    : revisionIA.observaciones.length === 0
-      ? 'Ver la revisión de la IA'
-      : `Ver lo que encontró la IA (${revisionIA.observaciones.length})`
+  // Lo que hay que mirar, todo junto en el costado (24/11/2026): si algo
+  // está mal, el bloque va con borde rojo.
+  const faltanPiezas = (version.faltan?.length ?? 0) > 0
+  const algoMal = faltanPiezas
+    || (revisionIA?.estado === 'lista' && revisionIA.observaciones.some(o => o.estado === 'nueva'))
+    || !!puntos?.puntos.some(p => p.veredicto !== 'hecho')
+    || pedidoAntes.some(m => { const v = iaDeCadaMarca.get(m.id)?.veredicto; return v === 'falta' || v === 'dudoso' })
 
   function hayLugarParaOtraMarca(): boolean {
     if (nuevas.length + version.marcas.length >= detalle.limites.marcas) {
@@ -344,29 +362,165 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
     />
   )
-  const panelIA = hayIA && mostrarIA ? (
-    <PanelRevisionIA
-      revision={revisionIA}
-      imagenes={version.imagenes}
-      elegida={obsElegida}
-      convertidas={convertidas}
-      pasadas={pasadas}
-      deshabilitado={!!enviando}
-      onElegir={elegirObservacion}
-      onConvertir={convertir}
-      onDeshacer={deshacerConversion}
-      onDescartar={descartarObservacion}
-      onCerrar={() => { setMostrarIA(false); setObsElegida(null) }}
-    />
+  // Lo que hay que mirar, todo junto y abierto (24/11/2026, Ivan: "debería
+  // aparecer todo en el costado"): las piezas que faltan, lo que se pidió con
+  // lo que vio la IA de cada cosa, y lo que la IA encontró en la pieza. En la
+  // notebook arriba de la columna de la derecha; en el teléfono, arriba de la
+  // imagen. Cada parte, si tiene algo; sin nada, no se muestra.
+  const partes: { clave: string; contenido: React.ReactNode }[] = []
+  if (faltanPiezas) {
+    // Las piezas del pedido que no vinieron en esta ronda, y por qué (21/11/2026).
+    partes.push({ clave: 'faltan', contenido: <LoQueFalta detalle={detalle} version={version} enPanel /> })
+  }
+  if (puntos) {
+    // Lo que se pidió sin marcas y lo que vio la IA de cada cosa
+    // (21/11/2026): en la primera ronda, el pedido inicial; si los cambios
+    // se pidieron solo escritos, cada pedido del comentario. Con el mismo
+    // diseño que el aviso de la agencia antes de mandar. Sin revisión de la
+    // IA (o mientras mira) no hay nada que mostrar: los puntos vienen con ella.
+    partes.push({ clave: 'puntos', contenido: (
+      <section aria-labelledby="lo-que-se-pidio">
+        <h4 id="lo-que-se-pidio" className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          {puntos.inicial || !anterior ? 'Lo que se pidió' : `Lo que se pidió en la ronda ${anterior.ronda}`}
+        </h4>
+        {/* No se dice "lo que vio la agencia": si mandó sin esperar a la
+            IA, o con un ZIP o un link, la revisión corrió después. */}
+        <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+          Lo que vio la IA en cada punto. Es una ayuda y se puede equivocar.
+        </p>
+        <div className="-mb-2.5 mt-1">
+          <LoQueVioLaIA cambios={puntos.puntos} />
+        </div>
+      </section>
+    ) })
+  }
+  if (pedidoAntes.length > 0) {
+    // Lo que se pidió en la ronda anterior, para controlar que esté. Desde el
+    // 19/11/2026 la agencia ya no tilda qué corrigió: la lista va sin tilde,
+    // numerada como las marcas. Si una ronda vieja trae tildes, se muestran.
+    // Al lado de cada marca, lo que ve la IA en esta ronda («IA: hecho»,
+    // «IA: falta», «IA: dudoso») y su nota abajo; el número, del color de lo
+    // que dice la IA (24/11/2026: en azul, un «falta» parecía estar bien).
+    partes.push({ clave: 'pedido', contenido: (
+      <section aria-labelledby="lo-que-se-pidio-antes">
+        <h4 id="lo-que-se-pidio-antes" className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
+          Lo que se pidió en la ronda {anterior?.ronda}
+        </h4>
+        <ul className="space-y-1.5">
+          {pedidoAntes.map(m => {
+            const dice = version.corregidas.includes(m.id)
+            const ia = iaDeCadaMarca.get(m.id)
+            const numero = ia ? NUMERO_DEL_VEREDICTO[ia.veredicto] : dice ? 'bg-emerald-600 text-white' : 'bg-brand-600 text-white'
+            return (
+              <li key={m.id} className="flex items-start gap-2 text-sm">
+                <span className={`mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold ${numero}`}>
+                  {dice && !ia ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : m.numero}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className={`min-w-0 ${ia?.veredicto === 'falta' ? 'font-semibold text-slate-900 dark:text-slate-100' : 'text-slate-700 dark:text-slate-300'}`}>
+                      {m.texto}
+                      {dice && <span className="ml-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">dice que lo corrigió</span>}
+                    </span>
+                    {ia && (
+                      <span
+                        title="Lo que ve la IA en esta ronda. Es una ayuda: se puede equivocar."
+                        className={`mt-0.5 shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-bold ${COLOR_DEL_VEREDICTO[ia.veredicto]}`}
+                      >
+                        {VEREDICTO_IA[ia.veredicto]}
+                      </span>
+                    )}
+                  </span>
+                  {ia?.nota && <span className="mt-0.5 block text-xs text-slate-700 dark:text-slate-300">{ia.nota}</span>}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </section>
+    ) })
+  }
+  if (hayIA) {
+    partes.push({ clave: 'ia', contenido: (
+      <PanelRevisionIA
+        revision={revisionIA}
+        imagenes={version.imagenes}
+        elegida={obsElegida}
+        convertidas={convertidas}
+        pasadas={pasadas}
+        deshabilitado={!!enviando}
+        onElegir={elegirObservacion}
+        onConvertir={convertir}
+        onDeshacer={deshacerConversion}
+        onDescartar={descartarObservacion}
+      />
+    ) })
+  }
+  const loQueHayQueMirar = partes.length > 0 ? (
+    <div
+      role="region"
+      aria-label="Lo que hay que mirar"
+      className={`divide-y rounded-2xl border-2 ${
+        algoMal
+          ? 'divide-rose-200 border-rose-300 dark:divide-rose-500/25 dark:border-rose-500/50'
+          : 'divide-slate-300 border-slate-300 dark:divide-slate-700 dark:border-slate-700'
+      }`}
+    >
+      {partes.map(p => <div key={p.clave} className="p-3">{p.contenido}</div>)}
+    </div>
   ) : null
   const imagenVieja = imagenAnterior && anterior ? (
     <ImagenConMarcas
       imagenId={imagenAnterior}
       pines={pinesDe(anterior.marcas, imagenAnterior)}
       claseImagen="max-h-[60vh]"
-      etiqueta={`La versión anterior (ronda ${anterior.ronda})`}
+      etiqueta={`La versión anterior (ronda ${anterior.ronda}), imagen ${comparada.numero ?? 1}`}
     />
   ) : null
+
+  // La tira de miniaturas de esta ronda: cambia la imagen de ahora. Al
+  // comparar va adentro de la columna «Ahora» (24/11/2026: abajo de las dos
+  // parecía de la ronda anterior).
+  const tiraNueva = version.imagenes.length > 1 ? (
+    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la ronda ${version.ronda}`}>
+      {version.imagenes.map((im, i) => {
+        const cuantas = nuevas.filter(n => n.imagenId === im.id).length
+        return (
+          <button
+            key={im.id}
+            type="button"
+            role="tab"
+            aria-selected={im.id === activa}
+            onClick={() => setActiva(im.id)}
+            className={`relative shrink-0 rounded-xl p-0.5 transition ${im.id === activa ? 'ring-2 ring-brand-600' : 'opacity-70 hover:opacity-100'}`}
+          >
+            <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className={comparar ? 'h-12 w-12' : 'h-16 w-16'} />
+            {cuantas > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">{cuantas}</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  ) : null
+  // La de la ronda anterior, si tenía varias: cambia solo la de «Antes».
+  const tiraAnterior = comparar && anterior && anterior.imagenes.length > 1 ? (
+    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la ronda ${anterior.ronda}`}>
+      {anterior.imagenes.map((im, i) => (
+        <button
+          key={im.id}
+          type="button"
+          role="tab"
+          aria-selected={im.id === imagenAnterior}
+          onClick={() => setAnteriorElegida({ para: activa, id: im.id })}
+          className={`relative shrink-0 rounded-xl p-0.5 transition ${im.id === imagenAnterior ? 'ring-2 ring-slate-500 dark:ring-slate-300' : 'opacity-70 hover:opacity-100'}`}
+        >
+          <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1} de la ronda ${anterior.ronda}`} className="h-12 w-12" />
+        </button>
+      ))}
+    </div>
+  ) : null
+  const nombreAnterior = anterior?.faseId === version.faseId ? `ronda ${anterior?.ronda}` : 'fase anterior'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -378,39 +532,19 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               La subió {nombre(version.subidaPor)} · {fechaYHora(version.fecha)}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {hayIA && (
-              <button
-                type="button"
-                onClick={() => setMostrarIA(v => !v)}
-                aria-expanded={mostrarIA}
-                aria-controls="revision-ia"
-                className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
-                  mostrarIA ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Sparkles className="h-4 w-4" /> {mostrarIA ? 'Ocultar lo de la IA' : textoBotonIA}
-              </button>
-            )}
-            {anterior && (
-              <button
-                type="button"
-                onClick={() => setComparar(v => !v)}
-                aria-pressed={comparar}
-                className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
-                  comparar ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la ronda ${anterior.ronda}` : 'la fase anterior'}`}
-              </button>
-            )}
-          </div>
+          {anterior && (
+            <button
+              type="button"
+              onClick={() => setComparar(v => !v)}
+              aria-pressed={comparar}
+              className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
+                comparar ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la ronda ${anterior.ronda}` : 'la fase anterior'}`}
+            </button>
+          )}
         </div>
-
-        {/* Las piezas del pedido que no vinieron en esta ronda, y por qué
-            (21/11/2026), para revisar sabiéndolo. Un renglón entero, abajo
-            del título: al lado, con muchas piezas, apretaba los botones. */}
-        <LoQueFalta detalle={detalle} version={version} />
 
         {respaldoDe != null && (
           <p className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
@@ -423,7 +557,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             a la vista mientras se toca; en el teléfono, una abajo de la otra. */}
         <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-6 lg:space-y-0">
           <div className="space-y-3">
-        {!esNotebook && panelIA}
+        {!esNotebook && loQueHayQueMirar}
         {comparar && imagenVieja ? (
           <>
             {/* En el teléfono no entran dos lado a lado: pestañas. */}
@@ -435,42 +569,35 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 Ahora · ronda {version.ronda}
               </button>
             </div>
+            {/* Cada columna con lo suyo (24/11/2026): la imagen, su número y
+                su tira de miniaturas. */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <figure className={ladoMovil === 'anterior' ? '' : 'hidden sm:block'}>
-                <figcaption className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Antes · {anterior?.faseId === version.faseId ? `ronda ${anterior?.ronda}` : 'fase anterior'}
+              <figure className={`space-y-2 ${ladoMovil === 'anterior' ? '' : 'hidden sm:block'}`}>
+                <figcaption className="text-xs font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                  Antes · {nombreAnterior}{anterior && anterior.imagenes.length > 1 ? ` · imagen ${comparada.numero}` : ''}
                 </figcaption>
+                {comparada.sinPareja && (
+                  <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-950 ring-1 ring-amber-300 dark:bg-amber-500/10 dark:text-amber-100 dark:ring-amber-500/40">
+                    La {nombreAnterior} no tenía imagen {numeroActiva}: se ve la 1.{tiraAnterior ? ' Elegí otra abajo.' : ''}
+                  </p>
+                )}
                 {imagenVieja}
+                {tiraAnterior}
               </figure>
-              <figure className={ladoMovil === 'nueva' ? '' : 'hidden sm:block'}>
-                <figcaption className="mb-1.5 text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-200">Ahora · ronda {version.ronda}</figcaption>
+              <figure className={`space-y-2 ${ladoMovil === 'nueva' ? '' : 'hidden sm:block'}`}>
+                <figcaption className="text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-200">
+                  Ahora · ronda {version.ronda}{version.imagenes.length > 1 ? ` · imagen ${numeroActiva}` : ''}
+                </figcaption>
                 {imagenNueva}
+                {tiraNueva}
               </figure>
             </div>
           </>
-        ) : imagenNueva}
-
-        {version.imagenes.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Imágenes de esta ronda">
-            {version.imagenes.map((im, i) => {
-              const cuantas = nuevas.filter(n => n.imagenId === im.id).length
-              return (
-                <button
-                  key={im.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={im.id === activa}
-                  onClick={() => setActiva(im.id)}
-                  className={`relative shrink-0 rounded-xl p-0.5 transition ${im.id === activa ? 'ring-2 ring-brand-600' : 'opacity-70 hover:opacity-100'}`}
-                >
-                  <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className="h-16 w-16" />
-                  {cuantas > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-brand-600 px-1 text-[11px] font-bold text-white">{cuantas}</span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+        ) : (
+          <>
+            {imagenNueva}
+            {tiraNueva}
+          </>
         )}
 
         {!sinImagenes && (
@@ -482,7 +609,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           </div>
 
           <div className="space-y-4">
-        {esNotebook && panelIA}
+        {esNotebook && loQueHayQueMirar}
         {(version.comentario || version.link) && (
           <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
             {version.comentario && <p className="whitespace-pre-line">«{version.comentario}»</p>}
@@ -492,70 +619,6 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               </a>
             )}
           </div>
-        )}
-
-        {/* Lo que se pidió sin marcas y lo que vio la IA de cada cosa
-            (21/11/2026): en la primera ronda, el pedido inicial; si los
-            cambios se pidieron solo escritos, cada pedido del comentario.
-            Con el mismo diseño que el aviso de la agencia antes de mandar.
-            Sin revisión de la IA (o mientras mira) no hay nada que mostrar:
-            los puntos vienen con ella. */}
-        {puntos && (
-          <section aria-labelledby="lo-que-se-pidio" className="rounded-xl border border-slate-300 px-3 pt-3 dark:border-slate-700">
-            <h4 id="lo-que-se-pidio" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-              {puntos.inicial || !anterior ? 'Lo que se pidió' : `Lo que se pidió en la ronda ${anterior.ronda}`}
-            </h4>
-            {/* No se dice "lo que vio la agencia": si mandó sin esperar a la
-                IA, o con un ZIP o un link, la revisión corrió después. */}
-            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
-              Lo que vio la IA en cada punto. Es una ayuda y se puede equivocar.
-            </p>
-            <div className="mt-1">
-              <LoQueVioLaIA cambios={puntos.puntos} />
-            </div>
-          </section>
-        )}
-
-        {/* Lo que se pidió en la ronda anterior, para controlar que esté.
-            Desde el 19/11/2026 la agencia ya no tilda qué corrigió: la lista
-            va sin tilde, numerada como las marcas. Si una ronda vieja trae
-            tildes, se muestran. Al lado de cada marca, lo que ve la IA en
-            esta ronda («IA: hecho», «IA: falta», «IA: dudoso») y su nota
-            abajo, chiquita; la agencia no lo ve (el servidor no se lo da). */}
-        {pedidoAntes.length > 0 && (
-          <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
-            <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Lo que se pidió en la ronda {anterior?.ronda}</h4>
-            <ul className="space-y-1">
-              {pedidoAntes.map(m => {
-                const dice = version.corregidas.includes(m.id)
-                const ia = iaDeCadaMarca.get(m.id)
-                return (
-                  <li key={m.id} className="flex items-start gap-2 text-sm">
-                    <span className={`mt-0.5 flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full px-1 text-[11px] font-bold ${dice ? 'bg-emerald-500 text-white' : 'bg-brand-600 text-white'}`}>
-                      {dice ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : m.numero}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-start justify-between gap-2">
-                        <span className="min-w-0 text-slate-700 dark:text-slate-300">
-                          {m.texto}
-                          {dice && <span className="ml-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300">dice que lo corrigió</span>}
-                        </span>
-                        {ia && (
-                          <span
-                            title="Lo que ve la IA en esta ronda. Es una ayuda: se puede equivocar."
-                            className={`mt-0.5 shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-semibold ${COLOR_VEREDICTO[ia.veredicto]}`}
-                          >
-                            {VEREDICTO_IA[ia.veredicto]}
-                          </span>
-                        )}
-                      </span>
-                      {ia?.nota && <span className="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">{ia.nota}</span>}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          </section>
         )}
 
         {/* Marcas que ya trae esta misma ronda: solo pasa con rondas de antes
@@ -598,7 +661,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                   {/* Una marca hecha con lo que vio la IA: para quien revisa,
                       no para la agencia (a ella le llega como una marca más). */}
                   {n.observacionIA && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-white dark:ring-slate-900" aria-hidden>
+                    <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900" aria-hidden>
                       <Sparkles className="h-2.5 w-2.5" />
                     </span>
                   )}

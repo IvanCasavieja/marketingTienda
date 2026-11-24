@@ -7,21 +7,29 @@
  * POST /calendario/tareas/{id}/control-previo. Si la IA ve algo que falta (o
  * que no se ve claro), se le muestra a quien entrega, que elige "Corregir" o
  * "Mandar igual"; si no, se manda solo. Nunca traba: si la IA no está o
- * tarda, se manda igual. A la agencia le llega solo lo de lo pedido (ver
- * app/services/revision_ia.py, controlar_antes_de_entregar).
+ * tarda, se manda igual (ver app/services/revision_ia.py,
+ * controlar_antes_de_entregar).
  *
  * Hasta el 21/11/2026 era solo en una ronda que volvía con cambios. Ivan: "No
  * lo hace en la primera entrega, eso está mal. La primera entrega debería
  * compararse contra lo pedido inicialmente". Ahora se pregunta siempre que
  * haya imágenes: en la primera ronda de la fase la IA mira el pedido inicial
- * (`inicial`), en las que vuelven, los cambios pedidos. Si no hay nada que
- * controlar, el servidor contesta 'sin-pedido' sin llamar a la IA.
+ * (`inicial`), en las que vuelven, los cambios pedidos. Si no hay imágenes
+ * (o ahora no se podría entregar), el servidor contesta 'sin-pedido' sin
+ * llamar a la IA.
  *
  * Desde la prueba de Ivan del 21/11/2026 quien aprueba ve lo que dijo la IA
  * de cada cosa pedida, con el mismo diseño
  * (components/calendario/entregas/LoQueVioLaIA.tsx), más lo que ve hecho. Si
  * la agencia entregó las imágenes que controló, la revisión sale de este
  * control: es lo mismo que vio ella.
+ *
+ * Y desde el 24/11/2026, también lo que la IA encontró en la pieza (las
+ * observaciones: ortografía, otra campaña u otro mundo, legales, precio,
+ * QR), lo mismo que ve quien aprueba. Ivan: "la IA sigue encontrando cosas
+ * del lado de Tienda que no encuentra del lado de la agencia (...) la acción
+ * era TiendaChecks y le mandaron una placa de Ciberofertas". El servidor
+ * mira la pieza aunque no haya nada pedido.
  */
 
 export type VeredictoIA = 'hecho' | 'falta' | 'dudoso'
@@ -35,12 +43,27 @@ export type CambioControlado = {
   nota: string
 }
 
+/** Algo que la IA encontró en la pieza (24/11/2026): lo mismo que ve quien
+ *  aprueba. `imagen`: el número de la imagen (1, 2...) en el orden en que se
+ *  va a entregar, o null si no la ubicó en una; `x`, `y` (0 a 1), dónde. */
+export type ObservacionDelControl = {
+  id: string | null
+  tipo: string
+  texto: string
+  gravedad: 'importante' | 'a_revisar'
+  imagen: number | null
+  x: number | null
+  y: number | null
+}
+
 export type ControlPrevio = {
   estado: 'sin-pedido' | 'listo' | 'no-disponible'
   cambios: CambioControlado[]
   controlId: string | null
   /** Si lo controlado es el pedido inicial (la primera entrega de la fase). */
   inicial?: boolean
+  /** Lo que encontró en la pieza (24/11/2026). Vacío si no encontró nada. */
+  observaciones?: ObservacionDelControl[]
 }
 
 export const ETIQUETA_DEL_VEREDICTO: Record<VeredictoIA, string> = {
@@ -50,21 +73,22 @@ export const ETIQUETA_DEL_VEREDICTO: Record<VeredictoIA, string> = {
 }
 
 /** Si antes de mandar hay que preguntarle a la IA: siempre que haya imágenes
- *  para mirar, también en la primera entrega (21/11/2026). Si no hay nada
- *  que controlar, el servidor contesta 'sin-pedido' y se manda. Pura. */
+ *  para mirar, también en la primera entrega (21/11/2026) y aunque no se
+ *  haya pedido nada (24/11/2026: mira la pieza). Pura. */
 export function hayQueControlar(imagenes: number): boolean {
   return imagenes > 0
 }
 
-/** Lo que dice la pantalla mientras la IA mira: en la primera entrega de la
- *  fase, si cumple el pedido inicial; en una ronda que volvió, si se hicieron
- *  los cambios pedidos. Si ve algo, el aviso es el mismo en los dos casos
- *  desde el 21/11/2026 («Antes de mandar, revisá esto» y «Lo que vio la
- *  IA»): antes cada caso tenía su «Ojo: parece que falta algo…». Pura. */
+/** Lo que dice la pantalla mientras la IA mira: la pieza (desde el
+ *  24/11/2026, siempre) y, en la primera entrega de la fase, lo que se pidió;
+ *  en una ronda que volvió, si se hicieron los cambios pedidos. Si ve algo,
+ *  el aviso es el mismo en los dos casos desde el 21/11/2026 («Antes de
+ *  mandar, revisá esto»): antes cada caso tenía su «Ojo: parece que falta
+ *  algo…». Pura. */
 export function textosDelControl(inicial: boolean): { mirando: string } {
   return inicial
-    ? { mirando: 'La IA está mirando si la pieza cumple lo que se pidió…' }
-    : { mirando: 'La IA está mirando si se hicieron los cambios que se pidieron…' }
+    ? { mirando: 'La IA está mirando la pieza y lo que se pidió…' }
+    : { mirando: 'La IA está mirando la pieza y si se hicieron los cambios que se pidieron…' }
 }
 
 /** Lo que falta primero, después lo que no se ve claro y al final lo hecho,
@@ -80,6 +104,22 @@ export function enOrden(cambios: readonly CambioControlado[]): CambioControlado[
 export function paraAvisar(control: ControlPrevio | null | undefined): CambioControlado[] {
   if (!control || control.estado !== 'listo') return []
   return enOrden(control.cambios).filter(c => c.veredicto === 'falta' || c.veredicto === 'dudoso')
+}
+
+/** Lo que encontró la IA en la pieza, para avisarle a quien entrega antes de
+ *  mandar (24/11/2026): las importantes primero, cada grupo en el orden en
+ *  que las dio la IA (el mismo que ve quien aprueba). Lo que no tenga texto
+ *  no se muestra. Vacío = no hay nada que avisar de la pieza. Pura. */
+export function observacionesParaAvisar(control: ControlPrevio | null | undefined): ObservacionDelControl[] {
+  if (!control || control.estado !== 'listo' || !Array.isArray(control.observaciones)) return []
+  const validas = control.observaciones.filter(o => !!o && typeof o.texto === 'string' && o.texto.trim() !== '')
+  const peso = (o: ObservacionDelControl) => (o.gravedad === 'importante' ? 0 : 1)
+  return validas.map((o, i) => ({ o, i })).sort((a, b) => peso(a.o) - peso(b.o) || a.i - b.i).map(x => x.o)
+}
+
+/** Si la IA dijo dónde está, sobre una de las imágenes que se van a entregar. Pura. */
+export function conLugar(o: ObservacionDelControl, imagenes: number): boolean {
+  return o.imagen != null && o.imagen >= 1 && o.imagen <= imagenes && o.x != null && o.y != null
 }
 
 /** Si son exactamente las mismas imágenes (los mismos archivos preparados, en

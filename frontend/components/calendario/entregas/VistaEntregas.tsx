@@ -52,8 +52,12 @@ export default function VistaEntregas() {
   return <Contenido key={tareaId} tareaId={tareaId} />
 }
 
-/** Cada cuánto pregunta la tarjeta abierta si cambió algo. */
-const SEGUNDOS_ENTRE_VISTAS = 10
+/** Cada cuánto pregunta la tarjeta abierta si cambió algo. Era 10 s; Ivan
+ *  (24/11/2026): "entregué la entrega 2 y no se me actualizó en mi tarjeta
+ *  de Tienda Inglesa instantáneamente, hubo una demora hasta que apareció".
+ *  Sin cambios la respuesta es una línea (una consulta chica, ver
+ *  `_huella_de_la_tarjeta` en el servidor). */
+const SEGUNDOS_ENTRE_VISTAS = 4
 
 function Contenido({ tareaId }: { tareaId: string }) {
   const modo = useVistaEntregas(s => s.modo)
@@ -94,16 +98,20 @@ function Contenido({ tareaId }: { tareaId: string }) {
 
   // Se pone al día sola (Ivan, 20/11/2026: "si se completa una tarea o una
   // entrega y tengo abierta la tarjeta, su estado no se actualiza solo"):
-  // mientras se la mira, cada pocos segundos y al volver a la pestaña,
-  // pregunta con su huella si cambió (si no, la respuesta es una línea). En
-  // medio de entregar, revisar o configurar no: no se le cambia nada a quien
-  // está escribiendo.
+  // mientras se la mira, cada pocos segundos, al volver a la pestaña y
+  // (desde el 24/11/2026) al volver a la ventana, pregunta con su huella si
+  // cambió (si no, la respuesta es una línea). En medio de entregar, revisar
+  // o configurar no: no se le cambia nada a quien está escribiendo.
   const huella = detalle?.huella ?? null
   useEffect(() => {
     if (formulario || !huella) return
     let vivo = true
+    // Una pregunta a la vez: si el servidor tarda más que la vuelta, no se
+    // amontonan (y la pestaña y la ventana a veces avisan juntas).
+    let enVuelo = false
     const mirar = () => {
-      if (document.visibilityState !== 'visible') return
+      if (document.visibilityState !== 'visible' || enVuelo) return
+      enVuelo = true
       entregasApi.detalleSiCambio(tareaId, huella)
         .then(({ data }) => {
           if (!vivo || ('sinCambios' in data && data.sinCambios)) return
@@ -111,13 +119,16 @@ function Contenido({ tareaId }: { tareaId: string }) {
           setError(null)
         })
         .catch(() => { /* la próxima vuelta lo vuelve a intentar */ })
+        .finally(() => { enVuelo = false })
     }
     const cada = window.setInterval(mirar, SEGUNDOS_ENTRE_VISTAS * 1000)
     document.addEventListener('visibilitychange', mirar)
+    window.addEventListener('focus', mirar)
     return () => {
       vivo = false
       window.clearInterval(cada)
       document.removeEventListener('visibilitychange', mirar)
+      window.removeEventListener('focus', mirar)
     }
   }, [tareaId, huella, formulario])
 

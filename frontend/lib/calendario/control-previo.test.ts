@@ -3,7 +3,10 @@
  *
  *     npm run test:calendario
  */
-import { enOrden, hayQueControlar, mismasImagenes, paraAvisar, textosDelControl, type ControlPrevio } from './control-previo'
+import {
+  conLugar, enOrden, hayQueControlar, mismasImagenes, observacionesParaAvisar, paraAvisar, textosDelControl,
+  type ControlPrevio, type ObservacionDelControl,
+} from './control-previo'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -14,16 +17,16 @@ function igual<T>(nombre: string, obtenido: T, esperado: T) {
 
 console.log('Cuándo se pregunta')
 // Desde el 21/11/2026 también en la primera entrega (Ivan: "No lo hace en la
-// primera entrega, eso está mal"): siempre que haya imágenes. Si no hay nada
-// que controlar, el servidor contesta 'sin-pedido' y se manda.
+// primera entrega, eso está mal"): siempre que haya imágenes, y desde el
+// 24/11/2026 aunque no se haya pedido nada (mira la pieza).
 igual('con imágenes, sí (la primera entrega o una ronda que volvió)', hayQueControlar(2), true)
 igual('solo con un link, no (no hay imágenes que mirar)', hayQueControlar(0), false)
 
 console.log('Qué dice la pantalla')
-igual('en la primera entrega, mientras mira: el pedido', textosDelControl(true).mirando,
-  'La IA está mirando si la pieza cumple lo que se pidió…')
-igual('en una ronda que volvió, mientras mira: los cambios (como antes)', textosDelControl(false).mirando,
-  'La IA está mirando si se hicieron los cambios que se pidieron…')
+igual('en la primera entrega, mientras mira: la pieza y el pedido', textosDelControl(true).mirando,
+  'La IA está mirando la pieza y lo que se pidió…')
+igual('en una ronda que volvió, mientras mira: la pieza y los cambios', textosDelControl(false).mirando,
+  'La IA está mirando la pieza y si se hicieron los cambios que se pidieron…')
 // Desde el 21/11/2026 el aviso es uno solo («Antes de mandar, revisá esto»):
 // ya no hay un «Ojo: parece que falta algo…» para cada caso.
 igual('solo el texto de mientras mira', Object.keys(textosDelControl(true)), ['mirando'])
@@ -49,6 +52,27 @@ igual('en orden: lo que falta, lo dudoso y lo hecho, cada grupo por número',
 const entrada = [c(2, 'hecho'), c(1, 'falta')]
 enOrden(entrada)
 igual('no toca la lista de entrada', entrada.map(x => x.numero), [2, 1])
+
+console.log('Lo que encontró en la pieza (24/11/2026)')
+// Ivan: "la IA sigue encontrando cosas del lado de Tienda que no encuentra del
+// lado de la agencia". Lo que encontró se le avisa a quien entrega, como a
+// quien aprueba: las importantes primero.
+const o = (texto: string, gravedad: 'importante' | 'a_revisar', imagen: number | null = 1): ObservacionDelControl =>
+  ({ id: `ob-${texto}`, tipo: 'otro', texto, gravedad, imagen, x: imagen ? 0.5 : null, y: imagen ? 0.5 : null })
+const conObs = (observaciones: ObservacionDelControl[], estado: ControlPrevio['estado'] = 'listo'): ControlPrevio =>
+  ({ estado, cambios: [], controlId: 'cp-1', observaciones })
+igual('las importantes primero, cada grupo en su orden',
+  observacionesParaAvisar(conObs([o('a', 'a_revisar'), o('b', 'importante'), o('c', 'a_revisar'), o('d', 'importante')]))
+    .map(x => x.texto), ['b', 'd', 'a', 'c'])
+igual('sin observaciones: nada', observacionesParaAvisar(conObs([])), [])
+igual('de un servidor de antes (sin la lista): nada', observacionesParaAvisar(control([c(1, 'falta')])), [])
+igual('si la IA no estuvo: nada', observacionesParaAvisar(conObs([o('a', 'importante')], 'no-disponible')), [])
+igual('sin respuesta: nada', observacionesParaAvisar(null), [])
+igual('una sin texto no se muestra', observacionesParaAvisar(conObs([o('  ', 'importante'), o('b', 'a_revisar')]))
+  .map(x => x.texto), ['b'])
+igual('con lugar en una imagen que se va a entregar', conLugar(o('a', 'importante', 2), 2), true)
+igual('una imagen que ya no está: sin lugar', conLugar(o('a', 'importante', 3), 2), false)
+igual('sin imagen: sin lugar', conLugar(o('a', 'importante', null), 2), false)
 
 console.log('Las mismas imágenes')
 const a = new Blob(['a']), b = new Blob(['b'])
