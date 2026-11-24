@@ -18,6 +18,7 @@
 // ---------------------------------------------------------------------------
 
 import type { Pieza } from './piezas'
+import type { Adjunto } from './adjuntos'
 
 export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
 /** Las columnas del tablero: le toca a la agencia, a un aprobador, volvió, terminó. */
@@ -166,6 +167,9 @@ export type DetalleEntregas = {
   limites: { imagenes: number; bytesImagen: number; marcas: number; bytesZip?: number }
   /** La conversación de la tarjeta, al costado como en Trello (17/11/2026). */
   comentarios?: ComentarioDeTarjeta[]
+  /** Los archivos del pedido (24/11/2026), también los de la tarea de la que cuelga. */
+  adjuntos?: Adjunto[]
+  puedoAdjuntar?: boolean
 }
 
 export type ComentarioDeTarjeta = {

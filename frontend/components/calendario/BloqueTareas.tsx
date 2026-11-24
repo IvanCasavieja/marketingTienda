@@ -19,6 +19,7 @@ import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
 import { ModalDeOpciones, PedirPieza } from './PedirPieza'
+import { AdjuntosDeLaTarea, ElegirAdjuntos } from './Adjuntos'
 import { useCatalogoDeTipos, useTableros, type Tablero } from '@/store/tiposDeTarea'
 import { camposVisibles, linkValido, nombreDeTarjeta, tiposDelMundo, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
@@ -619,6 +620,8 @@ function ItemTarea({ tarea, todas, accionId, personas, usuarioId, gestiona }: {
               </p>
             )}
             {editandoDetalle && <EditorDeDetalle tarea={tarea} onCerrar={() => setEditandoDetalle(false)} />}
+            {/* Los archivos del pedido (24/11/2026): el Excel, el PDF de referencias. */}
+            <AdjuntosDeLaTarea tareaId={tarea.id} />
 
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {gestiona ? (
@@ -835,13 +838,17 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
   // puede pedirlas; la persona y la fecha valen para todas.
   const [piezas, setPiezas] = useState<PiezaElegida[]>([])
   const conPiezas = !parentId && pidePiezas
+  // Los archivos del pedido (24/11/2026: "como el Excel"): van una vez, en la
+  // tarea, y los ven también sus piezas. Suben después del alta.
+  const adjuntar = useCalendario(s => s.adjuntar)
+  const [archivos, setArchivos] = useState<File[]>([])
 
   const responsable = asignadoA ? Number(asignadoA) : null
   const linkMalo = piezas.map(p => faltaEnPieza(p, tipos)).find(Boolean) ?? null
   const valida = titulo.trim() !== '' && !linkMalo
 
   function limpiar() {
-    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion(''); setPiezas([])
+    setTitulo(''); setAsignadoA(''); setVence(''); setDescripcion(''); setPiezas([]); setArchivos([])
   }
 
   function cerrar() {
@@ -882,6 +889,8 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
       if (elegidas.length > 0) {
         toast.success(`Tarea creada con ${elegidas.length} ${elegidas.length === 1 ? 'pieza' : 'piezas'}: nacieron sus tarjetas en el tablero.`)
       }
+      // En la cola de la acción, detrás de la tarea y sus piezas.
+      if (archivos.length > 0) void adjuntar(accionId, id, archivos)
     }
     cerrar()
   }
@@ -932,6 +941,11 @@ function NuevaTarea({ accionId, parentId, personas, usuarioId, etiqueta, princip
         valor={descripcion}
         onCambiar={setDescripcion}
         onDictado={alDictar}
+      />
+      <ElegirAdjuntos
+        valor={archivos}
+        onCambiar={setArchivos}
+        ayuda={conPiezas && piezas.length > 0 ? 'Los bajan también las agencias, desde la tarjeta de cada pieza' : undefined}
       />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">

@@ -3,7 +3,8 @@
 import { create } from 'zustand'
 import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware'
 import { toast } from 'sonner'
-import { calendarioApi, entregasApi, type CalendarioCopia } from '@/lib/api'
+import { adjuntosApi, calendarioApi, entregasApi, type CalendarioCopia } from '@/lib/api'
+import { avisarQueCambiaronAdjuntos } from './adjuntos'
 import type { ResumenEntrega, TipoPieza } from './entregas'
 import { esSinCategoria } from './categorias'
 import { rangoDeLaCopia } from './copiar'
@@ -264,6 +265,10 @@ type Estado = {
   /** Que una tarea lleve entregas por fases. Va en la cola de su acción, así
    *  sale después del alta de la tarea aunque se pidan seguidas. */
   configurarEntregas: (barraId: string, tareaId: string, datos: DatosEntregas) => Promise<boolean>
+  /** Adjuntar archivos al pedido de una tarea (24/11/2026: "como el Excel").
+   *  Va en la cola de su acción: al crear la tarea con sus archivos, salen
+   *  después del alta. */
+  adjuntar: (barraId: string, tareaId: string, archivos: File[]) => Promise<boolean>
   cambiarTarea: (tareaId: string, cambios: CambiosDeTarea) => void
   /** Borra la tarea y todo lo que cuelga de ella. */
   borrarTarea: (tareaId: string) => void
@@ -927,6 +932,15 @@ export const useCalendario = create<Estado>()(
           cambiarBarraLocal(barraId, b => ({
             ...b, tareas: (b.tareas ?? []).map(t => (t.id === tareaId ? { ...t, entrega } : t)),
           }))
+          return true
+        },
+
+        adjuntar: async (barraId, tareaId, archivos) => {
+          if (archivos.length === 0) return true
+          const r = await escribir(() => adjuntosApi.subir(tareaId, archivos), barraId)
+          if (!r) return false
+          avisarQueCambiaronAdjuntos(tareaId)
+          toast.success(archivos.length === 1 ? 'Se adjuntó el archivo al pedido.' : `Se adjuntaron ${archivos.length} archivos al pedido.`)
           return true
         },
 

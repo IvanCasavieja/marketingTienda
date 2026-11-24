@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     # la entrega se hace igual sin él y la ficha lo dice. No se borra nada
     # para hacerle lugar. 0 = sin tope propio (queda solo el de la base).
     ZIP_TOPE_MB: int = 100
+    # Lo que pueden ocupar entre todos los archivos del pedido de las tareas
+    # (0089: el Excel, el PDF de referencias). Por lo mismo que los ZIP: que
+    # no le quiten lugar a las imágenes de las entregas. Un Excel de 1.000
+    # productos pesa unos 140 KB. Si no entra, no se adjunta y se dice qué
+    # hacer; no se borra nada. 0 = sin tope propio (queda el de la base).
+    ADJUNTOS_TOPE_MB: int = 50
 
     # Cuánto del calendario ve cada persona ya no es un número de días fijo
     # para las cuentas externas: desde la 0070 cada usuario tiene su alcance

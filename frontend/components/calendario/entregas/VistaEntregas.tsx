@@ -6,6 +6,7 @@ import {
   ArrowRight, Building2, Check, MessageSquare, ChevronDown, Clock, Download, ExternalLink, FileArchive, FileText, Layers, Link2,
   Loader2, Lock, PartyPopper, Pencil, RotateCcw, Send, ShieldCheck, UserRound, X,
 } from 'lucide-react'
+import { Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
@@ -24,6 +25,8 @@ import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
 import { detalleSinPedido, pedidoEnLista } from '@/lib/calendario/tipos-de-tarea'
 import { defColumna, quienLaHaceTexto } from '@/lib/calendario/tablero'
 import { useDialogo } from '../useDialogo'
+import { ListaDeAdjuntos } from '../Adjuntos'
+import { cuantosArchivos } from '@/lib/calendario/adjuntos'
 import { FormularioEntrega } from './FormularioEntrega'
 import {
   FormularioEntregas, configParaEnviar, faltaEnConfig, type ConfigEntregas,
@@ -467,7 +470,7 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       ))}
 
       {/* 3. Antes de la primera entrega, lo que se pidió es lo que hay que leer: abierto. */}
-      <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} />
+      <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} onRecargar={onRecargar} />
 
       {/* 4. Todas las rondas, cerradas. */}
       <Rondas detalle={detalle} />
@@ -924,8 +927,11 @@ function Decisiones({ detalle, version }: { detalle: DetalleEntregas; version: V
   )
 }
 
-function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas; abiertoAlInicio?: boolean }) {
+function Brief({ detalle, abiertoAlInicio = false, onRecargar }: { detalle: DetalleEntregas; abiertoAlInicio?: boolean; onRecargar: () => void }) {
   const [abierto, setAbierto] = useState(abiertoAlInicio)
+  // Los archivos del pedido (24/11/2026: "como el Excel"): cuántos hay se ve
+  // aunque esté cerrado.
+  const adjuntos = detalle.adjuntos ?? []
   const { tipos } = useCatalogoDeTipos()
   // Lo tildado con sus medidas va arriba, como lista (18/11/2026: "deberíamos
   // tener las cosas estilo bullet list"). El detalle escrito viene con ese
@@ -946,6 +952,11 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
       >
         <FileText className="h-4 w-4 text-brand-600 dark:text-brand-300" />
         Lo que se pidió
+        {adjuntos.length > 0 && (
+          <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <Paperclip className="h-3.5 w-3.5" aria-hidden /> {cuantosArchivos(adjuntos.length)}
+          </span>
+        )}
         <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform dark:text-slate-400 ${abierto ? 'rotate-180' : ''}`} />
       </button>
       {abierto && (lista || pedido) && (
@@ -995,7 +1006,7 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
       )}
       {abierto && (
         campos.length === 0 ? (
-          pedido || lista ? null : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
+          pedido || lista || adjuntos.length > 0 ? null : <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">El pedido no tiene detalles cargados.</p>
         ) : (
           <dl className="mt-2 grid gap-x-4 gap-y-2 rounded-2xl bg-slate-50 p-3.5 text-sm dark:bg-slate-800/50 sm:grid-cols-2">
             {campos.map(c => {
@@ -1016,6 +1027,11 @@ function Brief({ detalle, abiertoAlInicio = false }: { detalle: DetalleEntregas;
             })}
           </dl>
         )
+      )}
+      {abierto && (adjuntos.length > 0 || detalle.puedoAdjuntar) && (
+        <div className="mt-2">
+          <ListaDeAdjuntos desde={detalle.tarea.id} adjuntos={adjuntos} puedeAdjuntar={!!detalle.puedoAdjuntar} onCambio={onRecargar} />
+        </div>
       )}
     </section>
   )
