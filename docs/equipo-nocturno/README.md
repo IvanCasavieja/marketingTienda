@@ -63,7 +63,7 @@ instrucciones.
 
 El aviso por mail lo manda `.github/workflows/informe-nocturno.yml`: cuando
 llega una rama cuyo último commit empieza con `[Nocturno]`, abre un issue
-asignado a Ivan con el informe (como el monitor de producción). Cuando el PR se
+que menciona a Ivan con el informe entero: le llega un solo mail. Cuando el PR se
 cierra, mergeado o no, cierra el issue.
 
 ## Cómo probar
