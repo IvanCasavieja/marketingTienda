@@ -33,7 +33,8 @@ from app.services.cenefas.component_renderer import (
     _dollar_parejas,
     _variables_del_componente,
 )
-from app.services.cenefas.data_engine import load_products_from_bytes
+from app.services.cenefas.data_engine import load_products_con_headers
+from app.services.cenefas.revision_previa import listado_sin_convertir
 from app.services.cenefas.reglas_fijas import asegurar_reglas_fijas
 from app.services.cenefas.reglas_medicion import CRUDO as _REGLAS_DE_MEDICION
 from app.services.cenefas.formatos_de_hoja import (
@@ -588,12 +589,16 @@ async def validate_csv(
 
     excel_bytes = await read_limited(excel, "El Excel")
     try:
-        products = load_products_from_bytes(excel_bytes, vigencia, legales, usar_legales)
+        products, headers = load_products_con_headers(excel_bytes, vigencia, legales, usar_legales)
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Columna requerida faltante en el Excel: {e}")
     except Exception as e:
         logger.error("validate_csv parse error: %s", e, exc_info=True)
         raise HTTPException(status_code=400, detail=f"Error al parsear el archivo: {e}")
+    # El listado de gestión subido directo (24/11/2026): qué hacer, antes de seguir.
+    sin_convertir = listado_sin_convertir(headers, products)
+    if sin_convertir:
+        raise HTTPException(status_code=422, detail=sin_convertir)
 
     rules       = definition.get("rules", [])
     variables   = {v["name"]: v for v in definition.get("variables", [])}

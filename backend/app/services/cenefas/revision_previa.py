@@ -108,6 +108,37 @@ def _parecida(nombre: str) -> str | None:
     return candidatas[cerca[0]] if cerca else None
 
 
+# Columnas que trae el listado de gestión tal como sale (el que lee el
+# Convertidor de Excel) y que el generador no usa: NOMBREARTICULO, PRECIO...
+_COLUMNAS_DE_GESTION = {"nombrearticulo", "precio", "precioant", "ofertadet", "descripcionweb"}
+
+
+def listado_sin_convertir(headers: list[str], productos: list[dict[str, Any]]) -> str | None:
+    """Si el Excel es el listado de gestión subido directo al generador, sin
+    pasar por el Convertidor, el motivo para frenar; None si no.
+
+    Pasó el 24/11/2026 (Valentina, "Listado - mailing diciembre"): el
+    generador entendía solo CODIGO y dibujaba 1013 cenefas con el código, el
+    "$" y la vigencia, nada más. La revisión avisaba, pero sugería renombrar
+    columnas, que no es la solución: el Convertidor es el que arma las
+    descripciones y separa los precios. Se frena solo si trae columnas de
+    gestión Y ninguna fila tiene ni descripción ni precio de oferta. Pura."""
+    if not productos:
+        return None
+    propias = {_norm(h) for h in headers if h}
+    if "nombrearticulo" not in propias or len(propias & _COLUMNAS_DE_GESTION) < 2:
+        return None
+    if any(str(p.get("descripcion") or "").strip() or str(p.get("precioOferta") or "").strip() for p in productos):
+        return None
+    n = len(productos)
+    return (
+        "Este Excel es el listado de gestión, sin pasar por el Convertidor. Así como está, "
+        f"{'la cenefa saldría' if n == 1 else f'las {n} cenefas saldrían'} solo con el código. "
+        "Primero subilo en Materiales → Convertidor de Excel: ahí se arman las descripciones y los precios. "
+        "Después descargá el Excel para cenefas que te da y subí ese acá."
+    )
+
+
 def revisar(
     headers: list[str],
     productos: list[dict[str, Any]],
