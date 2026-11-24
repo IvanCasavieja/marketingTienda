@@ -89,6 +89,10 @@ async def lifespan(app: FastAPI):
                 await migrate_roles(conn)
         except Exception as e:
             logger.error("In-app migrations failed: %s", e)
+        # Solo en el entorno de pruebas (ENTORNO_DE_PRUEBAS=true): las cuentas
+        # del Equipo nocturno. Acá, con la base migrada y los roles creados.
+        from app.services.cuentas_de_prueba import al_arrancar as cuentas_de_prueba
+        await cuentas_de_prueba()
         # Jobs que quedaron corriendo en el proceso anterior: sin esto, un
         # redeploy a mitad de render dejaba el job en "running" para siempre
         # y el frontend polleando en silencio (caso real: uno desde el 14/08).
@@ -372,4 +376,8 @@ async def health():
             status_code=503,
             content={"status": "degraded", "db": "ok", "migraciones": "error", "commit": commit},
         )
-    return {"status": "ok", "db": "ok", "migraciones": migraciones["estado"], "commit": commit}
+    respuesta = {"status": "ok", "db": "ok", "migraciones": migraciones["estado"], "commit": commit}
+    if settings.ENTORNO_DE_PRUEBAS:
+        # Para no confundir, de un vistazo, el servidor de pruebas con el de verdad.
+        respuesta["entorno"] = "pruebas"
+    return respuesta
