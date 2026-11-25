@@ -37,6 +37,8 @@ type MiTarea = Tarea & {
     /** La acción queda fuera de lo que esta persona ve del calendario: la
      *  tarea es suya y la ve, pero la ficha no la va a poder abrir. */
     fueraDeAlcance?: boolean;
+    /** Una tarjeta sin acción (24/11/2026): no hay acción que abrir. */
+    sinAccion?: boolean;
   };
 };
 
@@ -444,7 +446,13 @@ function Fila({ tarea, hoy, orden, usuarioId, saliendo, onTildar, onEstado }: {
         {tarea.descripcion && <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">{tarea.descripcion}</p>}
 
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          {tarea.accion.fueraDeAlcance ? (
+          {tarea.accion.sinAccion ? (
+            // Una tarjeta creada desde Tableros, por fuera del calendario.
+            <span className="flex min-h-[36px] min-w-0 items-center gap-2 rounded-xl bg-slate-100 py-1 pl-1.5 pr-2.5 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              <span className="h-5 w-5 shrink-0 rounded-md bg-slate-300 ring-1 ring-inset ring-black/10 dark:bg-slate-600" />
+              <span className="truncate">Sin acción</span>
+            </span>
+          ) : tarea.accion.fueraDeAlcance ? (
             // La acción no entra en lo que esta persona ve del calendario:
             // se nombra, pero sin enlace a una ficha que no abriría.
             <span

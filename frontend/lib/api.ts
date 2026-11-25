@@ -2132,6 +2132,11 @@ export const calendarioApi = {
   crearTarea: (barraId: string, tarea: unknown) =>
     api.post<CalendarioEscrito & { avisados?: number }>(
       `/calendario/barras/${encodeURIComponent(barraId)}/tareas`, tarea, ESPERA),
+  /** Una tarjeta sin acción, desde Tableros (24/11/2026): como una tarea
+   *  nueva, más el mundo. Ver backend/app/services/sin_accion.py. */
+  crearTarjeta: (tarjeta: unknown) =>
+    api.post<CalendarioEscrito & { avisados?: number; titulo?: string; yaExistia?: boolean }>(
+      "/calendario/tarjetas", tarjeta, ESPERA),
   cambiarTarea: (id: string, cambios: unknown) =>
     api.patch<CalendarioEscrito & { avisados?: number }>(`/calendario/tareas/${encodeURIComponent(id)}`, cambios, ESPERA),
   borrarTarea: (id: string) => api.delete<CalendarioEscrito>(`/calendario/tareas/${encodeURIComponent(id)}`, ESPERA),

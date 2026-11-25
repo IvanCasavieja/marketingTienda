@@ -20,6 +20,8 @@ import { esExterno } from "@/lib/externos";
 import { useTableros } from "@/store/tiposDeTarea";
 import { useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
+import { NuevaTarjeta } from "@/components/calendario/entregas/NuevaTarjeta";
+import { hasPermission } from "@/lib/permissions";
 
 /** Cada cuánto pregunta el tablero si cambió algo. Era 15 s, como el
  *  calendario; Ivan (24/11/2026): "entregué la entrega 2 y no se me
@@ -112,6 +114,8 @@ export default function TableroPage() {
   const claveMundo = mundo?.clave;
   const externo = esExterno(user);
   const yo = user?.id ?? null;
+  const creaTarjetas = !externo
+    && (hasPermission(user, PERMISOS_CALENDARIO.tareas) || hasPermission(user, PERMISOS_CALENDARIO.pedidos));
   const { tableros } = useTableros(claveMundo);
 
   const cargar = useCallback(async (desdeCero: boolean) => {
@@ -499,6 +503,11 @@ export default function TableroPage() {
               : `Las piezas de cada acción${mundo ? ` de ${mundo.nombre}` : ""}, en el tablero al que se mandaron. Arrastrá para mover; las finalizadas pasan solas a Archivado a los 10 días.`}
           </p>
         </div>
+        {/* Una tarjeta por fuera del calendario (24/11/2026): la crean
+            quienes crean tareas; la agencia no. */}
+        {creaTarjetas && claveMundo && (
+          <NuevaTarjeta mundo={claveMundo} tablero={filtro} usuarioId={yo} onCreada={() => { void cargar(true); }} />
+        )}
         <Buscador mundo={claveMundo ?? null} usuarioId={yo} hoy={hoy} />
       </header>
 
