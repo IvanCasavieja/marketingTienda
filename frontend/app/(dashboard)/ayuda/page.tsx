@@ -104,6 +104,14 @@ export default function AyudaPage() {
     return () => { vivo = false; };
   }, [intento]);
 
+  // Un link a una sección (/ayuda#revisar): la guía llega después de que el
+  // navegador intentó bajar, así que se baja cuando ya está.
+  useEffect(() => {
+    if (!secciones) return;
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (id) document.getElementById(id)?.scrollIntoView();
+  }, [secciones]);
+
   const vistas = secciones ? filtrarGuia(secciones, busqueda) : [];
 
   return (
