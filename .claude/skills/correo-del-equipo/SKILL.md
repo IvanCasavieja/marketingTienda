@@ -12,7 +12,7 @@ lee lo que le contestan y responde **en el mismo hilo, a todos los que estén
 en copia**.
 
 - Sale de **`agentes.tienda@tenovastudio.com`**, con el nombre de quien
-  escribe: «Clara · Equipo nocturno de Core Tienda».
+  escribe: «Clara · Escuadrón Lechuza».
 - Las respuestas van a una dirección de recepción de Resend (el «responder
   a» de cada mail) que se lee por su API. Está en las instrucciones de la
   rutina: exportala como `CORREO_RESPONDER_A` antes de usar el script. La

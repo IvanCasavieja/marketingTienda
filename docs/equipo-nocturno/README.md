@@ -1,4 +1,8 @@
-# Equipo nocturno de Core Tienda
+# 🦉 Escuadrón Lechuza: el equipo de agentes de Core Tienda
+
+Ivan (25/11/2026) les pidió "un nombre super cool": son el **Escuadrón
+Lechuza**, porque trabajan de noche, ven todo y no se les escapa nada. Así
+firman los mails ("Clara · Escuadrón Lechuza"). Cada uno conserva su nombre.
 
 Siete agentes que, de lunes a viernes a las 2 de la mañana (hora de
 Montevideo), **recorren Core Tienda entera como las personas que la usan**,

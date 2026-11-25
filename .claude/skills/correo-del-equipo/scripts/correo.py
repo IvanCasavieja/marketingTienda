@@ -40,7 +40,7 @@ from pathlib import Path
 API = "https://api.resend.com"
 # La casilla existe de verdad (Zoho): si alguien le escribe directo, no rebota.
 CASILLA = os.environ.get("CORREO_CASILLA", "agentes.tienda@tenovastudio.com")
-EQUIPO = "Equipo nocturno de Core Tienda"
+EQUIPO = "Escuadrón Lechuza"  # el Equipo nocturno de Core Tienda (Ivan, 25/11/2026: "un nombre super cool")
 # Dónde llegan las respuestas: una dirección de recepción de Resend. No va en el
 # repo (es público): la pasa la rutina en la variable CORREO_RESPONDER_A.
 AGENTES_RESPONDER_A = os.environ.get("CORREO_RESPONDER_A", "").strip()
@@ -118,7 +118,7 @@ def a_html(md: str) -> str:
         '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;'
         f'color:#1e293b;max-width:620px;margin:0 auto;padding:8px 4px">{cuerpo}'
         '<p style="margin-top:28px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:10px">'
-        "El Equipo nocturno de Core Tienda. Respondé este mail (a todos) para hablar con nosotros.</p></div>"
+        "🦉 Escuadrón Lechuza, el equipo de agentes de Core Tienda. Respondé este mail (a todos) para hablar con nosotros.</p></div>"
     )
 
 

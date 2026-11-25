@@ -39,7 +39,7 @@ desde el celular: lo concreto que pide suele estar al final del mensaje.
 - Migraciones: el número siguiente al más alto en `backend/migrations/versions`
   de `main`, que no use ninguna rama abierta.
 
-## El Equipo nocturno
+## El Escuadrón Lechuza (el Equipo nocturno)
 
 Siete agentes (Sofía, Martina, Lucía, Tomás, Bruno, Ramiro y Clara) que de
 lunes a viernes a las 2 AM recorren la plataforma entera como las personas
