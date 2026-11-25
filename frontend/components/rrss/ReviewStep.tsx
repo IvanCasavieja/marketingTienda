@@ -248,8 +248,13 @@ function LadoMailing({ v, img }: { v: RrssValidacion; img: RrssImagen }) {
       {paginaCompleta && pagina ? (
         <PaginaMarcada pagina={pagina} caja={item.cajas.producto} />
       ) : item.recorte ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.recorte} alt={item.descripcion} className="max-h-[52vh] max-w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white" />
+        // Un lugar de alto fijo: pasar de un producto a otro no mueve lo de
+        // abajo (Ivan, 25/11/2026: "esas cosas no deberían de pasar ni acá
+        // ni en ningún lado").
+        <div className="flex h-[52vh] items-center justify-center overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800/40">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={item.recorte} alt={item.descripcion} className="max-h-full max-w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white" />
+        </div>
       ) : (
         <p className="text-xs text-slate-400 italic">{t("rrss.sinRecorte")}</p>
       )}
@@ -381,8 +386,11 @@ function PanelPlaca({
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{t("rrss.laPlaca")}</p>
           {img.vista && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img.vista} alt={img.nombre_archivo} className="max-h-[52vh] max-w-full rounded-lg border border-slate-200 dark:border-slate-700" />
+            // Alto fijo, como el recorte: cambiar de placa no mueve nada (25/11/2026).
+            <div className="flex h-[52vh] items-center justify-center overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.vista} alt={img.nombre_archivo} className="max-h-full max-w-full rounded-lg border border-slate-200 dark:border-slate-700" />
+            </div>
           )}
         </div>
         <div className="space-y-2">

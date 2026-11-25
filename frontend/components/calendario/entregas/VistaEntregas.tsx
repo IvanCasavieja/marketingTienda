@@ -795,7 +795,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
           Las imágenes de esta ronda ya se borraron (se guardan hasta un tiempo después de terminada la acción). Quedan las marcas y las decisiones.
         </p>
       ) : activa ? (
-        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Ronda ${version.ronda}`} />
+        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Ronda ${version.ronda}`} ronda={vivas.map(i => i.id)} />
       ) : null}
 
       {!todasPurgadas && version.imagenes.length > 1 && (
