@@ -76,17 +76,17 @@ pasa, cerrala con lo que haya y seguí.
    - Subí al cuaderno las imágenes del antes/después y la evidencia de los 3
      hallazgos principales, con el historial de la noche. **Push del cuaderno
      antes del informe** (las imágenes del mail salen de ahí).
-   - **Clara** escribe el informe (formato abajo) con las direcciones de esas
-     imágenes.
-   - **a) Con cambios.** Último commit, vacío, con el informe como mensaje:
-     primera línea `[Nocturno] <título del informe>`, línea en blanco, y el
-     informe. `git commit --allow-empty -F <archivo>`. Push de la rama. Abrí el
-     PR contra `main` con título `[Nocturno] <título>` y el informe como
-     descripción. Si no podés abrir el PR, no pasa nada: el aviso le llega
-     igual a Ivan con el link para abrirlo.
+   - **Clara** escribe dos cosas (formato abajo), con las direcciones de esas
+     imágenes: **el mail** (corto, para Ivan) y **el detalle** (para el PR).
+   - **a) Con cambios.** Último commit, vacío, con **el mail** como mensaje:
+     primera línea `[Nocturno] <título corto>`, línea en blanco, y el mail.
+     `git commit --allow-empty -F <archivo>`. Push de la rama. Abrí el PR
+     contra `main` con ese mismo título y **el detalle** como descripción. Si
+     no podés abrir el PR, no pasa nada: el aviso le llega igual a Ivan con el
+     link para abrirlo.
    - **b) Sin cambios.** Rama `nocturno/AAAA-MM-DD-sin-cambios` desde
      `origin/main`, un commit vacío con primera línea
-     `[Nocturno] Sin cambios esta noche` y el informe abajo. Push. GitHub le
+     `[Nocturno] Sin cambios esta noche` y el mail abajo. Push. GitHub le
      manda el aviso a Ivan y borra esa rama sola.
 9. Cerrá el navegador (`navegador.py cerrar`) y terminá. No esperes nada más.
 
@@ -96,7 +96,9 @@ el informe contando qué pasó y avisale a Ivan con lo que tengas a mano.
 
 El aviso por mail lo manda `.github/workflows/informe-nocturno.yml`: cuando
 llega una rama cuyo último commit empieza con `[Nocturno]`, abre un issue
-que menciona a Ivan con el informe entero: le llega un solo mail. Ivan decide
+que menciona a Ivan con el mail de Clara: le llega un solo mail (para eso, en
+GitHub el repo tiene que estar en «Watch → Participating and @mentions»; si
+lo sigue entero, le llega también el aviso del PR). Ivan decide
 respondiendo ese mail con **ok** (se mergea si las pruebas están en verde) o
 **no** (se cierra): lo hace `.github/workflows/ok-por-mail.yml`. Cuando el PR
 se cierra, mergeado o no, se cierra el issue. La noche siguiente, Sofía pasa
@@ -235,35 +237,80 @@ variables, y las cuentas se crean solas al arrancar; `/health` dice
 
 ## Formato del informe (Clara)
 
-Castellano rioplatense simple, para leer en el celular en 2 minutos. Sin
-jerga: si hace falta un término técnico, explicarlo entre paréntesis. Nombres
-de variables textuales cuando se mencionen. Las imágenes, con la dirección de
-la rama del cuaderno (nunca rutas locales).
+Ivan, 25/11/2026: "no se entiende el mail, le falta info, no me explican en
+el cuerpo las cosas, el asunto está horrendamente largo". Por eso son dos
+textos: **el mail**, para que Ivan entienda y decida en un minuto desde el
+celular, y **el detalle**, para el PR, con todo lo técnico.
+
+### El título (el asunto del mail)
+
+`[Nocturno] <de 2 a 5 palabras>`, **40 caracteres como máximo** contando
+`[Nocturno] `. Sin dos puntos ni explicaciones: lo que cambia y dónde.
+GitHub le agrega la fecha sola.
+
+- Bien: `[Nocturno] Redexpres sin trabas`, `[Nocturno] Fotos panorámicas de góndola`
+- Mal: `[Nocturno] Redexpres sin trabas: el local sabe qué pasa con su pedido y la Planilla queda a mano`
+
+### El mail
+
+Hasta ~1500 caracteres sin contar las imágenes. Frases cortas, como se lo
+contarías a Ivan en persona. Cada cosa explicada: qué pantalla, quién la usa,
+qué pasaba y qué pasa ahora.
+
+**Prohibido en el mail** (va en el detalle): códigos de hallazgo (H-0xx),
+emojis o colores de gravedad (🔴🟠🟡), nombres de los agentes, palabras del
+proceso (cuaderno, recorrido, zona, capas, «a ciegas», hallazgos), cuántas
+pantallas o capturas se miraron, nombres de archivos, de variables o de
+ramas, y links que no sean las imágenes.
 
 ```markdown
-**En una línea:** qué cambia para la gente.
+**Qué cambia:** 2 o 3 frases. Quién lo va a notar, en qué pantalla y qué ve
+ahora. Ej.: «En "Mi pedido", el encargado del local ahora ve un cartel verde
+cuando su pedido ya está confirmado, y a quién pedirle si necesita cambiar algo.»
 
-![Antes y después](https://raw.githubusercontent.com/.../equipo-nocturno/cuaderno/cuaderno/recorridos/AAAA-MM-DD/...jpg)
+![Antes y ahora: el pedido confirmado en el celular del local](https://raw.githubusercontent.com/.../equipo-nocturno/cuaderno/cuaderno/recorridos/AAAA-MM-DD/...-antes-despues.jpg)
 
-**Por qué:** qué le pasaba a quién (hallazgos H-0xx del cuaderno, con de dónde salió).
+**Por qué:** la situación real, contada como un caso. Ej.: «Probando como un
+encargado de local, quisimos corregir 300 a 30 cenefas y no se podía: el
+pedido ya estaba confirmado, pero la pantalla no lo decía ni decía a quién
+pedirle. Un local de verdad terminaría mandando un WhatsApp.»
 
-**Qué vio el recorrido esta noche:** N pantallas × cuentas × vistas; N hallazgos
-nuevos (🔴 n · 🟠 n · 🟡 n). Los 3 más importantes, una línea y una imagen
-cada uno. Cómo le fue a Martina a ciegas (logró / se trabó en...).
+**Cómo verlo cuando esté publicado:** pantalla → qué tocar → qué vas a ver.
+
+**Probado:** una línea. Ej.: «Todo en verde, también en el celular.» Si algo
+no se pudo probar, decilo acá.
+
+**Riesgos:** una línea, o «Ninguno que veamos».
+
+**Además encontramos** (no se tocó esta noche):
+- Hasta 3, una línea cada uno, con a quién le pasa y qué le pasa. Ej.: «El
+  local no puede mandar una foto panorámica de la góndola: la rechaza.»
+```
+
+Una noche sin cambios: «**Esta noche no hubo cambios.**» y por qué en una
+frase, y después **Además encontramos**.
+
+Al pie el aviso agrega solo el link al PR y cómo decidir (ok / no): no lo
+repitas.
+
+### El detalle (descripción del PR)
+
+Para quien quiera ver todo: acá sí van los códigos, los números y los nombres.
+
+```markdown
+**Qué cambia:** lo mismo que el mail, en una línea.
+
+**Hallazgos que resuelve:** H-0xx (gravedad) — una línea cada uno, de dónde salió.
+
+**Qué vio el recorrido:** N pantallas × cuentas × vistas; N hallazgos nuevos
+(🔴 n · 🟠 n · 🟡 n); cómo le fue a Martina a ciegas.
 [Cuaderno completo](https://github.com/.../blob/equipo-nocturno/cuaderno/cuaderno/CUADERNO.md)
 
-**Qué se hizo, paso a paso:**
-1. Sofía ... 2. Martina ... 3. Lucía ... 4. Tomás ... 5. Bruno ... 6. Ramiro ...
+**Qué se hizo, paso a paso:** 1. Sofía ... 2. Martina ... 3. Lucía ... 4. Tomás ... 5. Bruno ... 6. Ramiro ...
 
 **Cómo se probó:** las cinco capas de Ramiro con números, y qué no se pudo probar y por qué.
-
-**Riesgos y qué mirar antes de dar el OK:**
-
-**Cómo verlo:** dónde está en la plataforma y cómo probarlo.
 
 **Migración:** no / sí (número).
 
 **Lo que se descartó esta noche:** una línea por propuesta que Tomás frenó, con el motivo.
-
-**Para decidir:** si te sirve, respondé **ok** y se mergea. Si no, **no**: se cierra y queda en Descartados.
 ```
