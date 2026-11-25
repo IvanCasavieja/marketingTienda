@@ -189,6 +189,15 @@ def test_el_mail_es_html_limpio_con_el_link_y_el_aviso_de_confidencial():
     assert "confidencial" in html and "Ver el tablero" in texto
 
 
+def test_el_mail_sale_solo_si_los_datos_son_recientes():
+    hoy = date(2026, 11, 25)
+    assert vip.es_reciente(date(2026, 10, 1), hoy)
+    assert vip.es_reciente(date(2026, 8, 1), hoy)
+    assert not vip.es_reciente(date(2026, 7, 1), hoy)
+    assert not vip.es_reciente(date(2025, 12, 1), hoy)
+    assert not vip.es_reciente(None, hoy)
+
+
 def test_las_cuentas_internas_y_de_prueba_no_reciben_mails():
     assert vip.destinatario_real("emi@tiendainglesa.com.uy")
     for no in ("agente-claude@internal.marketingtienda", "equipo-nocturno@example.com", "", None, "x@y.invalid"):
@@ -289,6 +298,8 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no(monkeypatch):
 def test_el_informe_se_guarda_sin_ia_y_no_le_llega_a_las_cuentas_internas(monkeypatch):
     monkeypatch.setattr(vip, "informe_en_segundo_plano", lambda *a: None)
     monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "")
+    from datetime import datetime, timezone
+    monkeypatch.setattr(vip, "ahora", lambda: datetime(2026, 11, 25, tzinfo=timezone.utc))  # octubre es reciente
     enviados = []
 
     async def falso_envio(to, subject, html, plain, de=None):

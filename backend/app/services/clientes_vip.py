@@ -602,7 +602,7 @@ def armar_mail(informe: VipInforme, url: str) -> tuple[str, str, str]:
         'background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px">'
         "Ver el tablero</a></p>"
         '<p style="margin-top:28px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:10px">'
-        "Sofía y Valentina, del equipo de Core Tienda. Te llega porque tenés acceso a Clientes VIP. "
+        "Sofía y Valentina, del Escuadrón Lechuza de Core Tienda. Te llega porque tenés acceso a Clientes VIP. "
         "La información es confidencial: no la reenvíes fuera de Tienda Inglesa.</p>"
         "</div></body></html>"
     )
@@ -623,6 +623,13 @@ async def destinatarios(db: AsyncSession) -> list[User]:
     return [u for u in usuarios if puede_tener(u, PERMISO_VER) and destinatario_real(u.email)]
 
 
+def es_reciente(ultimo: date | None, hoy: date) -> bool:
+    """Si los datos llegan hasta hace 3 meses o menos: solo entonces el informe
+    sale por mail. Cargar un año viejo (2025, el 25/11/2026) rehace el informe
+    pero no le manda a nadie un mail sobre diciembre del año pasado."""
+    return bool(ultimo) and meses_entre(ultimo, date(hoy.year, hoy.month, 1)) <= 3
+
+
 async def armar_informe(db: AsyncSession, carga_id: int | None, user_id: int | None, mandar: bool = True) -> VipInforme | None:
     """Escribe el informe del último mes, lo guarda y lo manda. Commitea."""
     from app.services import email_service
@@ -641,7 +648,7 @@ async def armar_informe(db: AsyncSession, carga_id: int | None, user_id: int | N
     db.add(informe)
     await db.commit()
 
-    if mandar and email_service.email_configurado():
+    if mandar and es_reciente(ultimo, ahora().date()) and email_service.email_configurado():
         url = f"{(settings.FRONTEND_URL or '').rstrip('/')}/clientes-vip"
         asunto, html, plano = armar_mail(informe, url)
         de = email_service.remitente_con_nombre("Sofía y Valentina")
