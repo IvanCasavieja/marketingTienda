@@ -299,7 +299,10 @@ def mundos_a_mirar(usuario, pedido: str | None) -> list[str]:
             "Esta persona no tiene permiso para ver el calendario (calendario.view): "
             "no le cuentes nada del calendario."
         )
-    propios = mundos_de(usuario)
+    # Una cuenta externa no tiene mundos propios (25/11/2026): se le mira
+    # cualquiera y la fuente (FuenteRecortada) deja pasar solo los mundos
+    # donde su agencia tiene trabajo.
+    propios = list(MUNDOS) if externos.es_externo(usuario) else mundos_de(usuario)
     if not pedido or normalizar(pedido) in ("todos", "todos los mundos"):
         return propios
     clave = _clave_de_mundo(pedido)
@@ -549,16 +552,26 @@ class FuenteRecortada:
     (`_visibles`, `_propias`) para que lo que cuelga de una acción o de una
     tarea (piezas, títulos de tareas madre) salga solo si su dueña salió."""
 
-    def __init__(self, fuente, usuario, ventana: tuple[date, date] | None, *, externo: bool):
+    def __init__(self, fuente, usuario, ventana: tuple[date, date] | None, *, externo: bool,
+                 mundos: list[str] | None = None):
         self.fuente = fuente
         self.usuario = usuario
         self.v = ventana
         self.externo = externo
+        # Una cuenta externa: los mundos donde su agencia tiene trabajo
+        # (25/11/2026: no elige mundos). None = sin recorte de mundos.
+        self.mundos = None if mundos is None else set(mundos)
         self._visibles: set[str] = set()
         self._propias: set[str] = set()
 
     def _toca(self, b) -> bool:
-        return alcance.toca(b.desde, b.hasta, self.v)
+        return alcance.toca(b.desde, b.hasta, self.v) and self._del_mundo(b)
+
+    def _del_mundo(self, b) -> bool:
+        return self.mundos is None or getattr(b, "mundo", None) in self.mundos
+
+    def _sus_mundos(self, mundos) -> list:
+        return list(mundos) if self.mundos is None else [m for m in mundos if m in self.mundos]
 
     def _es_suya(self, t) -> bool:
         return not self.externo or externos.es_tarea_propia(self.usuario, t)
@@ -572,7 +585,7 @@ class FuenteRecortada:
         acotado = _interseccion(rango, self.v) if self.v is not None else rango
         if self.v is not None and acotado is None:
             return []
-        return self._anotar(await self.fuente.barras(mundos, rango=acotado, secciones=secciones, ids=ids))
+        return self._anotar(await self.fuente.barras(self._sus_mundos(mundos), rango=acotado, secciones=secciones, ids=ids))
 
     async def piezas_de(self, barra_ids) -> list:
         ids = [i for i in (barra_ids or []) if i in self._visibles]
@@ -591,10 +604,11 @@ class FuenteRecortada:
         return [a for a in await self.fuente.avisos_de(ids) if a.barra_id in self._visibles]
 
     async def piezas_con_accion(self, mundos, desde: date, hasta: date) -> list[tuple]:
-        return [(p, b) for p, b in await self.fuente.piezas_con_accion(mundos, desde, hasta) if self._toca(b)]
+        return [(p, b) for p, b in await self.fuente.piezas_con_accion(self._sus_mundos(mundos), desde, hasta) if self._toca(b)]
 
     async def tareas_con_accion(self, mundos, **kw) -> list[tuple]:
-        filas = await self.fuente.tareas_con_accion(mundos, **kw)
+        filas = [(t, b) for t, b in await self.fuente.tareas_con_accion(self._sus_mundos(mundos), **kw)
+                 if self._del_mundo(b)]
         tarjetas = await self._tarjetas([t for t, b in filas if not self._toca(b)])
         out = []
         for t, b in filas:
@@ -1150,6 +1164,21 @@ HERRAMIENTAS = {
 }
 
 
+async def _mundos_con_trabajo(usuario, db, fuente, hoy: date) -> list[str]:
+    """Los mundos donde una cuenta externa tiene trabajo: lo que ve del
+    calendario si se lo habilitan (agencias.mundos_con_trabajo). Sin base (en
+    las pruebas, con una fuente armada a mano), se sacan de sus tareas."""
+    if db is not None:
+        from app.services import agencias
+
+        return await agencias.mundos_con_trabajo(db, usuario)
+    filas = await fuente.tareas_con_accion(
+        list(MUNDOS), estados=["pendiente", "en-proceso", "hecha"], rango=None,
+        incluir_vencidas=True, incluir_sin_fecha=True, hoy=hoy,
+    )
+    return sorted({b.mundo for t, b in filas if externos.es_tarea_propia(usuario, t)})
+
+
 async def ejecutar(nombre: str, args: dict, usuario, db, *, hoy: date | None = None, fuente=None) -> str:
     """Corre una herramienta del calendario y devuelve el JSON para el modelo.
     Un pedido inválido vuelve como {"error": ...}: el modelo se lo explica a
@@ -1170,6 +1199,7 @@ async def ejecutar(nombre: str, args: dict, usuario, db, *, hoy: date | None = N
     if externo or alcance.es_limitado(usuario):
         fuente = FuenteRecortada(
             fuente, usuario, alcance.ventana_de_alcance(hoy, alcance.alcance_de(usuario)), externo=externo,
+            mundos=await _mundos_con_trabajo(usuario, db, fuente, hoy) if externo else None,
         )
     try:
         return await funcion(usuario, args or {}, fuente, hoy)

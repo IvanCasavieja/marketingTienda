@@ -221,7 +221,8 @@ async def _barra_o_404(
     barra = (await db.execute(consulta)).scalar_one_or_none()
     if barra is None:
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
-    exigir_mundo(usuario, barra.mundo)
+    # Una cuenta externa, solo en los mundos donde su agencia tiene trabajo.
+    await agencias.exigir_mundo_del_calendario(db, usuario, barra.mundo)
     # Una acción fuera del alcance de la persona (0070) no existe para ella:
     # el mismo 404 que una borrada, así no se puede deducir que está. Quien no
     # ve el calendario no ve ninguna.
@@ -242,7 +243,7 @@ async def _exigir_mundo_de(db: AsyncSession, barra_id: str | None, usuario: User
     )).first()
     if fila is None:
         return None
-    exigir_mundo(usuario, fila.mundo)
+    await agencias.exigir_mundo_del_calendario(db, usuario, fila.mundo)
     if not alcance.toca(fila.desde, fila.hasta, alcance.ventana_de(usuario)):
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     return fila.mundo
@@ -429,8 +430,10 @@ async def traer_datos(
     pregunta los vuelve a traer), pero nunca más viejos.
 
     Quien ve una parte (alcance limitado, o una cuenta externa) recibe solo
-    eso, y como revisión la huella de lo que ve: ver `_datos_recortados`."""
-    exigir_mundo(current_user, mundo)
+    eso, y como revisión la huella de lo que ve: ver `_datos_recortados`.
+    Una cuenta externa, solo de los mundos donde su agencia tiene trabajo
+    (25/11/2026: la agencia no elige mundos)."""
+    await agencias.exigir_mundo_del_calendario(db, current_user, mundo)
     alcance.exigir_calendario(current_user)
     if _ve_una_parte(current_user):
         return await _datos_recortados(db, current_user, mundo, rev)
@@ -663,7 +666,7 @@ async def listar_personas(
     avisos desde la ficha de una acción... salvo quien gestiona las tareas:
     aunque no vea el calendario, abre sus tarjetas en el tablero y ahí elige
     los aprobadores de «Configurar» (revisión del 16/11/2026)."""
-    exigir_mundo(current_user, mundo)
+    await agencias.exigir_mundo_del_calendario(db, current_user, mundo)
     if not _puede_gestionar_tareas(current_user):
         alcance.exigir_calendario(current_user)
     usuarios = (await db.execute(
@@ -1593,7 +1596,7 @@ async def listar_tableros(
     """Los tres tableros a los que va una pieza (17/11/2026), con cuántas
     cuentas tiene cada uno en este mundo (cero = todavía no entra nadie: la
     pieza espera ahí igual). A una cuenta externa, solo el suyo."""
-    exigir_mundo(current_user, mundo)
+    await agencias.exigir_mundo_del_calendario(db, current_user, mundo)
     out = []
     for nombre in TABLEROS:
         if externos.es_externo(current_user) and not externos.misma_empresa(nombre, current_user.empresa):
@@ -2043,7 +2046,8 @@ async def mis_tareas(
     externo = externos.es_externo(current_user)
     if externo:
         alcance.exigir_calendario(current_user)
-    mundos = mundos_de(current_user)
+    # Las de una cuenta externa son tareas suyas: de cualquier mundo (25/11/2026).
+    mundos = list(MUNDOS) if externo else mundos_de(current_user)
     if not mundos:
         return []
     desde = datetime.now(timezone.utc) - timedelta(days=DIAS_DE_HECHAS_EN_MIS_TAREAS)

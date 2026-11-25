@@ -642,7 +642,11 @@ def test_el_admin_crea_una_cuenta_externa_y_no_le_puede_dar_mas():
         lista = {u["id"]: u for u in (await promo.get("/admin/users")).json()}
         assert lista[nuevo]["es_externo"] is True and lista[nuevo]["empresa"] == "Agencia Nueva"
         assert lista[nuevo]["permissions"] == ["calendario.view"]
-        assert lista[nuevo]["mundos"] == ["tienda_inglesa", "tienda_express"]
+        # Sin mundos propios (25/11/2026): los que mande el panel no se miran;
+        # su trabajo le llega de cualquier mundo.
+        assert lista[nuevo]["mundos"] == []
+        r = await promo.patch(f"/admin/users/{nuevo}/mundos", json={"mundos": ["tienda_inglesa"]})
+        assert r.status_code == 422, r.text
         assert lista[nuevo]["role_id"] is None and lista[nuevo]["is_superuser"] is False
 
         # Ni el superadmin le puede dar gestión, admin ni un rol.

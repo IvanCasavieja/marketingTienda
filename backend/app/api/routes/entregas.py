@@ -183,7 +183,9 @@ async def _tarea_y_barra(
     barra = (await db.execute(select(CalendarioBarra).where(CalendarioBarra.id == tarea.barra_id))).scalar_one_or_none()
     if barra is None:
         raise HTTPException(status_code=404, detail=_NO_EXISTE_LA_TAREA)
-    exigir_mundo(usuario, barra.mundo)
+    # Una cuenta externa ya pasó por es_tarea_propia: su tarjeta, de cualquier
+    # mundo (25/11/2026: la agencia no elige mundos).
+    exigir_mundo(usuario, barra.mundo, propio=True)
     if not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(usuario)):
         entrega = await db.get(CalendarioEntrega, tarea.id)
         if entrega is None or not reglas.es_tarjeta_propia(usuario, tarea, entrega):
@@ -781,7 +783,8 @@ def _exigir_ver_archivos(
         raise HTTPException(status_code=404, detail=no_existe)
     if not propia and not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(usuario)):
         raise HTTPException(status_code=404, detail=no_existe)
-    exigir_mundo(usuario, barra.mundo)
+    # Una cuenta externa llega acá solo con una tarjeta suya (arriba).
+    exigir_mundo(usuario, barra.mundo, propio=True)
     if not _puede_ver(usuario, barra.mundo, tarea):
         raise HTTPException(status_code=403, detail=no_podes)
 
@@ -2008,12 +2011,33 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
     return [tarjeta(e, t, b) for e, t, b in filas]
 
 
-async def _filas_del_tablero(db: AsyncSession, usuario: User, mundo: str) -> list:
+def _del_mundo(mundo: str | None):
+    """El WHERE del mundo del tablero. Sin mundo (`None`: una cuenta externa),
+    todos: la agencia ve en un solo tablero lo que le piden de cualquier mundo
+    (25/11/2026); lo que ve igual se recorta a lo suyo (`_las_que_ve`)."""
+    return true() if mundo is None else CalendarioBarra.mundo == mundo
+
+
+def _mundo_del_tablero(usuario: User, mundo: str | None) -> str | None:
+    """El mundo que se mira: el pedido (alguien del equipo, que lo tiene que
+    poder abrir), o ninguno (una cuenta externa: todos los suyos; si manda
+    uno, igual tiene que existir)."""
+    if externos.es_externo(usuario):
+        if mundo is not None and mundo not in MUNDOS:
+            raise HTTPException(status_code=422, detail="Ese mundo no existe")
+        return None
+    if mundo is None:
+        raise HTTPException(status_code=422, detail="Falta el mundo")
+    return exigir_mundo(usuario, mundo)
+
+
+async def _filas_del_tablero(db: AsyncSession, usuario: User, mundo: str | None) -> list:
     """Las filas (entrega, tarea, acción) de lo que se muestra, ya sin lo
-    oculto, en el orden del tablero (lo que vence antes, arriba)."""
+    oculto, en el orden del tablero (lo que vence antes, arriba). Sin mundo,
+    las de todos (ver `_del_mundo`)."""
     hoy = alcance.hoy_en_uruguay()
     filas = (await db.execute(
-        _consulta_tarjetas().where(CalendarioBarra.mundo == mundo, _las_que_ve(usuario), _sin_ocultar())
+        _consulta_tarjetas().where(_del_mundo(mundo), _las_que_ve(usuario), _sin_ocultar())
         .order_by(CalendarioTarea.vence.asc().nulls_last(), CalendarioBarra.desde, CalendarioTarea.id)
     )).all()
     return [f for f in filas if not _es_oculta(f[0], hoy)]
@@ -2024,7 +2048,7 @@ def _archivadas_primero_las_nuevas(filas, hoy) -> list:
     return sorted(archivadas, key=lambda f: (_dia_de_archivo(f[0]) or hoy, f[1].id), reverse=True)
 
 
-async def _datos_del_tablero(db: AsyncSession, usuario: User, mundo: str) -> dict:
+async def _datos_del_tablero(db: AsyncSession, usuario: User, mundo: str | None) -> dict:
     hoy = alcance.hoy_en_uruguay()
     filas = await _filas_del_tablero(db, usuario, mundo)
     archivadas = _archivadas_primero_las_nuevas(filas, hoy)
@@ -2041,7 +2065,7 @@ async def _datos_del_tablero(db: AsyncSession, usuario: User, mundo: str) -> dic
 
 @router.get("/entregas")
 async def tablero(
-    mundo: str,
+    mundo: str | None = None,
     rev: int | None = None,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
@@ -2056,8 +2080,11 @@ async def tablero(
     parte (la agencia, un alcance limitado) recibe la huella de lo que ve,
     no el contador de todos. Que una tarjeta pase sola a Archivado no cambia
     la revisión hasta que el loop diario lo anota: por eso la respuesta dice
-    `hoy`, y la pantalla trae todo de nuevo cuando cambia el día."""
-    exigir_mundo(current_user, mundo)
+    `hoy`, y la pantalla trae todo de nuevo cuando cambia el día.
+
+    Una cuenta externa no manda mundo (y si manda, no se usa): ve lo suyo de
+    todos los mundos, cada tarjeta con el suyo (25/11/2026)."""
+    mundo = _mundo_del_tablero(current_user, mundo)
     if _ve_una_parte(current_user):
         datos = await _datos_del_tablero(db, current_user, mundo)
         huella = externos.huella(datos)
@@ -2079,14 +2106,14 @@ async def tablero(
 
 @router.get("/entregas/archivadas")
 async def mas_archivadas(
-    mundo: str,
+    mundo: str | None = None,
     desde: int = 0,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """"Ver más" de Archivado: la página siguiente (las de los últimos
     OCULTAR_ARCHIVADAS_DIAS días; lo de antes, con el buscador)."""
-    exigir_mundo(current_user, mundo)
+    mundo = _mundo_del_tablero(current_user, mundo)
     if not (0 <= desde <= 100_000):
         raise HTTPException(status_code=422, detail="Esa página no existe")
     hoy = alcance.hoy_en_uruguay()
@@ -2114,8 +2141,8 @@ def _normalizado(columna):
 
 @router.get("/entregas/buscar")
 async def buscar(
-    mundo: str,
     q: str,
+    mundo: str | None = None,
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -2124,15 +2151,15 @@ async def buscar(
     mayúsculas, tildes ni el guión). Busca también en lo archivado de verdad
     (lo que ya no se carga en el tablero) y lo devuelve aparte, para abrirlo
     y ver sus materiales. Respeta lo mismo que el tablero: la agencia solo
-    encuentra lo suyo."""
-    exigir_mundo(current_user, mundo)
+    encuentra lo suyo (de cualquier mundo)."""
+    mundo = _mundo_del_tablero(current_user, mundo)
     palabras = tipos_de_tarea.palabras_de_busqueda(q)
     if not palabras or sum(len(p) for p in palabras) < 2:
         return {"enTablero": [], "archivadas": [], "palabras": palabras}
     texto = _normalizado(func.concat(CalendarioTarea.titulo, " ", CalendarioBarra.nombre))
     condiciones = [texto.contains(p, autoescape=True) for p in palabras]
     filas = (await db.execute(
-        _consulta_tarjetas().where(CalendarioBarra.mundo == mundo, _las_que_ve(current_user), *condiciones)
+        _consulta_tarjetas().where(_del_mundo(mundo), _las_que_ve(current_user), *condiciones)
         .order_by(CalendarioBarra.desde.desc(), CalendarioTarea.id)
         .limit(200)
     )).all()
@@ -2307,9 +2334,10 @@ async def mis_entregas(
     """Para "Mis tareas", en todos los mundos de la persona: lo que espera MI
     decisión (soy el aprobador de turno) y lo que me devolvieron con cambios
     (la hago yo, o mi agencia). Son tarjetas propias: se ven aunque la
-    campaña quede fuera de su alcance del calendario (0070)."""
-    mundos = mundos_de(current_user)
+    campaña quede fuera de su alcance del calendario (0070). Una cuenta
+    externa, de todos los mundos: son tarjetas de su agencia (25/11/2026)."""
     externo = externos.es_externo(current_user)
+    mundos = list(MUNDOS) if externo else mundos_de(current_user)
     # Ni lo que se canceló (archivada sin terminar) ni lo que quien lidera
     # cerró a mano («hecha»): no espera a nadie (revisión del 16/11/2026).
     vigentes = (CalendarioEntrega.archivada_at.is_(None), CalendarioTarea.estado != "hecha")
