@@ -841,10 +841,11 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
           </label>
 
         </div>
-      ) : (conResponsable && tarea.responsable != null && (
+      ) : (conResponsable && (tarea.responsable === usuarioId || responsable) && (
         <p className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
           <ShieldCheck className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden />
-          {tarea.responsable === usuarioId ? 'La llevás vos por Tienda' : `Responsable de Tienda: ${responsable?.nombre ?? 'otra persona'}`}
+          {/* La agencia no ve los nombres del equipo: sin nombre, la línea no dice nada y no va. */}
+          {tarea.responsable === usuarioId ? 'La llevás vos por Tienda' : `Responsable de Tienda: ${responsable?.nombre}`}
         </p>
       ))}
 
