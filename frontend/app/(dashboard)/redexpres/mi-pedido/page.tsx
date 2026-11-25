@@ -327,7 +327,7 @@ export default function MiPedidoPage() {
                           value={getCellValue(miRow, col.key)}
                           disabled={!isEditable}
                           onChange={(e) => handleCellChange(miRow.local_nombre, col.key, e.target.value)}
-                          className="input text-sm w-full disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
+                          className="input text-sm w-full disabled:bg-transparent dark:disabled:bg-transparent disabled:border-dashed disabled:border-slate-300 dark:disabled:border-slate-600 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
                           placeholder="—"
                         />
                       </div>
@@ -345,7 +345,7 @@ export default function MiPedidoPage() {
                   value={getCellValue(miRow, "otros")}
                   disabled={!isEditable}
                   onChange={(e) => handleCellChange(miRow.local_nombre, "otros", e.target.value)}
-                  className="input text-sm w-full disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
+                  className="input text-sm w-full disabled:bg-transparent dark:disabled:bg-transparent disabled:border-dashed disabled:border-slate-300 dark:disabled:border-slate-600 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
                   placeholder={t("redexpres.notasPlaceholder")}
                 />
               </div>
