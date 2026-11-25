@@ -114,7 +114,10 @@ function Persona({ fila, nombre, semanas }: { fila: FilaDeCarga; nombre: string;
           {fila.tareas.map(t => (
             <li key={t.id} className="flex items-baseline gap-2 py-1.5">
               <span className="w-12 shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">{t.vence ? fechaCorta(t.vence) : '—'}</span>
-              <span className="min-w-0 flex-1 truncate text-slate-800 dark:text-slate-200">{t.titulo}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-800 dark:text-slate-200">
+                {t.titulo}
+                {t.laHace && <span className="text-slate-500 dark:text-slate-400"> · la hace {t.laHace}</span>}
+              </span>
               <button type="button" onClick={() => abrirAccion(t.accionId)} className="max-w-[40%] shrink-0 truncate text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300">
                 {t.accion}
               </button>

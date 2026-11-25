@@ -43,5 +43,17 @@ const domingo = cargaDelEquipo([], '2026-11-22').semanas[0]
 igual('un domingo pertenece a la semana que empezó el lunes', [domingo.desde, domingo.hasta], ['2026-11-16', '2026-11-22'])
 igual('niveles', [0, 1, 3, 5].map(nivelDeCarga), ['nada', 'normal', 'alta', 'excesiva'])
 
+console.log('la que hace una agencia es de su responsable (25/11/2026)')
+{
+  const banners: Tarea = { ...t(null, '2026-11-26'), titulo: 'TiendaChecks Emisión - Banners', para: 'agencia', agencia: 'Publicis', responsable: 7 }
+  const sinResponsable: Tarea = { ...t(null, '2026-11-26'), para: 'agencia', agencia: 'Publicis', responsable: null }
+  const deTienda: Tarea = { ...t(null, '2026-11-26'), responsable: 7 } // sin agencia: el responsable no aplica
+  const { filas: f } = cargaDelEquipo([accion('TiendaChecks', [banners, sinResponsable, deTienda])], HOY)
+  igual('cuenta para quien la lleva por Tienda', f.map(x => [x.personaId, x.total]), [[7, 1]])
+  igual('dice quién la hace', f[0].tareas.map(x => x.laHace), ['Publicis'])
+  const { filas: g } = cargaDelEquipo([accion('Ciberlunes', [t(3, '2026-11-18')])], HOY)
+  igual('una de Tienda no dice agencia', g[0].tareas[0].laHace, null)
+}
+
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\ncarga: todo bien')
