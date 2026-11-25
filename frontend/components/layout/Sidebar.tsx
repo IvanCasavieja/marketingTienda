@@ -132,6 +132,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = externo ? [
     { href: "/entregas", label: t("sidebar.miTablero", "Mi tablero"), icon: Layers, perm: "calendario.view" },
     ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
+    // La guía de uso, con lo suyo (25/11/2026: la manda el servidor recortada).
+    { href: "/ayuda", label: t("sidebar.guiaUso"), icon: HelpCircle, perm: "calendario.view" },
   ].filter((item) => hasPerm(item.perm)) : [
     ...(esLocal ? [{ href: "/fotos", label: t("sidebar.fotosParaSubir", "Fotos para subir"), icon: Camera, numero: fotosPendientes }] : []),
     // Quien no ve el calendario (su alcance es "No lo ve") no lo tiene en el

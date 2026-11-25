@@ -694,6 +694,24 @@ def _vencida(t, hoy: date) -> bool:
     return t.estado != "hecha" and t.vence is not None and t.vence < hoy
 
 
+def la_hace(t) -> str | None:
+    """Si la hace una agencia, su nombre. Desde el 24/11/2026 (una tarea = un
+    pedido, 0090) una tarea de agencia no tiene persona asignada: la persona
+    de Tienda es su responsable (`responsable_id`)."""
+    if getattr(t, "para", None) in ("agencia", "fuera"):
+        return getattr(t, "agencia", None) or "una agencia"
+    return None
+
+
+def persona_de_tienda(t) -> int | None:
+    """Quién la tiene por Tienda: a quien está asignada o, si la hace una
+    agencia, quien la lleva (su responsable). Como Mis tareas y la vista
+    Equipo (25/11/2026, Ivan: "¿no se supone que yo tengo una tarea ahora?")."""
+    if t.asignado_a_id is not None:
+        return t.asignado_a_id
+    return getattr(t, "responsable_id", None) if la_hace(t) else None
+
+
 def _resumen_tareas(tareas, hoy: date) -> dict:
     return {
         "total": len(tareas),
@@ -701,7 +719,8 @@ def _resumen_tareas(tareas, hoy: date) -> dict:
         "en_proceso": sum(1 for t in tareas if t.estado == "en-proceso"),
         "pendientes": sum(1 for t in tareas if t.estado == "pendiente"),
         "vencidas": sum(1 for t in tareas if _vencida(t, hoy)),
-        "sin_asignar": sum(1 for t in tareas if t.estado != "hecha" and t.asignado_a_id is None),
+        "sin_asignar": sum(1 for t in tareas if t.estado != "hecha" and persona_de_tienda(t) is None
+                           and not la_hace(t)),
     }
 
 
@@ -835,7 +854,8 @@ async def accion(usuario, args: dict, fuente, hoy: date) -> str:
     for t in tareas:
         item = {
             "titulo": corto(t.titulo, 160), "estado": t.estado,
-            "responsable": nombre_de(t.asignado_a_id, elegida.mundo, personas, yo),
+            "responsable": nombre_de(persona_de_tienda(t), elegida.mundo, personas, yo),
+            "la_hace": la_hace(t),
             "vence": _iso(t.vence), "vencida": True if _vencida(t, hoy) else None,
             "subtarea_de": corto(titulos.get(t.parent_id), 80) if t.parent_id else None,
             "nivel": nivel(t) if t.parent_id else None,
@@ -1001,11 +1021,13 @@ async def tareas(usuario, args: dict, fuente, hoy: date) -> str:
             continue
         if not entra_por_vencimiento(t, rango, hoy, incluir_vencidas, incluir_sin_fecha):
             continue
-        if responsables == "sin" and t.asignado_a_id is not None:
+        quien = persona_de_tienda(t)
+        # Una de agencia sin responsable no está "sin asignar": la tiene la agencia.
+        if responsables == "sin" and (quien is not None or la_hace(t)):
             continue
         if isinstance(responsables, set):
             # Solo con nombre en ESE mundo: quien no lo ve no aparece por nombre.
-            if t.asignado_a_id not in responsables or t.asignado_a_id not in personas.get(b.mundo, {}):
+            if quien not in responsables or quien not in personas.get(b.mundo, {}):
                 continue
         if texto and not (_coincide_accion(texto, b) or coincide(texto, t.titulo)):
             continue
@@ -1017,7 +1039,8 @@ async def tareas(usuario, args: dict, fuente, hoy: date) -> str:
     for t, b in elegidas[:MAX_ITEMS]:
         item = {
             "titulo": corto(t.titulo, 160), "estado": t.estado,
-            "responsable": nombre_de(t.asignado_a_id, b.mundo, personas, yo),
+            "responsable": nombre_de(persona_de_tienda(t), b.mundo, personas, yo),
+            "la_hace": la_hace(t),
             "vence": _iso(t.vence), "vencida": True if _vencida(t, hoy) else None,
             "accion": ref_accion(b),
             "subtarea_de": corto(padres.get(t.parent_id), 80) if t.parent_id else None,
@@ -1050,7 +1073,7 @@ async def carga(usuario, args: dict, fuente, hoy: date) -> str:
     for t, b in filas:
         if b.mundo not in mundos or t.estado not in ABIERTAS:
             continue
-        uid = t.asignado_a_id
+        uid = persona_de_tienda(t)
         if uid is None:
             clave = "sin"
         elif uid in personas.get(b.mundo, {}):

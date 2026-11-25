@@ -2462,3 +2462,8 @@ export const adjuntosApi = {
   sacar: (adjuntoId: string) =>
     api.delete<{ id: string; sacado: boolean }>(`/calendario/adjuntos/${encodeURIComponent(adjuntoId)}`, ESPERA),
 };
+
+/** La guía de uso (/ayuda): las secciones que la persona puede usar (25/11/2026). */
+export const guiaApi = {
+  ver: () => api.get<{ secciones: import("./guia").SeccionDeGuia[] }>("/guia", ESPERA),
+};

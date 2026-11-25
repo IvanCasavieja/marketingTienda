@@ -224,3 +224,34 @@ def test_el_chat_le_dice_al_modelo_hasta_donde_ve_cada_uno():
     # Sin el permiso del calendario, ni se menciona.
     sin_permiso = SimpleNamespace(**{**vars(LIMITADA), "permissions": ["ai.don_tino"]})
     assert "calendario" not in _contexto_del_dia(sin_permiso, HOY)
+
+
+# ---------------------------------------------------------------------------
+# La tarea que hace una agencia es de su responsable de Tienda (0090)
+# ---------------------------------------------------------------------------
+
+def test_lo_que_hace_una_agencia_es_de_quien_la_lleva_por_tienda():
+    # 25/11/2026: una tarea de agencia no tiene persona asignada; la persona de
+    # Tienda es su responsable. "Lo mío" la incluye, y dice quién la hace.
+    banners = SimpleNamespace(id="t-banners", barra_id=AHORA.id, parent_id=None, titulo="Black Friday - Banners",
+                              descripcion=None, estado="en-proceso", asignado_a_id=None, vence=date(2026, 11, 26),
+                              para="agencia", agencia="Publicis", responsable_id=OTRO.id)
+    sin_resp = SimpleNamespace(id="t-mail", barra_id=AHORA.id, parent_id=None, titulo="Black Friday - Mailing",
+                               descripcion=None, estado="pendiente", asignado_a_id=None, vence=date(2026, 11, 27),
+                               para="agencia", agencia="Publicis", responsable_id=None)
+    TAREAS.extend([banners, sin_resp])
+    try:
+        datos, _ = _tino("calendario_tareas", OTRO, {"responsable": "yo"})
+        mias = {t["titulo"]: t for t in datos["tareas"]}
+        assert "Black Friday - Banners" in mias and mias["Black Friday - Banners"]["la_hace"] == "Publicis"
+        assert "Black Friday - Mailing" not in mias
+        # Una de agencia sin responsable no está «sin asignar»: la tiene la agencia.
+        datos, _ = _tino("calendario_tareas", OTRO, {"responsable": "sin_asignar"})
+        assert "Black Friday - Mailing" not in [t["titulo"] for t in datos["tareas"]]
+        # En la carga cuenta para su responsable.
+        datos, _ = _tino("calendario_carga", OTRO, {"desde": "2026-11-23", "hasta": "2026-11-29"})
+        fila = next(p for p in datos["personas"] if p["persona"] == "vos (Otro del Equipo)" or "Otro" in p["persona"])
+        assert any(t["titulo"] == "Black Friday - Banners" for t in fila.get("del_periodo", []))
+    finally:
+        TAREAS.remove(banners)
+        TAREAS.remove(sin_resp)

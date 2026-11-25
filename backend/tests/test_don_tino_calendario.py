@@ -460,7 +460,10 @@ def test_sin_calendario_view_el_modelo_ni_ve_las_herramientas(monkeypatch):
     cliente, _ = _app_de_chat(SIN_CALENDARIO, monkeypatch, api)
     r = cliente.post("/chat/message", json={"message": "¿Qué tengo que hacer hoy?", "history": []})
     assert r.status_code == 200
-    assert "tools" not in api.pedidos[0]
+    # Ninguna del calendario ni del tablero. Es de Redexpres: desde el
+    # 25/11/2026 se le ofrece la de los pedidos (ve solo su local).
+    nombres = [t["name"] for t in api.pedidos[0].get("tools", [])]
+    assert nombres == ["redexpres_pedidos"]
 
 
 def test_si_el_modelo_igual_pide_una_herramienta_del_calendario_se_corta(monkeypatch):

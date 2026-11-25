@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.routes import auth, connections, metrics, analytics, sfmc, tools, chat, cenefas_v2, cenefas_convertidor, admin, precios, redexpres, watchlist, facturacion, rrss, calendario, mi_agenda, colocacion, ia_brief, entregas, revision_ia, adjuntos
+from app.api.routes import auth, connections, metrics, analytics, sfmc, tools, chat, cenefas_v2, cenefas_convertidor, admin, precios, redexpres, watchlist, facturacion, rrss, calendario, mi_agenda, colocacion, ia_brief, entregas, revision_ia, adjuntos, guia
 
 router = APIRouter()
 router.include_router(auth.router)
@@ -24,3 +24,4 @@ router.include_router(ia_brief.router)
 router.include_router(entregas.router)
 router.include_router(revision_ia.router)
 router.include_router(adjuntos.router)
+router.include_router(guia.router)
