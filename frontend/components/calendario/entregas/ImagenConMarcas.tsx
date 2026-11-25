@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ImageOff, Sparkles } from 'lucide-react'
 import { useImagen, type Tam } from './useImagen'
+import { useProporcionMaxima } from './proporcion'
 
 /** Cómo se ve un pin: el que se está poniendo ahora, un cambio pedido, uno
  *  que la agencia ya corrigió (con el tilde), o lo que sugiere la IA (no es
@@ -33,10 +34,16 @@ const TONO: Record<TonoPin, string> = {
  *
  * Con `onTocar`, tocar la imagen pone un pin ahí (para revisar): se pasan las
  * coordenadas de 0 a 1.
+ *
+ * Con `ronda` (las imágenes entre las que se cambia), el lugar de la imagen
+ * tiene el alto de la más alta de ellas, con la elegida centrada adentro: así
+ * pasar de una a otra no mueve nada de lo que está abajo (Ivan, 25/11/2026:
+ * "esas cosas no deberían de pasar ni acá ni en ningún lado"). Los pins van
+ * sobre la imagen, no sobre el lugar: siguen cayendo en el mismo punto.
  */
 export function ImagenConMarcas({
   imagenId, pines = [], onTocar, onElegirPin, elegido, tam = 'grande', className = '', claseImagen = 'max-h-[60vh]',
-  etiqueta,
+  etiqueta, ronda,
 }: {
   imagenId: string
   pines?: Pin[]
@@ -49,9 +56,17 @@ export function ImagenConMarcas({
   claseImagen?: string
   /** Para el lector de pantalla: qué imagen es. */
   etiqueta: string
+  /** Las imágenes entre las que se cambia: el lugar toma el alto de la más alta. */
+  ronda?: string[]
 }) {
   const { url, error, cargando } = useImagen(imagenId, tam)
   const imgRef = useRef<HTMLImageElement>(null)
+  const proporcion = useProporcionMaxima(ronda ?? [])
+  // El lugar: todo el ancho, con la proporción de la más alta y el mismo tope
+  // de alto que la imagen (claseImagen). Mientras no se sabe, como antes.
+  const fijo = proporcion != null
+  const lugar = fijo ? `w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800/60 ${claseImagen}` : ''
+  const estiloLugar = fijo ? { aspectRatio: `${1 / proporcion}` } : undefined
 
   function tocar(e: React.MouseEvent<HTMLDivElement>) {
     if (!onTocar || !imgRef.current) return
@@ -64,7 +79,7 @@ export function ImagenConMarcas({
 
   if (!url) {
     return (
-      <div className={`flex min-h-[14rem] w-full items-center justify-center rounded-xl ${error ? 'bg-slate-100 dark:bg-slate-800' : 'skeleton'} ${className}`}>
+      <div style={estiloLugar} className={`flex w-full items-center justify-center rounded-xl ${fijo ? lugar : 'min-h-[14rem]'} ${error ? 'bg-slate-100 dark:bg-slate-800' : 'skeleton'} ${className}`}>
         {error ? (
           <p className="flex items-center gap-2 px-4 text-center text-sm text-slate-500 dark:text-slate-400">
             <ImageOff className="h-5 w-5 shrink-0" /> {error}
@@ -75,7 +90,7 @@ export function ImagenConMarcas({
   }
 
   return (
-    <div className={`flex justify-center ${className}`}>
+    <div style={estiloLugar} className={`flex items-center justify-center ${lugar} ${className}`}>
       <div
         className={`relative inline-block max-w-full select-none ${onTocar ? 'cursor-crosshair' : ''}`}
         onClick={tocar}

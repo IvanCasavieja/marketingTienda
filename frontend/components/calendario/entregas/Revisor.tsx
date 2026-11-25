@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2,
 } from 'lucide-react'
@@ -162,6 +162,38 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
 
   const esNotebook = useEsNotebook()
 
+  // Ivan (25/11/2026): "a medida que se agregan comentarios, cuando excede el
+  // límite de la pantalla nos baja hasta la parte de abajo; quizás debería
+  // estar la imagen del lado izquierdo aislada del lado derecho". En la
+  // notebook cada columna tiene su desplazamiento (ver el return); en el
+  // teléfono la imagen queda fija arriba. Y la marca nueva se enfoca sin el
+  // salto del autoFocus: se mueve solo lo justo para que se vea su campo.
+  const porEnfocar = useRef<string | null>(null)
+  const contenedor = useRef<HTMLDivElement>(null)
+  const columnaImagen = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const clave = porEnfocar.current
+    if (!clave) return
+    porEnfocar.current = null
+    const campo = document.querySelector<HTMLTextAreaElement>(`textarea[data-marca="${clave}"]`)
+    if (!campo) return
+    campo.focus({ preventScroll: true })
+    campo.scrollIntoView({ block: 'nearest' })
+  }, [nuevas])
+  // En el teléfono la imagen queda fija arriba: lo que se enfoca o se lleva a
+  // la vista no tiene que quedar tapado por ella.
+  useEffect(() => {
+    const caja = contenedor.current
+    const fija = columnaImagen.current
+    if (!caja || !fija) return
+    if (esNotebook) { caja.style.scrollPaddingTop = ''; return }
+    const medir = () => { caja.style.scrollPaddingTop = `${fija.offsetHeight + 12}px` }
+    medir()
+    const ro = new ResizeObserver(medir)
+    ro.observe(fija)
+    return () => ro.disconnect()
+  }, [esNotebook])
+
   // Al tocar una observación, que se vea el pin: si quedó fuera de la vista
   // (en el teléfono la lista está arriba de la imagen), se lleva al medio. Se
   // busca unas veces porque si es de otra imagen, el pin aparece cuando carga.
@@ -190,6 +222,11 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     anterior?.imagenes ?? [], ordenActiva, anteriorElegida?.para === activa ? anteriorElegida.id : null,
   )
   const imagenAnterior = comparada.id
+  // Las imágenes entre las que se cambia: el lugar de la imagen toma el alto
+  // de la más alta (25/11/2026). Comparando, las de las dos rondas, así las
+  // dos columnas (o las dos pestañas, en el teléfono) quedan del mismo alto.
+  const vivasDe = (v: Version | null) => (v?.imagenes ?? []).filter(i => !i.purgada).map(i => i.id)
+  const ronda = comparar ? [...vivasDe(version), ...vivasDe(anterior)] : vivasDe(version)
   const siguienteNumero = Math.max(0, ...version.marcas.map(m => m.numero)) + 1
   const numeroDe = (i: number) => siguienteNumero + i
   const pinesNuevos: Pin[] = nuevas.flatMap((n, i) => (n.imagenId === activa
@@ -246,6 +283,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   function poner(x: number, y: number) {
     if (!hayLugarParaOtraMarca()) return
     const clave = nuevaClave()
+    porEnfocar.current = clave
     setNuevas(prev => [...prev, { clave, imagenId: activa, x, y, texto: '' }])
     setElegido(clave)
   }
@@ -358,8 +396,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         if (!clave.startsWith('ia-')) setObsElegida(null)
       }}
       // La caja ocupa casi toda la pantalla (19/11/2026): la imagen, grande.
-      claseImagen={comparar ? 'max-h-[60vh]' : 'max-h-[70vh]'}
+      // En el teléfono queda fija arriba mientras se escribe: más baja.
+      claseImagen={comparar ? 'max-h-[30vh] lg:max-h-[60vh]' : 'max-h-[34vh] lg:max-h-[70vh]'}
       etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
+      ronda={ronda}
     />
   )
   // Lo que hay que mirar, todo junto y abierto (24/11/2026, Ivan: "debería
@@ -473,8 +513,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     <ImagenConMarcas
       imagenId={imagenAnterior}
       pines={pinesDe(anterior.marcas, imagenAnterior)}
-      claseImagen="max-h-[60vh]"
+      claseImagen="max-h-[30vh] lg:max-h-[60vh]"
       etiqueta={`La versión anterior (ronda ${anterior.ronda}), imagen ${comparada.numero ?? 1}`}
+      ronda={ronda}
     />
   ) : null
 
@@ -494,7 +535,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             onClick={() => setActiva(im.id)}
             className={`relative shrink-0 rounded-xl p-0.5 transition ${im.id === activa ? 'ring-2 ring-brand-600' : 'opacity-70 hover:opacity-100'}`}
           >
-            <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className={comparar ? 'h-12 w-12' : 'h-16 w-16'} />
+            <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1}`} className={comparar ? 'h-12 w-12' : 'h-12 w-12 lg:h-16 lg:w-16'} />
             {cuantas > 0 && (
               <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-bold text-white">{cuantas}</span>
             )}
@@ -524,8 +565,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+      <div ref={contenedor} className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 lg:flex lg:flex-col lg:gap-4 lg:space-y-0 lg:overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-2 lg:shrink-0">
           <div className="min-w-0">
             <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Revisar la ronda {version.ronda} de {fase?.nombre}</h3>
             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -547,17 +588,23 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         </div>
 
         {respaldoDe != null && (
-          <p className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+          <p className="flex items-start gap-2 lg:shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
             Le tocaba a {nombre(respaldoDe)}. Decidís vos como respaldo: queda anotado.
           </p>
         )}
 
-        {/* En la notebook, la imagen a la izquierda y las marcas a la derecha,
-            a la vista mientras se toca; en el teléfono, una abajo de la otra. */}
-        <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-6 lg:space-y-0">
-          <div className="space-y-3">
         {!esNotebook && loQueHayQueMirar}
+
+        {/* En la notebook, la imagen a la izquierda y las marcas a la derecha,
+            cada una con su desplazamiento: agregar marcas mueve solo la
+            columna de la derecha, nunca la imagen (25/11/2026). En el
+            teléfono, una abajo de la otra, con la imagen fija arriba. */}
+        <div className="space-y-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-6 lg:space-y-0">
+          <div
+            ref={columnaImagen}
+            className={`space-y-3 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain ${sinImagenes ? '' : 'sticky top-0 z-10 -mx-4 bg-white px-4 pb-3 pt-1 shadow-[0_10px_10px_-10px_rgba(15,23,42,0.25)] dark:bg-slate-900 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:shadow-none lg:dark:bg-transparent'}`}
+          >
         {comparar && imagenVieja ? (
           <>
             {/* En el teléfono no entran dos lado a lado: pestañas. */}
@@ -608,7 +655,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         )}
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-4 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pb-2">
         {esNotebook && loQueHayQueMirar}
         {(version.comentario || version.link) && (
           <div className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-sm text-slate-700 dark:bg-slate-800/50 dark:text-slate-300">
@@ -667,8 +714,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                   )}
                 </button>
                 <textarea
-                  // La que viene de la IA ya trae texto: sin abrir el teclado.
-                  autoFocus={i === nuevas.length - 1 && !n.observacionIA}
+                  // Se enfoca sola la que se pone tocando la imagen (ver
+                  // porEnfocar); la que viene de la IA ya trae texto: sin
+                  // abrir el teclado.
+                  data-marca={n.clave}
                   value={n.texto}
                   onFocus={() => setElegido(n.clave)}
                   onChange={e => setNuevas(prev => prev.map(x => (x.clave === n.clave ? { ...x, texto: e.target.value } : x)))}
