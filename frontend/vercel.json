@@ -6,7 +6,8 @@
   },
   "git": {
     "deploymentEnabled": {
-      "equipo-nocturno/*": false
+      "equipo-nocturno/*": false,
+      "nocturno/*": false
     }
   }
 }
