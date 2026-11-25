@@ -1828,7 +1828,7 @@ def test_el_zip_se_guarda_tal_cual_y_lo_bajan_el_equipo_y_su_agencia(monkeypatch
             c = Cliente(d.http, u)
             assert (await c.get(f"/calendario/entregas/imagenes/{imagen}")).status_code == 404, u.full_name
             r = await c.get(f"/calendario/versiones/{version}/zip")
-            assert r.status_code == 404 and r.json()["detail"] == "Esa ronda no tiene un ZIP", (u.full_name, r.text)
+            assert r.status_code == 404 and r.json()["detail"] == "Esa versión no tiene un ZIP", (u.full_name, r.text)
         assert (await b1.get(f"/calendario/versiones/{version}/zip")).status_code == 404
         # Una ronda sin ZIP, o que no existe: 404.
         assert (await _decidir(lider, version, "cambios", "Otra vuelta")).status_code == 200

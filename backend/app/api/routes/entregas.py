@@ -932,14 +932,14 @@ async def bajar_zip(
         CalendarioVersionZip, por=CalendarioVersionZip.version_id, valor=version_id,
     ))).first()
     if fila is None:
-        raise HTTPException(status_code=404, detail="Esa ronda no tiene un ZIP")
+        raise HTTPException(status_code=404, detail="Esa versión no tiene un ZIP")
     nombre, largo, tarea, barra, entrega = fila
     _exigir_ver_archivos(current_user, tarea, barra, entrega,
-                         no_existe="Esa ronda no tiene un ZIP", no_podes="No podés ver esta ronda")
+                         no_existe="Esa versión no tiene un ZIP", no_podes="No podés ver esta versión")
     if largo is None:
         raise HTTPException(
             status_code=404,
-            detail="El ZIP de esta ronda no se guardó porque no había lugar en la base: pedile el link a quien la hace.",
+            detail="El ZIP de esta versión no se guardó porque no había lugar en la base: pedile el link a quien la hace.",
         )
     # La sesión del pedido ya no hace falta: se suelta su conexión antes de
     # mandar (FastAPI la cierra recién cuando termina la bajada).
@@ -1098,7 +1098,7 @@ async def control_previo(
     if not imagenes:
         return sin_pedido
     if len(imagenes) > MAX_IMAGENES:
-        raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
+        raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por versión")
     leidas = []
     for i, grande in enumerate(imagenes, 1):
         leidas.append(await _leer(grande, MAX_BYTES_IMAGEN, f"La imagen {i}" if len(imagenes) > 1 else "La imagen"))
@@ -1219,7 +1219,7 @@ async def entregar(
     if not imagenes and not (link or "").strip() and zip_datos is None:
         raise HTTPException(status_code=422, detail="Subí al menos una imagen o pegá el link al original")
     if len(imagenes) > MAX_IMAGENES:
-        raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por ronda")
+        raise HTTPException(status_code=422, detail=f"Son demasiadas imágenes: hasta {MAX_IMAGENES} por versión")
     if len(miniaturas) != len(imagenes):
         raise HTTPException(status_code=422, detail="Falta la miniatura de alguna imagen: volvé a elegirlas")
     try:

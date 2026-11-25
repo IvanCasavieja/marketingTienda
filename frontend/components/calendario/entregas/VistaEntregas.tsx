@@ -796,7 +796,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
     setBajando(true)
     try {
       const fase = detalle.fases.find(f => f.id === version.faseId)?.nombre ?? 'Entrega'
-      const base = `${detalle.tarea.titulo} - ${fase} - ronda ${version.ronda} - vista previa`.replace(/[\\/:*?"<>|]+/g, '-')
+      const base = `${detalle.tarea.titulo} - ${fase} - v${version.ronda} - vista previa`.replace(/[\\/:*?"<>|]+/g, '-')
       for (const [i, im] of vivas.entries()) {
         const url = await urlDeImagen(im.id, 'grande')
         const a = document.createElement('a')
@@ -825,7 +825,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
           Las imágenes de esta ronda ya se borraron (se guardan hasta un tiempo después de terminada la acción). Quedan las marcas y las decisiones.
         </p>
       ) : activa ? (
-        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Ronda ${version.ronda}`} ronda={vivas.map(i => i.id)} />
+        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Versión ${version.ronda}`} ronda={vivas.map(i => i.id)} />
       ) : null}
 
       {!todasPurgadas && version.imagenes.length > 1 && (
@@ -860,7 +860,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
               onClick={() => void bajarZip()}
               disabled={bajandoZip !== null}
               className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-bold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
-              title={`El original de esta ronda, tal cual lo mandaron: ${zip.nombre}`}
+              title={`El original de esta versión, tal cual lo mandaron: ${zip.nombre}`}
             >
               {bajandoZip !== null ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileArchive className="h-3.5 w-3.5" />}
               {bajandoZip !== null && bajandoZip > 0
@@ -888,7 +888,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
               onClick={() => void descargar()}
               disabled={bajando}
               className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[36px]"
-              title="Las imágenes de esta ronda, achicadas para revisar (1600 px, JPEG): no son el archivo final"
+              title="Las imágenes de esta versión, achicadas para revisar (1600 px, JPEG): no son el archivo final"
             >
               {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Vista previa (1600 px)
             </button>

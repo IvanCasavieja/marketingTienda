@@ -955,16 +955,16 @@ function AnalisisDeEntregas({ mundo }: { mundo: string }) {
         <>
           {m.tiempos && <TiemposYFechas tiempos={m.tiempos} porAgencia={m.porAgencia ?? []} />}
           <h3 className={`mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 ${m.tiempos ? "mt-5 border-t border-slate-200 pt-4 dark:border-slate-700" : ""}`}>
-            Rondas
+            Versiones
           </h3>
           {m.fases === 0 ? (
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas rondas llevaron.
+              Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas versiones llevaron.
             </p>
               ) : (
             <>
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                <Dato etiqueta="Rondas hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
+                <Dato etiqueta="Versiones hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
                 <Dato etiqueta="Aprobado a la primera" valor={m.aLaPrimera == null ? "—" : `${m.aLaPrimera}%`} bajada="de las fases" />
                 <Dato etiqueta="Fases aprobadas" valor={String(m.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
               </div>
@@ -1105,7 +1105,7 @@ function TablaDeRondas({ titulo, filas }: { titulo: string; filas: Metricas["por
             <tr key={String(f.clave)} className="border-b border-slate-200 last:border-0 dark:border-slate-700">
               <td className="max-w-0 py-2 pr-2">
                 <span className="block truncate font-medium text-slate-800 dark:text-slate-200" title={f.nombre ?? String(f.clave)}>{f.nombre ?? String(f.clave)}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{f.fases === 1 ? "1 fase" : `${f.fases} fases`} · {numero(f.rondasPromedio)} rondas</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{f.fases === 1 ? "1 fase" : `${f.fases} fases`} · {numero(f.rondasPromedio)} versiones</span>
               </td>
               <td className="w-[45%] py-2">
                 <span className="flex items-center gap-2">

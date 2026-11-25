@@ -486,7 +486,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                     </span>
                     {ia && (
                       <span
-                        title="Lo que ve la IA en esta ronda. Es una ayuda: se puede equivocar."
+                        title="Lo que ve la IA en esta versión. Es una ayuda: se puede equivocar."
                         className={`mt-0.5 shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-bold ${COLOR_DEL_VEREDICTO[ia.veredicto]}`}
                       >
                         {VEREDICTO_IA[ia.veredicto]}

@@ -123,7 +123,7 @@ export function TarjetaEntrega({
             )}
             {r.ronda > 0 && (
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                Ronda {r.ronda}
+                Versión {r.ronda}
               </span>
             )}
             {r.fases.length > 1 && <FasesCompactas resumen={r} />}

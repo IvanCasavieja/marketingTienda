@@ -505,7 +505,7 @@ function Fila({ tarea, hoy, orden, usuarioId, saliendo, onTildar, onEstado }: {
           const paso = proximoPaso(entrega, tarea.asignadoA, usuarioId, () => "", false, { hace });
           const fase = entrega.fases.find(f => f.id === entrega.faseActual);
           const texto = entrega.momento === "revision" && fase
-            ? `Esperando que revisen la ronda ${entrega.ronda} de ${fase.nombre}`
+            ? `Esperando que revisen la versión ${entrega.ronda} de ${fase.nombre}`
             : paso.texto;
           return (
             <div className="mt-2.5 space-y-2">
