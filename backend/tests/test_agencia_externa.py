@@ -147,6 +147,8 @@ def test_una_tarjeta_de_disenadores_es_de_la_cuenta_de_disenadores_aunque_falte_
     ("/api/v1/calendario/entregas", True),
     ("/api/v1/notificaciones", True),
     ("/api/v1/notificaciones/no-leidas/count", True),
+    ("/api/v1/guia", True),
+    ("/api/v1/guiax", False),
     ("/api/v1/admin/users", False),
     ("/api/v1/colocacion/resumen", False),
     ("/api/v1/colocacion/mis-fotos", False),
