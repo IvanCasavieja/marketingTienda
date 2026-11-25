@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarDays, History } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { MARCA, inicioDe, mundosDe, useMundoElegido, type Mundo } from "@/lib/mundos";
+import { volverDeLaBusqueda } from "@/lib/volver";
 
 /**
  * El selector de mundos.
@@ -29,7 +30,7 @@ export default function MundosPage() {
 
   useEffect(() => {
     if (loading || !user) return;
-    if (mundos.length <= 1) router.replace(inicioDe(user));
+    if (mundos.length <= 1) router.replace(volverDeLaBusqueda(window.location.search) ?? inicioDe(user));
   }, [loading, user, mundos.length, router]);
 
   // Mientras se sabe quién es, el esqueleto de las tarjetas; con uno solo (o
@@ -39,7 +40,8 @@ export default function MundosPage() {
 
   function entrar(m: Mundo) {
     elegir(m.clave);
-    router.push(inicioDe(user));
+    // Si venía de un link (el del mail), elegido el mundo sigue ahí (H-040).
+    router.push(volverDeLaBusqueda(window.location.search) ?? inicioDe(user));
   }
 
   const nombre = user?.full_name?.split(" ")[0];

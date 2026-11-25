@@ -7,6 +7,8 @@ import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 import type { MiAgenda } from "@/lib/calendario/mi-agenda";
 import type { ControlPrevio } from "@/lib/calendario/control-previo";
 import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
+// Al vencer la sesión, el login vuelve a donde se estaba (H-040, 25/11/2026).
+import { loginVolviendoA } from "@/lib/volver";
 import type { Adjunto } from "@/lib/calendario/adjuntos";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -170,7 +172,7 @@ api.interceptors.response.use(
         const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
         if (estado !== 401 && estado !== 403) return Promise.reject(errorAlRenovar);
         clearAccessToken();
-        if (typeof window !== "undefined") window.location.href = "/login";
+        if (typeof window !== "undefined") window.location.href = loginVolviendoA(window.location.pathname + window.location.search);
       }
     }
     return Promise.reject(error);
@@ -1832,7 +1834,7 @@ export const preciosApi = {
         const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
         if (estado === 401 || estado === 403) {
           clearAccessToken();
-          if (typeof window !== "undefined") window.location.href = "/login";
+          if (typeof window !== "undefined") window.location.href = loginVolviendoA(window.location.pathname + window.location.search);
         }
       }
     }
@@ -2355,6 +2357,8 @@ export const entregasApi = {
   entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
     api.post<CalendarioEscrito & {
       ronda: number; entrega: ResumenEntrega;
+      /** La versión que esta reemplazó, si esperaba revisión (25/11/2026, ir y venir). */
+      reemplazo?: number | null;
       zip?: { nombre: string; tamano: number; guardado: boolean; sumadas: number; archivos: string[]; ignorados: string[] } | null;
     }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/versiones`, form, {

@@ -13,6 +13,7 @@ import {
   type Persona,
 } from './calendario/tipos'
 import type { CurrentUser } from '../types'
+import { loginVolviendoA, volverA, volverDeLaBusqueda } from './volver'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -113,6 +114,19 @@ igual('en el alta, con la lista completa, como antes',
   { opciones: [...tableros, 'Agencia Pampa'], elegida: 'Diseñadores', yaExiste: 'Diseñadores' })
 igual('mientras no llega la lista, nada',
   agenciaElegida(null, 'Agencia Oceano', 'Agencia Oceano'), { opciones: null, elegida: null, yaExiste: null })
+
+// El link del mail abre la tarea después de entrar (H-040, 25/11/2026).
+igual('una dirección de acá adentro, tal cual', volverA('/entregas?tarea=ta-1'), '/entregas?tarea=ta-1')
+igual('nunca otro sitio', [volverA('https://otro.com'), volverA('//otro.com/x'), volverA('/\\otro.com'), volverA('/x\\y')],
+  [null, null, null, null])
+igual('ni las pantallas de entrar, ni nada', [volverA('/login'), volverA('/login?volver=%2Fx'), volverA('/reset-password'),
+  volverA(''), volverA(null), volverA('entregas')], [null, null, null, null, null, null])
+igual('ni con caracteres de control', volverA('/entregas\n'), null)
+igual('el login que vuelve a la tarea', loginVolviendoA('/entregas?tarea=ta-1'), '/login?volver=%2Fentregas%3Ftarea%3Dta-1')
+igual('desde el inicio, el login a secas', [loginVolviendoA('/'), loginVolviendoA('')], ['/login', '/login'])
+igual('ya en el login, no pierde su ?volver', loginVolviendoA('/login?volver=%2Fentregas'), '/login?volver=%2Fentregas')
+igual('se lee de la búsqueda', volverDeLaBusqueda('?volver=%2Fentregas%3Ftarea%3Dta-1'), '/entregas?tarea=ta-1')
+igual('y si apunta afuera, nada', [volverDeLaBusqueda('?volver=https%3A%2F%2Fotro.com'), volverDeLaBusqueda('')], [null, null])
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)
