@@ -237,6 +237,7 @@ function UserEditorModal({
     "facturacion": t("admin.permGroups.facturacion"),
     "rrss":        t("admin.permGroups.rrss"),
     "ai":          t("admin.permGroups.ai"),
+    "clientes_vip": t("admin.permGroups.clientes_vip", "Clientes VIP"),
   };
 
   function toggle(key: string) {
@@ -600,6 +601,7 @@ function RoleEditorModal({
     "facturacion": t("admin.permGroups.facturacion"),
     "rrss":        t("admin.permGroups.rrss"),
     "ai":          t("admin.permGroups.ai"),
+    "clientes_vip": t("admin.permGroups.clientes_vip", "Clientes VIP"),
   };
   const grouped = groupPermissions(allPerms);
 

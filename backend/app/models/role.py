@@ -58,7 +58,16 @@ ALL_PERMISSIONS: dict[str, str] = {
     "ai.tinin":                "Usar a Tinín — generar descripciones con IA en el Convertidor de Excel",
     "ai.triada":               "Usar La Triada — debate y análisis automático de campañas",
     "ai.dogti":                "Usar a DogTi — lectura de facturas PDF con IA y chat sobre el presupuesto",
+
+    # Clientes VIP (0091) — datos confidenciales: no vienen con ningún rol,
+    # se tildan a mano a cada persona (Ivan, 25/11/2026: "tengo acceso yo y
+    # Emi Perdomo… que tenga permiso para ver la sección así se le da a un usuario").
+    "clientes_vip.view":       "Ver el tablero de Clientes VIP: compras, segmentos, riesgo y predicción, y recibir su informe por mail",
+    "clientes_vip.cargar":     "Cargar los archivos mensuales de compras de los clientes VIP",
 }
+
+# Los permisos que ningún rol trae de fábrica (ni Admin): se dan uno por uno.
+SOLO_A_MANO = frozenset({"clientes_vip.view", "clientes_vip.cargar"})
 
 # Sufijo que marca un permiso como "de solo lectura" — usado para restringir
 # qué puede tildarse en un usuario con rol view_only (Viewer).
@@ -84,7 +93,7 @@ DEFAULT_ROLES: list[dict] = [
     {
         "name":        "Admin",
         "description": "Arranca con todos los permisos; se pueden destildar puntualmente por usuario. No puede modificar a otros Admins",
-        "permissions": list(ALL_PERMISSIONS.keys()),
+        "permissions": [p for p in ALL_PERMISSIONS if p not in SOLO_A_MANO],
         "is_system":   True,
         "view_only":   False,
     },

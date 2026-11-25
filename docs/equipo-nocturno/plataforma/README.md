@@ -31,6 +31,12 @@ parte acá en el mismo PR.
 | Administración | `/admin` | Admin y superadmin | Entrada |
 | Perfil, conexiones, ayuda | `/perfil`, `/settings`, `/ayuda` | Todos | Entrada |
 | Medios y finanzas | `/dashboard`, `/analytics`, `/campaigns`, `/canales`, `/facturacion…` | Equipo con esos permisos | Entrada |
+| Clientes VIP | `/clientes-vip` | Solo con `clientes_vip.view` (ningún rol lo trae); cargar, con `clientes_vip.cargar`. Solo Tienda Inglesa | — |
+
+Clientes VIP (25/11/2026) son datos confidenciales de clientes: en el entorno
+de pruebas está vacía y así tiene que quedar. Nunca cargues datos de verdad
+ni saques capturas con datos de producción. Para probar la carga, armá un CSV
+chico inventado con las columnas de `frontend/lib/clientes-vip/resumen.ts`.
 
 ## Lo que hay que saber antes de recorrer (resumen de los tres mapas)
 

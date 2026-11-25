@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight, BarChart2, CalendarDays, Camera, ClipboardCheck, ClipboardList, Compass, FileSpreadsheet,
+  ArrowRight, BarChart2, CalendarDays, Camera, ClipboardCheck, ClipboardList, Compass, Crown, FileSpreadsheet,
   HelpCircle, Layers, ListChecks, ListPlus, Loader2, MessageCircle, PanelRight, Presentation, Receipt,
   ScanSearch, Search, SquareStack, Tag, Users,
 } from "lucide-react";
@@ -23,7 +23,7 @@ import { filtrarGuia, trozos, type SeccionDeGuia } from "@/lib/guia";
  */
 
 const ICONOS: Record<string, React.ElementType> = {
-  BarChart2, CalendarDays, Camera, ClipboardCheck, ClipboardList, Compass, FileSpreadsheet, Layers, ListChecks,
+  BarChart2, CalendarDays, Camera, ClipboardCheck, ClipboardList, Compass, Crown, FileSpreadsheet, Layers, ListChecks,
   ListPlus, MessageCircle, PanelRight, Presentation, Receipt, ScanSearch, SquareStack, Tag, Users,
 };
 

@@ -44,6 +44,7 @@
     "historial": "Historial",
     "buscarPrecios": "Buscar precios",
     "listasMonitoreo": "Listas de monitoreo",
+    "clientesVip": "Clientes VIP",
     "guiaUso": "Guía de uso",
     "planillaPedidos": "Planilla de pedidos",
     "administrador": "Administrador",
@@ -658,7 +659,8 @@
       "connections": "Conexiones",
       "facturacion": "Finanzas",
       "rrss": "Redes sociales",
-      "ai": "Inteligencia Artificial"
+      "ai": "Inteligencia Artificial",
+      "clientes_vip": "Clientes VIP"
     },
     "tabs": {
       "users": "Usuarios y Roles",

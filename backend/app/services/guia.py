@@ -476,6 +476,29 @@ SECCIONES: tuple[Seccion, ...] = (
         ),
     ),
     Seccion(
+        clave="clientes-vip", titulo="Clientes VIP", icono="Crown", ruta="/clientes-vip",
+        permisos=("clientes_vip.view",), mundos=("tienda_inglesa",),
+        resumen="Las compras de los clientes VIP mes a mes: quién crece, quién se está yendo y qué se espera.",
+        partes=(
+            Parte("Qué hay", (
+                "La venta, el margen, cuántos compraron, el ticket promedio y las compras por cliente del último "
+                "mes, contra el anterior y contra el mismo mes del año pasado.",
+                "**Lo que viene**: Valentina calcula la venta esperada del mes que viene, con su rango.",
+                "**El informe del mes**: Sofía lo escribe después de cada carga (qué pasó, qué mirar y qué haría) y "
+                "les llega por mail a quienes tienen acceso.",
+                "Los **segmentos** (Creciendo, Estable, Nuevo, Bajando, En riesgo, Perdido): tocás uno y la lista "
+                "muestra esos clientes; cada uno tiene su riesgo de dejar de comprar, de 0 a 100, y su ficha mes a mes.",
+                "Es confidencial: lo ve solo quien tiene el permiso, y no se reenvía fuera de Tienda Inglesa.",
+            )),
+            Parte("Cargar el archivo del mes", (
+                "**Cargar archivo** y elegís el CSV de compras (o el .zip que lo trae).",
+                "Se lee en tu computadora (un año tarda alrededor de un minuto) y te muestra qué trae: meses, "
+                "clientes y venta.",
+                "**Cargar**: sube solo el resumen por cliente y por mes. Si un mes ya estaba, se reemplaza.",
+            ), numerada=True, permisos=("clientes_vip.cargar",)),
+        ),
+    ),
+    Seccion(
         clave="don-tino", titulo="Don Tino, el asistente", icono="MessageCircle",
         quienes=frozenset({EQUIPO, LOCAL}), permisos=("ai.don_tino",),
         resumen="Preguntale lo que quieras de la plataforma: te guía y consulta por vos.",

@@ -87,6 +87,15 @@ def remitente() -> str:
     return configurado
 
 
+def remitente_con_nombre(nombre: str) -> str:
+    """La misma casilla, con el nombre de quien escribe: «Sofía y Valentina ·
+    Core Tienda <...>» (el informe de Clientes VIP)."""
+    actual = remitente()
+    match = _FROM_EMAIL_RE.search(actual)
+    direccion = match.group(1) if match else actual
+    return f"{nombre} · {NOMBRE_DE_LA_PLATAFORMA} <{direccion}>"
+
+
 def armar_mensaje(to: str, subject: str, html: str, plain: str) -> EmailMessage:
     """El mail con las dos versiones: texto para los clientes que no muestran
     HTML y HTML para el resto."""
@@ -136,8 +145,8 @@ async def _enviar_por_sendgrid(to: str, subject: str, html: str, plain: str) -> 
         raise RuntimeError(f"SendGrid error {resp.status_code}: {resp.text}")
 
 
-async def _enviar_por_resend(to: str, subject: str, html: str, plain: str) -> None:
-    payload = {"from": remitente(), "to": [to], "subject": subject, "html": html, "text": plain}
+async def _enviar_por_resend(to: str, subject: str, html: str, plain: str, de: str | None = None) -> None:
+    payload = {"from": de or remitente(), "to": [to], "subject": subject, "html": html, "text": plain}
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.post(
             "https://api.resend.com/emails",
@@ -148,10 +157,12 @@ async def _enviar_por_resend(to: str, subject: str, html: str, plain: str) -> No
         raise RuntimeError(f"Resend error {resp.status_code}: {resp.text}")
 
 
-async def send_email(to: str, subject: str, html: str, plain: str) -> None:
+async def send_email(to: str, subject: str, html: str, plain: str, de: str | None = None) -> None:
+    """`de`: otro nombre para el remitente (misma casilla). Solo lo usa Resend:
+    los SMTP rechazan un From distinto de la cuenta."""
     cual = proveedor()
     if cual == "resend":
-        await _enviar_por_resend(to, subject, html, plain)
+        await _enviar_por_resend(to, subject, html, plain, de)
     elif cual == "smtp":
         # smtplib bloquea: va en un hilo para no frenar al resto del backend.
         await asyncio.to_thread(_enviar_por_smtp, armar_mensaje(to, subject, html, plain))
