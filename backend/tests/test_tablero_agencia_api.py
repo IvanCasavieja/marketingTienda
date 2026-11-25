@@ -1524,7 +1524,7 @@ def test_aprobado_con_cambios_ya_no_existe_y_las_decisiones_viejas_siguen_valien
         assert det["fases"][0]["versiones"][0]["estado"] == "aprobada"
         assert (await _tarjeta(lider, tarea_id))["columna"] == "finalizado"
         aviso = (await _avisos(d, d.a1, tarea_id))[-1].mensaje
-        assert "aprobó la ronda 1" in aviso and "con cambios" not in aviso and "justes" not in aviso
+        assert "aprobó la versión 1" in aviso and "con cambios" not in aviso and "justes" not in aviso
         # El retrabajo la cuenta: una fase aprobada en la ronda 1.
         r = await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})
         assert r.status_code == 200, r.text
@@ -3999,7 +3999,7 @@ def test_avanzar_devuelve_la_ronda_con_el_ok_y_la_tarea_sigue_abierta():
         t = await _tarjeta(a1, tarea_id)
         assert t["columna"] == "en-proceso" and t["puedo"]["entregar"] is True
         avisos = [n for n in await _avisos(d, d.a1, tarea_id) if n.origen_ref.endswith(":avanzar")]
-        assert len(avisos) == 1 and "dio el OK a la ronda 1" in avisos[0].mensaje
+        assert len(avisos) == 1 and "dio el OK a la versión 1" in avisos[0].mensaje
         assert "avanzá con lo que falta" in avisos[0].mensaje
         # La tarea no se cerró y a quien la pidió no le llega «hecha».
         assert await _estado(d, tarea_id) == "en-proceso"
@@ -4051,4 +4051,128 @@ def test_avanzar_tiene_las_mismas_reglas_que_aprobar():
         # Ya decidida: otro OK llega tarde.
         r = await _decidir(lider, v1, "avanzar")
         assert r.status_code == 409
+    correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# Ir y venir (25/11/2026): la agencia manda sin esperar respuesta
+# ---------------------------------------------------------------------------
+# Ivan: "Hoy, una vez que la agencia envía una entrega, queda bloqueada hasta
+# que nosotros devolvemos la tarjeta... La propuesta es que la agencia pueda
+# enviar entregas sin esperar nuestra respuesta, mientras la tarjeta no esté
+# aprobada": versiones, sumar archivos, una nota por envío, aviso de cada uno,
+# bloqueo solo al aprobar y reabrir.
+
+async def _mandar(cliente, tarea_id, version_id, *, nota=None, imagenes=0):
+    data = {"versionId": version_id}
+    if nota:
+        data["comentario"] = nota
+    if not imagenes:
+        data["link"] = "https://drive.example.com/version"
+    files = []
+    for i in range(imagenes):
+        files += [("imagenes", (f"i{i}.jpg", _jpeg_de_verdad(), "image/jpeg")),
+                  ("miniaturas", (f"m{i}.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))]
+    return await cliente.post(f"/calendario/tareas/{tarea_id}/versiones", data=data, files=files or None)
+
+
+async def _sumar(cliente, version_id, cuantas=1, nota=None):
+    files = []
+    for i in range(cuantas):
+        files += [("imagenes", (f"s{i}.jpg", _jpeg_de_verdad(color="red"), "image/jpeg")),
+                  ("miniaturas", (f"t{i}.jpg", _jpeg_de_verdad(64, 48, "red"), "image/jpeg"))]
+    return await cliente.post(f"/calendario/versiones/{version_id}/archivos",
+                              data={"nota": nota or ""}, files=files)
+
+
+def test_la_agencia_manda_otra_version_sin_esperar_y_la_anterior_queda_reemplazada():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        lucia, a1, lider = Cliente(d.http, d.lucia), Cliente(d.http, d.a1), Cliente(d.http, d.lider)
+        v1, v2 = f"ve-iv1-{d.sufijo}", f"ve-iv2-{d.sufijo}"
+        assert (await _mandar(a1, tarea_id, v1, nota="Va el header")).status_code == 201
+        # Esperando feedback, la agencia igual puede mandar (antes: 409).
+        t = await _tarjeta(a1, tarea_id)
+        assert t["columna"] == "esperando" and t["puedo"]["entregar"] is True
+        assert (await _detalle(a1, tarea_id))["puedo"]["entregar"] is True
+        r = await _mandar(a1, tarea_id, v2, nota="Ajuste pedido por WhatsApp")
+        assert r.status_code == 201, r.text
+        assert r.json()["ronda"] == 2 and r.json()["reemplazo"] == 1
+        # La anterior, reemplazada en el historial; la nueva, la que se revisa.
+        versiones = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"]
+        assert [(v["ronda"], v["estado"]) for v in versiones] == [(1, "reemplazada"), (2, "revision")]
+        assert versiones[1]["comentario"] == "Ajuste pedido por WhatsApp"
+        # Cada envío avisa, con su nota; el segundo dice qué reemplazó.
+        avisos = [n.mensaje for n in await _avisos(d, d.lucia, tarea_id) if "Te toca revisarla" in n.mensaje]
+        assert len(avisos) == 2
+        assert "«Va el header»" in avisos[0]
+        assert "versión 2" in avisos[1] and "en lugar de la 1" in avisos[1]
+        assert "«Ajuste pedido por WhatsApp»" in avisos[1]
+        # Nadie decide sobre la reemplazada.
+        r = await _decidir(lucia, v1, "aprobada")
+        assert r.status_code == 409 and "versión nueva" in r.json()["detail"], r.text
+        # Aprobar la última cierra la tarjeta: ahí ya no se manda más.
+        r = await _decidir(lucia, v2, "aprobada")
+        assert r.status_code == 200 and r.json()["entrega"]["momento"] == "aprobada", r.text
+        assert (await _tarjeta(a1, tarea_id))["puedo"]["entregar"] is False
+        assert (await _mandar(a1, tarea_id, f"ve-iv3-{d.sufijo}")).status_code == 409
+        # La reemplazada no es retrabajo: aprobada «a la primera».
+        m = (await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})).json()
+        assert m["fases"] == 1 and m["rondasPromedio"] == 1.0 and m["aLaPrimera"] == 100
+        # Reabrir: otra vuelta, con aviso a la agencia, y la agencia vuelve a mandar.
+        r = await lider.post(f"/calendario/tareas/{tarea_id}/devolver", json={"comentario": "Cambió el precio"})
+        assert r.status_code == 200, r.text
+        assert [n for n in await _avisos(d, d.a1, tarea_id) if "reabrió" in n.mensaje]
+        assert (await _mandar(a1, tarea_id, f"ve-iv4-{d.sufijo}")).status_code == 201
+    correr(prueba)
+
+
+def test_otra_agencia_y_quien_no_la_hace_no_mandan_ni_suman():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, b1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.b1), Cliente(d.http, d.lucia)
+        v1 = f"ve-iox-{d.sufijo}"
+        assert (await _mandar(a1, tarea_id, v1, imagenes=1)).status_code == 201
+        assert (await _mandar(b1, tarea_id, f"ve-ioy-{d.sufijo}")).status_code in (403, 404)
+        assert (await _sumar(b1, v1)).status_code in (403, 404)
+        r = await _sumar(lucia, v1)
+        assert r.status_code == 403, r.text
+        assert (await _detalle(lucia, tarea_id))["puedo"]["sumar"] is False
+    correr(prueba)
+
+
+def test_sumar_archivos_a_la_version_que_espera(monkeypatch):
+    llamadas = _espiar_la_ia(monkeypatch)
+
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        v1 = f"ve-sum-{d.sufijo}"
+        assert (await _mandar(a1, tarea_id, v1, imagenes=1)).status_code == 201
+        assert (await _detalle(a1, tarea_id))["puedo"]["sumar"] is True
+        llamadas.clear()
+        r = await _sumar(a1, v1, nota="Faltaba el formato historia")
+        assert r.status_code == 201, r.text
+        assert r.json()["sumadas"] == 1
+        det = await _detalle(lucia, tarea_id)
+        version = det["fases"][0]["versiones"][0]
+        assert len(version["imagenes"]) == 2 and version["estado"] == "revision" and version["ronda"] == 1
+        # Queda anotado en la conversación de la tarjeta y le avisa a quien revisa.
+        textos = [c["texto"] for c in det["comentarios"]]
+        assert "Sumé 1 archivo a la versión 1: Faltaba el formato historia" in textos
+        avisos = [n.mensaje for n in await _avisos(d, d.lucia, tarea_id) if "sumó 1 archivo" in n.mensaje]
+        assert len(avisos) == 1 and "«Faltaba el formato historia»" in avisos[0]
+        # La IA la vuelve a mirar, con lo sumado.
+        assert [v for v, _ in llamadas] == [v1]
+        # Hasta el tope de la versión: 2 + 3 no entra.
+        r = await _sumar(a1, v1, cuantas=3)
+        assert r.status_code == 422 and "podés sumar 2 más" in r.json()["detail"], r.text
+        # Sin imágenes, no.
+        r = await a1.post(f"/calendario/versiones/{v1}/archivos", data={"nota": "x"})
+        assert r.status_code == 422
+        # Una vez que alguien decidió, lo nuevo va como versión nueva.
+        assert (await _decidir(lucia, v1, "avanzar")).status_code == 200
+        assert (await _detalle(a1, tarea_id))["puedo"]["sumar"] is False
+        r = await _sumar(a1, v1)
+        assert r.status_code == 409 and "versión nueva" in r.json()["detail"], r.text
     correr(prueba)
