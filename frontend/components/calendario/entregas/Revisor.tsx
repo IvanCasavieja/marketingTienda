@@ -396,8 +396,11 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         if (!clave.startsWith('ia-')) setObsElegida(null)
       }}
       // La caja ocupa casi toda la pantalla (19/11/2026): la imagen, grande.
-      // En el teléfono queda fija arriba mientras se escribe: más baja.
-      claseImagen={comparar ? 'max-h-[30vh] lg:max-h-[60vh]' : 'max-h-[34vh] lg:max-h-[70vh]'}
+      // En el teléfono queda fija arriba mientras se escribe: más baja. En
+      // la notebook, lo que deja la columna después de la tira y la ayuda:
+      // entra todo sin desplazar (25/11/2026).
+      claseImagen={comparar ? 'max-h-[30vh] lg:max-h-[calc(100dvh_-_30rem)]'
+        : version.imagenes.length > 1 ? 'max-h-[34vh] lg:max-h-[calc(100%_-_7.5rem)]' : 'max-h-[34vh] lg:max-h-[calc(100%_-_3rem)]'}
       etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
       ronda={ronda}
     />
@@ -513,7 +516,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     <ImagenConMarcas
       imagenId={imagenAnterior}
       pines={pinesDe(anterior.marcas, imagenAnterior)}
-      claseImagen="max-h-[30vh] lg:max-h-[60vh]"
+      claseImagen="max-h-[30vh] lg:max-h-[calc(100dvh_-_30rem)]"
       etiqueta={`La versión anterior (ronda ${anterior.ronda}), imagen ${comparada.numero ?? 1}`}
       ronda={ronda}
     />
@@ -600,7 +603,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             cada una con su desplazamiento: agregar marcas mueve solo la
             columna de la derecha, nunca la imagen (25/11/2026). En el
             teléfono, una abajo de la otra, con la imagen fija arriba. */}
-        <div className="space-y-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-6 lg:space-y-0">
+        <div className="space-y-4 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:space-y-0">
           <div
             ref={columnaImagen}
             className={`space-y-3 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain ${sinImagenes ? '' : 'sticky top-0 z-10 -mx-4 bg-white px-4 pb-3 pt-1 shadow-[0_10px_10px_-10px_rgba(15,23,42,0.25)] dark:bg-slate-900 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0 lg:shadow-none lg:dark:bg-transparent'}`}

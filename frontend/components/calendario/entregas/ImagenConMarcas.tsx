@@ -67,6 +67,17 @@ export function ImagenConMarcas({
   const fijo = proporcion != null
   const lugar = fijo ? `w-full overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800/60 ${claseImagen}` : ''
   const estiloLugar = fijo ? { aspectRatio: `${1 / proporcion}` } : undefined
+  // La imagen no pasa del alto del lugar (que puede venir de un % de la
+  // columna, en el Revisor): se mide, porque un % en la imagen no alcanza.
+  const refLugar = useRef<HTMLDivElement>(null)
+  const [altoLugar, setAltoLugar] = useState<number | null>(null)
+  useEffect(() => {
+    const el = refLugar.current
+    if (!fijo || !el) return
+    const ro = new ResizeObserver(() => setAltoLugar(el.clientHeight || null))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [fijo, url])
 
   function tocar(e: React.MouseEvent<HTMLDivElement>) {
     if (!onTocar || !imgRef.current) return
@@ -90,7 +101,7 @@ export function ImagenConMarcas({
   }
 
   return (
-    <div style={estiloLugar} className={`flex items-center justify-center ${lugar} ${className}`}>
+    <div ref={refLugar} style={estiloLugar} className={`flex items-center justify-center ${lugar} ${className}`}>
       <div
         className={`relative inline-block max-w-full select-none ${onTocar ? 'cursor-crosshair' : ''}`}
         onClick={tocar}
@@ -101,6 +112,7 @@ export function ImagenConMarcas({
           src={url}
           alt={etiqueta}
           draggable={false}
+          style={fijo && altoLugar ? { maxHeight: altoLugar } : undefined}
           className={`block h-auto w-auto max-w-full rounded-xl bg-white object-contain shadow-sm ring-1 ring-black/5 dark:ring-white/10 ${claseImagen}`}
         />
         {error && (
