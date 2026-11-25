@@ -670,7 +670,7 @@ function EnQueEstaLaTarjeta({ tarea, personas, usuarioId }: {
   const tono = fase ? estadoDeFase(fase, r).tono : 'hecha'
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      <p className={`flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold ${meToca ? 'text-brand-800 dark:text-brand-100' : 'text-slate-800 dark:text-slate-200'}`}>
+      <p className={`flex min-w-[min(100%,14rem)] flex-1 items-center gap-2 text-sm font-semibold ${meToca ? 'text-brand-800 dark:text-brand-100' : 'text-slate-800 dark:text-slate-200'}`}>
         {r.fases.length > 1
           ? <FasesCompactas resumen={r} />
           : <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${PUNTO_DE_FASE[tono]}`} />}
@@ -840,21 +840,6 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
             </span>
           </label>
 
-          {/* Una tarea con tarjeta se cierra sola al aprobarse; quien lidera
-              igual la puede cerrar (o reabrir) a mano. */}
-          {conTarjeta && (
-            <label className="block">
-              <span className={ROTULO}>Estado de la tarea</span>
-              <select
-                value={tarea.estado}
-                onChange={e => cambiar(tarea.id, { estado: e.target.value as EstadoTarea })}
-                aria-label={`Estado de ${tarea.titulo}`}
-                className="campo"
-              >
-                {ESTADOS.map(e => <option key={e} value={e}>{ETIQUETA_ESTADO_TAREA[e]}</option>)}
-              </select>
-            </label>
-          )}
         </div>
       ) : (conResponsable && tarea.responsable != null && (
         <p className="flex items-center gap-1.5 text-sm text-slate-700 dark:text-slate-300">
@@ -867,6 +852,18 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
         {gestiona && (
           <button type="button" onClick={onRenombrar} className={`${BOTON_CHICO} -ml-2`}>
             <Pencil className="h-4 w-4" /> Cambiarle el nombre
+          </button>
+        )}
+        {/* Una tarea con tarjeta se cierra sola al aprobarse; quien lidera
+            igual la puede dar por hecha (o reabrir) a mano. Sin selector de
+            estado: al lado de la tarjeta, "Pendiente" confundía. */}
+        {gestiona && conTarjeta && (
+          <button
+            type="button"
+            onClick={() => cambiar(tarea.id, { estado: hecha ? 'pendiente' : 'hecha' })}
+            className={`${BOTON_CHICO}`}
+          >
+            <Check className="h-4 w-4" /> {hecha ? 'Volver a abrir' : 'Darla por hecha'}
           </button>
         )}
         {gestiona && (confirmando ? (
