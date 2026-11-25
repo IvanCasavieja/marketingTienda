@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { watchlistApi, type Notificacion } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { alcanceDe } from "@/lib/alcance";
+import { destinoDeAvisoSinAccion } from "@/lib/calendario/sin-accion";
 import type { CurrentUser } from "@/types";
 import { useAvisos } from "@/store/avisos";
 
@@ -102,6 +103,9 @@ function resolverDestino(n: Notificacion, user?: CurrentUser | null): string | n
   // acción ya no está", como si se la hubieran borrado. Va a Mis tareas, que
   // la muestra siempre (con link si la acción está a la vista).
   if (n.origen_tipo === "calendario_tarea" && n.origen_ref) {
+    // Una tarjeta sin acción (24/11/2026): no hay ficha de acción, va a la tarjeta.
+    const sinAccion = destinoDeAvisoSinAccion(n.origen_ref);
+    if (sinAccion) return sinAccion;
     if (alcanceDe(user) !== "todo") return "/mis-tareas";
     return `/calendario?accion=${encodeURIComponent(n.origen_ref.split(":")[0])}`;
   }

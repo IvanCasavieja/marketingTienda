@@ -97,7 +97,7 @@ from app.services.calendario_copia import (
     nombre_para_la_copia, tareas_por_responsable,
 )
 from app.services.colocacion import ORIGENES_DEL_LOCAL
-from app.services import agencias, controles_redexpres, entregas as reglas_entregas, tipos_de_tarea
+from app.services import agencias, controles_redexpres, entregas as reglas_entregas, sin_accion, tipos_de_tarea
 from app.services.entregas import resumenes_de_entregas
 
 logger = logging.getLogger(__name__)
@@ -205,9 +205,15 @@ async def _avisar_sin_romper(db: AsyncSession, barra_id: str | None) -> int:
 
 
 async def _barra_o_404(
-    db: AsyncSession, barra_id: str, usuario: User, *, bloquear: bool = False,
+    db: AsyncSession, barra_id: str, usuario: User, *, bloquear: bool = False, sin_accion_ok: bool = False,
 ) -> CalendarioBarra:
-    """La barra, si existe y es de un mundo que la persona puede abrir."""
+    """La barra, si existe y es de un mundo que la persona puede abrir.
+
+    La acción de sistema de las tarjetas sin acción (app/services/sin_accion.py)
+    no existe como acción: no se abre, ni se cambia, ni se le cargan piezas,
+    avisos o plantillas. Solo `sin_accion_ok` (cambiar una de sus tareas) la deja pasar."""
+    if sin_accion.es_sin_accion(barra_id) and not sin_accion_ok:
+        raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     consulta = select(CalendarioBarra).where(CalendarioBarra.id == barra_id)
     if bloquear:
         consulta = consulta.with_for_update()
@@ -444,7 +450,11 @@ async def _armar_datos(db: AsyncSession, mundo: str, v: alcance.Ventana | None, 
     Con `externo` (una cuenta externa, ver app/core/externos.py): de cada
     acción solo SUS tareas, sin avisos (son internos), sin plantillas y sin el
     pedido de fotos de colocación."""
-    en_la_ventana = (CalendarioBarra.mundo == mundo, alcance.condicion(CalendarioBarra, v))
+    # Sin la acción de sistema de las tarjetas sin acción: no es del calendario.
+    en_la_ventana = (
+        CalendarioBarra.mundo == mundo, alcance.condicion(CalendarioBarra, v),
+        CalendarioBarra.id.notin_(sin_accion.IDS),
+    )
     barras = (await db.execute(
         select(CalendarioBarra).where(*en_la_ventana).order_by(CalendarioBarra.desde, CalendarioBarra.id)
     )).scalars().all()
@@ -783,6 +793,9 @@ async def crear_barra(
     _validar_rango(payload.desde, payload.hasta)
     exigir_mundo(current_user, payload.mundo)
     _exigir_en_su_alcance(current_user, payload.desde, payload.hasta)
+    if sin_accion.es_sin_accion(payload.id):
+        # Ese id es el de las tarjetas sin acción: una acción común no lo usa.
+        raise HTTPException(status_code=422, detail="Ese id no se puede usar para una acción")
     existente = (await db.execute(
         select(CalendarioBarra.id).where(CalendarioBarra.id == payload.id)
     )).scalar_one_or_none()
@@ -883,6 +896,10 @@ async def borrar_barra(
     current_user: User = Depends(require_permission("calendario.edit")),
     db: AsyncSession = Depends(get_db),
 ):
+    if sin_accion.es_sin_accion(barra_id):
+        # La de las tarjetas sin acción no es una acción: borrarla se llevaría
+        # todas sus tarjetas (las tareas cuelgan con ON DELETE CASCADE).
+        raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
     barra = (await db.execute(
         select(CalendarioBarra).where(CalendarioBarra.id == barra_id).with_for_update()
     )).scalar_one_or_none()
@@ -1349,13 +1366,16 @@ def referencia_de_tarea(barra_id: str, tarea_id: str) -> str:
     return f"{barra_id}:{tarea_id}"
 
 
-def mensaje_de_asignacion(quien: str, titulo: str, accion: str, vence: date | None) -> str:
+def mensaje_de_asignacion(quien: str, titulo: str, accion: str | None, vence: date | None) -> str:
+    """`accion` en None: es una tarjeta sin acción (app/services/sin_accion.py)."""
     cuando = f" Vence el {vence.strftime('%d/%m')}." if vence else ""
-    return f"{quien} te asignó una tarea en {accion or 'una acción'}: {titulo}.{cuando}"
+    donde = " sin acción" if accion is None else f" en {accion or 'una acción'}"
+    return f"{quien} te asignó una tarea{donde}: {titulo}.{cuando}"
 
 
-def mensaje_de_tarea_hecha(quien: str, titulo: str, accion: str) -> str:
-    return f"{quien} terminó la tarea «{titulo}» de {accion or 'una acción'}."
+def mensaje_de_tarea_hecha(quien: str, titulo: str, accion: str | None) -> str:
+    de = " (sin acción)" if accion is None else f" de {accion or 'una acción'}"
+    return f"{quien} terminó la tarea «{titulo}»{de}."
 
 
 def mensaje_de_tareas_copiadas(quien: str, titulos: list[str], accion: str, vence: date | None) -> str:
@@ -1375,12 +1395,15 @@ def mensaje_de_tareas_copiadas(quien: str, titulos: list[str], accion: str, venc
     return f"{quien} te asignó {len(titulos)} tareas en {accion or 'una acción'}: {lista}.{cuando}"
 
 
-def mensaje_de_responsable(quien: str, titulo: str, accion: str, agencia: str | None, vence: date | None) -> str:
+def mensaje_de_responsable(
+    quien: str, titulo: str, accion: str | None, agencia: str | None, vence: date | None,
+) -> str:
     """El aviso a quien queda de responsable de Tienda de una tarea que hace
-    una agencia (0090). No la hace: la sigue."""
+    una agencia (0090). No la hace: la sigue. `accion` en None: sin acción."""
     hace = f" (la hace {agencia})" if agencia else ""
     cuando = f" Vence el {vence.strftime('%d/%m')}." if vence else ""
-    return f"{quien} te dejó de responsable de «{titulo}» en {accion or 'una acción'}{hace}.{cuando}"
+    donde = " (sin acción)" if accion is None else f" en {accion or 'una acción'}"
+    return f"{quien} te dejó de responsable de «{titulo}»{donde}{hace}.{cuando}"
 
 
 def repartir_orden(ordenes: dict[str, int], ids: list[str]) -> dict[str, int]:
@@ -1585,14 +1608,60 @@ async def crear_tarea(
             status_code=422,
             detail="Las tareas se cargan en las acciones del calendario comercial y en los envíos",
         )
-    existentes = (await db.execute(
-        select(CalendarioTarea).where(CalendarioTarea.barra_id == barra_id)
-    )).scalars().all()
-    if any(t.id == payload.id for t in existentes):
-        return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
-    # El id lo genera el front; si ya lo usa una tarea de OTRA acción, la
-    # clave primaria lo frenaría con un 500 sin explicación.
-    if await db.get(CalendarioTarea, payload.id) is not None:
+    return await _crear_tarea(db, current_user, barra, payload)
+
+
+class TarjetaNueva(TareaNueva):
+    """Una tarjeta sin acción (24/11/2026, app/services/sin_accion.py): lo
+    mismo que una tarea nueva, más el mundo del tablero desde donde se crea."""
+    mundo: str = Field(..., max_length=32)
+
+
+@router.post("/tarjetas", status_code=201)
+async def crear_tarjeta(
+    payload: TarjetaNueva,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Una tarjeta sin acción, desde Tableros (Ivan, 24/11/2026: "deberíamos
+    poder crear acciones o tarjetas también de cosas que estén por fuera del
+    calendario"). La crean los mismos que crean tareas en una acción
+    (`calendario.tareas` o `calendario.pedidos`), en un mundo suyo y viendo el
+    calendario; la agencia no. Cuelga de la acción de sistema del mundo, así
+    que nace, se ve, se entrega y se revisa como cualquier otra tarjeta, pero
+    no aparece en el calendario.
+
+    Sin acción no hay "<Acción> - <Tipo>": el nombre es el escrito o, si no se
+    escribió, el del tipo. No lleva vencimiento contado desde la acción. Y es
+    siempre una tarjeta: sin tipo elegido ("Otra cosa"), va como "Otro"."""
+    if not puede_crear_tarea(current_user, pieza=True):
+        raise HTTPException(status_code=403, detail=f"Permiso requerido: {PERMISO_PEDIDOS}")
+    if payload.parentId is not None:
+        raise HTTPException(status_code=422, detail=_UN_SOLO_NIVEL)
+    if payload.ancla is not None:
+        raise HTTPException(status_code=422, detail="Sin acción, el vencimiento va con una fecha")
+    exigir_mundo(current_user, payload.mundo)
+    # Como en una acción: quien no ve el calendario no carga en él (ver
+    # `_barra_o_404`, que con "No lo ve" da 404).
+    alcance.exigir_calendario(current_user)
+    if payload.tipo is None:
+        payload.tipo = sin_accion.TIPO_POR_DEFECTO
+        payload.opciones, payload.detalles = [], None
+    if payload.para == "tienda" and payload.asignadoA is None:
+        raise HTTPException(status_code=422, detail="Elegí quién la hace: una agencia o alguien de Tienda")
+    barra = await sin_accion.la_de(db, payload.mundo, bloquear=True)
+    return await _crear_tarea(db, current_user, barra, payload)
+
+
+async def _crear_tarea(db: AsyncSession, current_user: User, barra: CalendarioBarra, payload: TareaNueva) -> dict:
+    """El alta en sí, para una acción o para la de las tarjetas sin acción
+    (ya con el permiso y la acción revisados)."""
+    ya = await db.get(CalendarioTarea, payload.id)
+    if ya is not None:
+        if ya.barra_id == barra.id:
+            return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}
+        # El id lo genera el front; si ya lo usa una tarea de OTRA acción, la
+        # clave primaria lo frenaría con un 500 sin explicación.
         raise HTTPException(status_code=409, detail="Esa tarea ya existe en otra acción")
     if payload.tipo and not tipos_de_tarea.vale_en(payload.tipo, barra.mundo):
         # Imprenta, Video monitores... son de Redexpres (18/11/2026).
@@ -1622,15 +1691,22 @@ async def crear_tarea(
 
     # Con tipo y sin nombre escrito, el nombre se arma solo: "Ciberlunes -
     # Banners" (así se encuentra escribiendo el nombre de la acción, un guión
-    # y lo que se busca). Si se escribió otro al crearla, va ese (0090).
-    titulo = payload.titulo or (tipos_de_tarea.nombre_de_tarjeta(barra.nombre, payload.tipo) if payload.tipo else "")
+    # y lo que se busca). Si se escribió otro al crearla, va ese (0090). Sin
+    # acción, solo el tipo ("Banners").
+    accion_texto = sin_accion.nombre_para_texto(barra)
+    titulo = payload.titulo or (
+        tipos_de_tarea.nombre_de_tarjeta(accion_texto or "", payload.tipo) if payload.tipo else ""
+    )
+    orden = (await db.execute(
+        select(func.max(CalendarioTarea.orden)).where(CalendarioTarea.barra_id == barra.id)
+    )).scalar()
     tarea = CalendarioTarea(
-        id=payload.id, barra_id=barra_id, parent_id=None, titulo=titulo,
+        id=payload.id, barra_id=barra.id, parent_id=None, titulo=titulo,
         descripcion=(payload.descripcion or "").strip() or None,
         asignado_a_id=payload.asignadoA, vence=vence, ancla=ancla, ancla_dias=ancla_dias,
         para=para, agencia=agencia, responsable_id=responsable.id if responsable else None,
         tipo=payload.tipo, opciones=payload.opciones, detalles=payload.detalles,
-        orden=max((t.orden for t in existentes), default=-1) + 1,
+        orden=(orden if orden is not None else -1) + 1,
         creado_por_id=current_user.id,
     )
     db.add(tarea)
@@ -1644,13 +1720,13 @@ async def crear_tarea(
         entrega = (await resumenes_de_entregas(db, [tarea.id])).get(tarea.id)
         if responsable is not None and responsable.id != current_user.id:
             _avisar(db, responsable.id, mensaje_de_responsable(
-                current_user.full_name, titulo, barra.nombre, agencia, vence,
-            ), barra_id, payload.id)
+                current_user.full_name, titulo, accion_texto, agencia, vence,
+            ), barra.id, payload.id)
             avisados += 1
     elif payload.asignadoA is not None and payload.asignadoA != current_user.id:
         _avisar(db, payload.asignadoA, mensaje_de_asignacion(
-            current_user.full_name, titulo, barra.nombre, vence,
-        ), barra_id, payload.id)
+            current_user.full_name, titulo, accion_texto, vence,
+        ), barra.id, payload.id)
         avisados = 1
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
@@ -1773,7 +1849,9 @@ async def cambiar_tarea(
             raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
         exigir_mundo(current_user, barra.mundo)
     else:
-        barra = await _barra_o_404(db, tarea.barra_id, current_user)
+        barra = await _barra_o_404(db, tarea.barra_id, current_user, sin_accion_ok=True)
+    # El nombre de la acción para los avisos (None: una tarjeta sin acción).
+    accion_texto = sin_accion.nombre_para_texto(barra)
 
     if not _puede_gestionar_tareas(current_user) and not (solo_estado and es_suya):
         raise HTTPException(
@@ -1846,7 +1924,7 @@ async def cambiar_tarea(
                     avisados += 1
             else:
                 _avisar(db, nuevo.id, mensaje_de_asignacion(
-                    current_user.full_name, tarea.titulo, barra.nombre, tarea.vence,
+                    current_user.full_name, tarea.titulo, accion_texto, tarea.vence,
                 ), barra.id, tarea.id)
                 avisados += 1
     if "responsable" in campos and payload.responsable != tarea.responsable_id:
@@ -1860,7 +1938,7 @@ async def cambiar_tarea(
         tarea.responsable_id = payload.responsable
         if nuevo_resp is not None and nuevo_resp.id != current_user.id:
             _avisar(db, nuevo_resp.id, mensaje_de_responsable(
-                current_user.full_name, tarea.titulo, barra.nombre, tarea.agencia, tarea.vence,
+                current_user.full_name, tarea.titulo, accion_texto, tarea.agencia, tarea.vence,
             ), barra.id, tarea.id)
             avisados += 1
     if "estado" in campos and payload.estado is not None and payload.estado != tarea.estado:
@@ -1892,7 +1970,7 @@ async def cambiar_tarea(
         # terminado esa misma persona.
         if payload.estado == "hecha" and tarea.creado_por_id and tarea.creado_por_id != current_user.id:
             _avisar(db, tarea.creado_por_id, mensaje_de_tarea_hecha(
-                current_user.full_name, tarea.titulo, barra.nombre,
+                current_user.full_name, tarea.titulo, accion_texto,
             ), barra.id, tarea.id)
             avisados += 1
     rev = await _nueva_revision(db, barra.mundo)
@@ -1983,6 +2061,8 @@ async def mis_tareas(
             **({"parentId": None} if externo and t.parent_id not in propias else {}),
             "accion": {
                 **({} if alcance.toca(b.desde, b.hasta, ventana) else {"fueraDeAlcance": True}),
+                # Una tarjeta sin acción: se nombra "Sin acción" y no se abre en el calendario.
+                **({"sinAccion": True} if sin_accion.es_sin_accion(b.id) else {}),
                 "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "banda": b.banda,
                 "seccion": b.seccion, "color": b.color,
                 "desde": b.desde.isoformat(), "hasta": b.hasta.isoformat(),
@@ -2529,6 +2609,9 @@ async def copiar_barra(
 
     Todo en una transacción y con una sola revisión: quien mira el calendario
     ve aparecer la acción entera, nunca a medio copiar."""
+    if sin_accion.es_sin_accion(payload.id):
+        # Ese id es el de las tarjetas sin acción: la copia no puede serlo.
+        raise HTTPException(status_code=422, detail="Ese id no se puede usar para una acción")
     if await db.get(CalendarioBarra, payload.id) is not None:
         # Es un reintento de esta misma copia: ya está hecha.
         return {"id": payload.id, "rev": _rev_para(current_user, await _revision_actual(db)), "yaExistia": True}

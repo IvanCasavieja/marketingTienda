@@ -83,7 +83,19 @@ sigue, `responsable_id`) y para cuándo. Se crea UNA tarea; si la hace una
 agencia, esa misma tarea es su tarjeta en el tablero. Con un tipo, el nombre
 se arma solo ("<Acción> - <Tipo>") y se puede cambiar. Con dos tipos a la vez
 se crean dos tareas, una al lado de la otra, con el mismo detalle y archivos.
-Lo que antes colgaba de una tarea de afuera lo aplanó la 0090.
+Lo que antes colgaba de una tarea de afuera lo aplanó la 0090. El formulario
+está en `FormularioDeTarea.tsx`, porque es también el de "Nueva tarjeta".
+
+**Tarjetas sin acción (24/11/2026).** En **Tableros**, "Nueva tarjeta" abre el
+mismo formulario para algo que no es de una acción del calendario (Ivan:
+"deberíamos poder crear tarjetas también de cosas que estén por fuera del
+calendario"). El nombre lo escribe la persona y siempre hay que elegir quién
+la hace; sin tipo ("Otra cosa") va como "Otro", así siempre es tarjeta. La
+crean los mismos que crean tareas, nunca la agencia. Cuelgan de una acción de
+sistema por mundo, `sin-accion-<mundo>`, que no se ve en el calendario ni se
+abre (`backend/app/services/sin_accion.py` explica por qué así y no con
+`barra_id` vacío); donde va el nombre de la acción dice "Sin acción". Su
+nombre, fecha y responsable se cambian en la tarjeta (`EditarTarjetaSinAccion`).
 
 **Los tres tableros (17/11/2026).** En «¿Quién la hace?» se elige **a qué
 tablero va**: Publicis, Another Monday o Diseñadores

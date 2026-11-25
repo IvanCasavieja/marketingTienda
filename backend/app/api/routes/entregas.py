@@ -99,7 +99,7 @@ from app.models.entregas import (
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.user import User
 from app.services import entregas as reglas
-from app.services import materiales, revision_ia, tipos_de_tarea
+from app.services import materiales, revision_ia, sin_accion, tipos_de_tarea
 from app.services.espacio import MB, entra, exigir_lugar, hay_lugar
 from app.services.entregas import (
     MAX_BYTES_IMAGEN, MAX_BYTES_MINIATURA, MAX_IMAGENES, MAX_MARCAS, NoPuedeDecidir, FaseExistente,
@@ -589,7 +589,7 @@ async def ver_entregas(
         "tarea": {
             "id": tarea.id, "titulo": tarea.titulo, "descripcion": tarea.descripcion, "estado": tarea.estado,
             "asignadoA": tarea.asignado_a_id, "vence": tarea.vence.isoformat() if tarea.vence else None,
-            "creadoPor": tarea.creado_por_id,
+            "creadoPor": tarea.creado_por_id, "responsable": tarea.responsable_id,
             "ancla": tarea.ancla, "anclaDias": tarea.ancla_dias,
             "tipo": tarea.tipo, "opciones": list(tarea.opciones or []), "detalles": dict(tarea.detalles or {}),
             # Lo que se pidió con sus medidas ("Banners: Header (web 1920×416 ·
@@ -604,6 +604,7 @@ async def ver_entregas(
         "accion": {
             "id": barra.id, "mundo": barra.mundo, "nombre": barra.nombre, "color": barra.color,
             "seccion": barra.seccion, "desde": barra.desde.isoformat(), "hasta": barra.hasta.isoformat(),
+            **({"sinAccion": True} if sin_accion.es_sin_accion(barra.id) else {}),
         },
         "tipoPieza": entrega.tipo_pieza,
         "brief": entrega.brief or {},
@@ -1977,6 +1978,8 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
             "accion": {
                 "id": b.id, "mundo": b.mundo, "nombre": b.nombre, "color": b.color,
                 "desde": b.desde.isoformat(), "hasta": b.hasta.isoformat(),
+                # Una tarjeta sin acción (app/services/sin_accion.py): dice "Sin acción".
+                **({"sinAccion": True} if sin_accion.es_sin_accion(b.id) else {}),
             },
             "entrega": resumenes.get(t.id),
             "miniatura": miniaturas.get(ultima[0]) if ultima else None,

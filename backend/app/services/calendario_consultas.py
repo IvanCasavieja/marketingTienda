@@ -63,7 +63,7 @@ from app.core.mundos import MUNDOS, mundos_de, puede_abrir
 from app.models.calendario import CalendarioAviso, CalendarioBarra, CalendarioPieza, CalendarioTarea
 from app.models.entregas import CalendarioEntrega
 from app.models.user import User
-from app.services import entregas as reglas_entregas
+from app.services import entregas as reglas_entregas, sin_accion
 from app.services.calendario_avisos import SIN_CATEGORIA, puede_ver_el_calendario
 
 URUGUAY = ZoneInfo("America/Montevideo")
@@ -253,6 +253,9 @@ def ref_accion(b) -> dict:
     Una que la persona no ve en el calendario, pero de la que cuelga algo
     suyo (`AccionFueraDeAlcance`), va con sus fechas y sin id ni link, como
     en Mis tareas: se nombra, pero la ficha no le abriría."""
+    if sin_accion.es_sin_accion(getattr(b, "id", None)):
+        # Una tarjeta sin acción: no hay ficha que abrir ni categoría.
+        return {"nombre": sin_accion.NOMBRE, "mundo": MUNDOS.get(b.mundo, b.mundo), "sin_accion": True}
     if getattr(b, "fuera_de_alcance", False):
         out = {"nombre": corto(b.nombre, 120), "mundo": MUNDOS.get(b.mundo, b.mundo),
                "desde": _iso(b.desde), "hasta": _iso(b.hasta), "fuera_de_lo_que_ve": True}
@@ -407,7 +410,10 @@ class FuenteCalendario:
         self.db = db
 
     async def barras(self, mundos, *, rango=None, secciones=None, ids=None) -> list:
-        q = select(CalendarioBarra).where(CalendarioBarra.mundo.in_(list(mundos)))
+        # Sin la de las tarjetas sin acción (app/services/sin_accion.py): no es una acción.
+        q = select(CalendarioBarra).where(
+            CalendarioBarra.mundo.in_(list(mundos)), CalendarioBarra.id.notin_(sin_accion.IDS),
+        )
         if ids is not None:
             q = q.where(CalendarioBarra.id.in_(list(ids)))
         if rango is not None:

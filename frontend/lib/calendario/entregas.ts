@@ -127,6 +127,9 @@ export type FaseDetalle = {
 
 export type AccionDeTarjeta = {
   id: string; mundo: string; nombre: string; color: string | null; desde: string; hasta: string
+  /** Una tarjeta sin acción, creada desde Tableros (24/11/2026): se nombra
+   *  "Sin acción" y no hay ficha de acción que abrir. */
+  sinAccion?: boolean
 }
 
 export type DetalleEntregas = {
@@ -135,6 +138,8 @@ export type DetalleEntregas = {
   tarea: {
     id: string; titulo: string; descripcion: string | null; estado: string
     asignadoA: number | null; vence: string | null; creadoPor: number | null
+    /** El responsable de Tienda, si la hace una agencia (0090). */
+    responsable?: number | null
     ancla?: 'inicio' | 'fin' | null; anclaDias?: number | null
     /** El tipo de tarea (Banners, Cenefas…), lo tildado y los datos de más. */
     tipo?: string | null; opciones?: string[]; detalles?: Record<string, string | number>

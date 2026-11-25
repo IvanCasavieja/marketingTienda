@@ -28,6 +28,7 @@ import { useDialogo } from '../useDialogo'
 import { ListaDeAdjuntos } from '../Adjuntos'
 import { cuantosArchivos } from '@/lib/calendario/adjuntos'
 import { FormularioEntrega } from './FormularioEntrega'
+import { EditarTarjetaSinAccion } from './EditarTarjetaSinAccion'
 import {
   FormularioEntregas, configParaEnviar, faltaEnConfig, type ConfigEntregas,
 } from './FormularioEntregas'
@@ -489,6 +490,9 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       {/* En pantalla chica, los comentarios van acá; en grande, al costado. */}
       <Comentarios detalle={detalle} onRecargar={onRecargar} className="flex flex-col lg:hidden" />
 
+      {/* Una tarjeta sin acción (24/11/2026) no tiene ficha en el calendario:
+          su nombre, su fecha y su responsable se cambian acá. */}
+      {puedeConfigurar && detalle.accion.sinAccion && <EditarTarjetaSinAccion detalle={detalle} onListo={onRecargar} />}
       {puedeConfigurar && (
         <button
           type="button"
