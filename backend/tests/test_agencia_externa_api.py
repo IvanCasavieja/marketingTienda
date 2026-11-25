@@ -689,3 +689,111 @@ def test_la_base_misma_no_guarda_un_externo_con_permisos_de_mas():
             with pytest.raises(IntegrityError):
                 await s.commit()
     correr(prueba)
+
+
+
+# ---------------------------------------------------------------------------
+# La agencia no elige mundos (25/11/2026)
+# ---------------------------------------------------------------------------
+# Ivan, en el alta de una cuenta de agencia: "¿por qué tiene accesos a estos
+# mundos? Sería al pedo, porque tienen acceso a su tablero". Y era una trampa:
+# a una agencia con solo Tienda Inglesa tildado, una pieza de Tienda Express
+# no le aparecía ni le avisaba.
+
+async def _pieza_en_express(d, empresa, clave):
+    """Una acción de Tienda Express con una pieza para `empresa` (con su tarjeta)."""
+    from app.services import entregas as reglas_de_entregas
+
+    async with d.Sesion() as s:
+        b = await s.get(CalendarioBarra, f"br-exp-{d.sufijo}")
+        if b is None:
+            b = CalendarioBarra(
+                id=f"br-exp-{d.sufijo}", mundo="tienda_express", seccion="comercial", banda="MEGA EVENTO",
+                carril=0, nombre="Accion EXPRESS", desde=d.v[0] + timedelta(days=1),
+                hasta=d.v[0] + timedelta(days=2), creado_por_id=d.promo.id,
+            )
+            s.add(b)
+            await s.flush()
+        t = CalendarioTarea(
+            id=f"ta-{clave}-{d.sufijo}", barra_id=b.id, titulo=f"Banner {clave.upper()} de Express",
+            para="agencia", agencia=empresa, creado_por_id=d.promo.id,
+        )
+        s.add(t)
+        await s.flush()
+        await reglas_de_entregas.crear_entregas_por_defecto(s, t, d.promo.id)
+        await s.commit()
+        return t.id
+
+
+def test_la_agencia_ve_sus_tarjetas_de_todos_los_mundos_sin_elegir():
+    async def prueba(d):
+        # Ana Pampa tiene guardado solo Tienda Inglesa: ya no importa.
+        suya = await _pieza_en_express(d, d.a1.empresa, "expsuya")
+        ajena = await _pieza_en_express(d, d.b1.empresa, "expajena")
+        a1 = Cliente(d.http, d.a1)
+
+        r = await a1.get("/calendario/entregas")
+        assert r.status_code == 200, r.text
+        tarjetas = {t["tareaId"]: t for t in r.json()["tarjetas"]}
+        assert suya in tarjetas and d.t_mia.id in tarjetas
+        assert tarjetas[suya]["accion"]["mundo"] == "tienda_express"
+        assert tarjetas[d.t_mia.id]["accion"]["mundo"] == MUNDO
+        # Ni lo de otra agencia ni lo interno, de ningún mundo.
+        for ajena_id in (ajena, d.t_b1.id, d.t_ajena.id, d.t_madre.id):
+            assert ajena_id not in tarjetas, ajena_id
+        assert "OTRA" not in r.text and "INTERNA" not in r.text
+        # Si manda un mundo (un front de antes), igual ve todo lo suyo.
+        r = await a1.get("/calendario/entregas", params={"mundo": MUNDO})
+        assert {t["tareaId"] for t in r.json()["tarjetas"]} == set(tarjetas)
+        # La abre, y la de otra agencia de ese mismo mundo no existe para ella.
+        assert (await a1.get(f"/calendario/tareas/{suya}/entregas")).status_code == 200
+        assert (await a1.get(f"/calendario/tareas/{ajena}/entregas")).status_code == 404
+        # El buscador también.
+        r = await a1.get("/calendario/entregas/buscar", params={"q": "express"})
+        assert r.status_code == 200, r.text
+        assert [t["tareaId"] for t in r.json()["enTablero"]] == [suya]
+    correr(prueba)
+
+
+def test_a_la_agencia_le_llega_el_aviso_de_una_pieza_de_cualquier_mundo():
+    async def prueba(d):
+        from app.services import entregas as reglas_de_entregas
+
+        suya = await _pieza_en_express(d, d.a1.empresa, "expaviso")
+        async with d.Sesion() as s:
+            tarea = await s.get(CalendarioTarea, suya)
+            ids = await reglas_de_entregas.destinatarios_de_la_tarjeta(s, tarea, "tienda_express")
+        # Las dos cuentas de Pampa (una escrita distinto), ninguna de otra agencia.
+        assert {d.a1.id, d.a2.id} <= set(ids) and d.b1.id not in ids
+    correr(prueba)
+
+
+def test_el_calendario_de_la_agencia_solo_en_los_mundos_donde_tiene_trabajo():
+    async def prueba(d):
+        a1 = Cliente(d.http, d.a1)
+        # Hoy trabaja solo en Tienda Inglesa.
+        assert (await a1.get("/auth/me")).json()["mundos"] == [MUNDO]
+        assert (await a1.get("/calendario/datos", params={"mundo": "tienda_express"})).status_code == 403
+        await _pieza_en_express(d, d.a1.empresa, "expcal")
+        # Con una pieza en Express, ese calendario también (con su alcance, y solo lo suyo).
+        assert (await a1.get("/auth/me")).json()["mundos"] == [MUNDO, "tienda_express"]
+        r = await a1.get("/calendario/datos", params={"mundo": "tienda_express"})
+        assert r.status_code == 200, r.text
+        assert "EXPAJENA" not in r.text
+        # Redexpres, donde no tiene nada: no.
+        assert (await a1.get("/calendario/datos", params={"mundo": "redexpres"})).status_code == 403
+        # Otra agencia sin trabajo en Express no ve ese calendario.
+        b1 = Cliente(d.http, d.b1)
+        assert (await b1.get("/calendario/datos", params={"mundo": "tienda_express"})).status_code == 403
+    correr(prueba)
+
+
+def test_para_el_equipo_los_mundos_siguen_igual():
+    async def prueba(d):
+        aprob = Cliente(d.http, d.aprob)  # del equipo, con Tienda Inglesa
+        assert (await aprob.get("/calendario/entregas")).status_code == 422
+        assert (await aprob.get("/calendario/entregas", params={"mundo": "tienda_express"})).status_code == 403
+        assert (await aprob.get("/calendario/entregas", params={"mundo": MUNDO})).status_code == 200
+        assert (await aprob.get("/calendario/datos", params={"mundo": "tienda_express"})).status_code == 403
+        assert (await aprob.get("/auth/me")).json()["mundos"] == [MUNDO]
+    correr(prueba)
