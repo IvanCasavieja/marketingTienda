@@ -125,6 +125,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   // internas: el servidor igual se las niega.
   const externo = esExterno(currentUser);
   const conCalendario = veCalendario(currentUser);
+  // En el mundo Redexpres la Planilla de pedidos es el trabajo de todos los
+  // días del equipo: va arriba, con el calendario, y sale de Herramientas
+  // para no estar dos veces (H-021). En los otros mundos queda donde estaba.
+  const planillaArriba = !externo && mundo?.clave === "redexpres" && hasPerm("redexpres.view");
   const nucleo: { href: string; label: string; icon: typeof CalendarDays; perm?: string; numero?: number }[] = externo ? [
     { href: "/entregas", label: t("sidebar.miTablero", "Mi tablero"), icon: Layers, perm: "calendario.view" },
     ...(conCalendario ? [{ href: "/calendario", label: t("sidebar.calendario"), icon: CalendarDays, perm: "calendario.view" }] : []),
@@ -139,6 +143,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     // Colocación muestra el nombre y las fechas de las acciones: es calendario.
     ...(conCalendario && (localesDelMundo?.length ?? 0) > 0
       ? [{ href: "/colocacion", label: t("sidebar.colocacion", "Colocación"), icon: Camera, perm: "calendario.edit" }]
+      : []),
+    ...(planillaArriba
+      ? [{ href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, perm: "redexpres.view" }]
       : []),
   ].filter((item) => !item.perm || hasPerm(item.perm));
   // Las herramientas se pliegan solo para quien tiene el núcleo del
@@ -159,7 +166,9 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,       section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,           section: t("sidebar.medios"),         perm: "ai.triada" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,        section: t("sidebar.medios"),         perm: "connections.view" },
-    { href: "/redexpres/planilla",      label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"),  perm: "redexpres.view" },
+    ...(!planillaArriba
+      ? [{ href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"), perm: "redexpres.view" }]
+      : []),
     // Sin perm: el acceso no es por permiso sino por tener una sucursal
     // asignada (LocalAsignacion) — por eso se filtra acá, no vía hasPerm().
     // Los superadmins también entran (ven un selector de sucursal en la página).
