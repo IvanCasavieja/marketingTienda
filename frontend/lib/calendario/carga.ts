@@ -6,11 +6,19 @@
  * mira, por semana (de lunes a domingo): las vencidas, las de las próximas
  * semanas, las de más adelante y las que no tienen fecha. Sale de lo que el
  * calendario ya tiene cargado.
+ *
+ * Una tarea que hace una agencia es de quien la lleva por Tienda (su
+ * responsable, 0090): Ivan, 25/11/2026, mirando la vista vacía con su tarea de
+ * Banners para Publicis: "¿no se supone que yo tengo una tarea ahora?".
  */
 import { sumarDias } from './fechas'
 import type { BarraGuardada } from './tipos'
 
-export type TareaDeLaCarga = { id: string; titulo: string; vence: string | null; accionId: string; accion: string }
+export type TareaDeLaCarga = {
+  id: string; titulo: string; vence: string | null; accionId: string; accion: string
+  /** Si la hace una agencia: su nombre (la persona la lleva por Tienda). */
+  laHace: string | null
+}
 
 export type FilaDeCarga = {
   personaId: number
@@ -47,14 +55,19 @@ export function cargaDelEquipo(barras: Iterable<BarraGuardada>, hoy: string, cua
 
   for (const b of barras) {
     for (const t of b.tareas ?? []) {
-      if (t.estado === 'hecha' || t.asignadoA == null) continue
-      let fila = porPersona.get(t.asignadoA)
+      const deAgencia = t.asignadoA == null && t.para != null && t.para !== 'tienda'
+      const persona = t.asignadoA ?? (deAgencia ? t.responsable ?? null : null)
+      if (t.estado === 'hecha' || persona == null) continue
+      let fila = porPersona.get(persona)
       if (!fila) {
-        fila = { personaId: t.asignadoA, total: 0, vencidas: 0, porSemana: semanas.map(() => 0), masAdelante: 0, sinFecha: 0, tareas: [] }
-        porPersona.set(t.asignadoA, fila)
+        fila = { personaId: persona, total: 0, vencidas: 0, porSemana: semanas.map(() => 0), masAdelante: 0, sinFecha: 0, tareas: [] }
+        porPersona.set(persona, fila)
       }
       fila.total++
-      fila.tareas.push({ id: t.id, titulo: t.titulo, vence: t.vence, accionId: b.id, accion: b.nombre })
+      fila.tareas.push({
+        id: t.id, titulo: t.titulo, vence: t.vence, accionId: b.id, accion: b.nombre,
+        laHace: deAgencia ? (t.agencia || 'la agencia') : null,
+      })
       if (!t.vence) fila.sinFecha++
       else if (t.vence < hoy) fila.vencidas++
       else if (t.vence > ultimoDia) fila.masAdelante++
