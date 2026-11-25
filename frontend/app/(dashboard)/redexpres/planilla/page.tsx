@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import { redexpresApi, PlanillaRow } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { hasPermission } from "@/lib/permissions";
-import { CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
+import { CalendarX, CheckCircle2, Clock, Plus, RefreshCw, Download } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
@@ -26,6 +26,8 @@ export default function PlanillaPedidosPage() {
 
   const [meses, setMeses]         = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected] = useState<{ year: number; month: number } | null>(null);
+  // Hasta que llegan los meses no se sabe si hay alguno: evita un destello del cartel vacío.
+  const [mesesCargados, setMesesCargados] = useState(false);
   // La planilla del mes (grupos, columnas y topes) viene de la base y la edita quien gestiona.
   const { estructura, grupos: GROUPS, puedeEditar, recargar: recargarEstructura } = useEstructura(selectedMes);
   const [editando, setEditando] = useState(false);
@@ -75,6 +77,7 @@ export default function PlanillaPedidosPage() {
         const last = data[data.length - 1];
         setSelected(last);
       }
+      setMesesCargados(true);
     } catch {
       toast.error(t("redexpres.errorCargarMeses"));
     }
@@ -122,8 +125,15 @@ export default function PlanillaPedidosPage() {
       // Sale de pendientes solo lo que se mandó: lo que se siguió escribiendo
       // mientras se guardaba queda para el próximo guardado.
       ponerEdits(sinLoGuardado(editsRef.current, localNombre, rowEdits));
-    } catch {
-      toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
+    } catch (e: any) {
+      // 409: la fila se confirmó mientras tanto (por ejemplo, el local desde
+      // su celular). Se dice por qué y se recarga para verla bloqueada.
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail || t("redexpres.errorGuardarLocal", { local: localNombre }));
+        loadPlanilla(selectedMes.year, selectedMes.month);
+      } else {
+        toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
+      }
     } finally {
       setSavingRow(null);
     }
@@ -515,6 +525,13 @@ export default function PlanillaPedidosPage() {
               {t("redexpres.footerAutosave")}
             </p>
           </div>
+        </div>
+      ) : mesesCargados && meses.length === 0 ? (
+        <div className="card p-12 flex flex-col items-center text-center gap-3">
+          <CalendarX size={22} className="text-slate-500 dark:text-slate-400" aria-hidden />
+          <p className="text-sm text-slate-600 dark:text-slate-300 max-w-md">
+            {isSuperuser ? t("redexpres.sinMesesGestor") : t("redexpres.noMeses")}
+          </p>
         </div>
       ) : selectedMes ? (
         <div className="card p-12 flex flex-col items-center text-center gap-3">

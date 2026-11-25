@@ -722,7 +722,10 @@
     "crearMesLabel": "Criar mês:",
     "crear": "Criar",
     "cancelar": "Cancelar",
-    "noMeses": "Nenhum mês carregado ainda.",
+    "noMeses": "Ainda não há nenhum mês aberto. Quem administra a Redexpres é quem abre.",
+    "sinMesesGestor": "Ainda não há nenhum mês aberto. Toque em um mês acima ou em «Novo mês» para abrir: a planilha é montada para todas as lojas.",
+    "confirmarSeguro": "Confirmar o pedido de {{mes}}? Depois não vai dar para mudar: para corrigir algo, peça ao marketing.",
+    "confirmarCrearMes": "Abrir o pedido de {{mes}} {{year}}? A planilha é montada para todas as lojas e elas já podem começar a preencher. Um mês aberto não pode ser apagado.",
     "local": "Loja",
     "otrosNotas": "Outros / notas",
     "estado": "Status",
@@ -794,7 +797,10 @@
       "noLocalAssigned": "Você ainda não tem uma loja atribuída. Peça para a Valentina te atribuir uma.",
       "selectLocalLabel": "Loja",
       "selectLocalPlaceholder": "Selecione uma loja para ver o pedido",
-      "noLocalSelected": "Escolha uma loja acima para ver e preencher o pedido."
+      "noLocalSelected": "Escolha uma loja acima para ver e preencher o pedido.",
+      "yaConfirmado": "Você já confirmou o pedido de {{mes}}. Se precisar mudar algo, peça ao marketing.",
+      "yaConfirmadoGestor": "Este pedido já está confirmado. Para mudá-lo, desconfirme-o na Planilha de pedidos.",
+      "noAbierto": "O marketing ainda não abriu o pedido de {{mes}}. Quando abrir, você vai poder preenchê-lo aqui."
     }
   },
   "materiales": {

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
 import { redexpresApi, PlanillaRow } from "@/lib/api";
-import { CheckCircle2, Clock, RefreshCw, Store } from "lucide-react";
+import { CalendarX, CheckCircle2, Clock, Lock, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ import SelectorMes from "@/components/redexpres/SelectorMes";
 import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
 import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
 import { conEdicion, sinLoGuardado, type Ediciones } from "@/lib/redexpres/ediciones";
+import { estadoDelPedido } from "@/lib/redexpres/estado";
 
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
 // pero con una sola fila — la del local asignado al usuario logueado — en
@@ -31,6 +32,9 @@ export default function MiPedidoPage() {
   const [selectedLocal, setSelectedLocal] = useState<string | null>(null); // elección manual del superadmin
   const [meses, setMeses]           = useState<{ year: number; month: number }[]>([]);
   const [selectedMes, setSelected]  = useState<{ year: number; month: number } | null>(null);
+  // Hasta que llegan los meses no se sabe si hay alguno abierto: sin esto
+  // aparecía un instante «Marketing todavía no abrió…» al entrar.
+  const [mesesCargados, setMesesCargados] = useState(false);
   // La planilla del mes (grupos, columnas y topes) viene de la base y la edita quien gestiona.
   const { estructura, grupos: GROUPS, puedeEditar, recargar: recargarEstructura } = useEstructura(selectedMes);
   const [editando, setEditando] = useState(false);
@@ -77,6 +81,7 @@ export default function MiPedidoPage() {
       const { data } = await redexpresApi.getMeses();
       setMeses(data);
       if (data.length > 0) setSelected(data[data.length - 1]);
+      setMesesCargados(true);
     } catch {
       toast.error(t("redexpres.errorCargarMeses"));
     }
@@ -130,8 +135,15 @@ export default function MiPedidoPage() {
       // Sale de pendientes solo lo que se mandó: lo que se siguió escribiendo
       // mientras se guardaba queda para el próximo guardado.
       ponerEdits(sinLoGuardado(editsRef.current, localNombre, rowEdits));
-    } catch {
-      toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
+    } catch (e: any) {
+      // 409: el pedido se confirmó mientras tanto (otra pestaña, o marketing).
+      // Se dice por qué y se recarga, así se ve bloqueado y sin lo que no entró.
+      if (e?.response?.status === 409) {
+        toast.error(e.response.data?.detail || t("redexpres.errorGuardarLocal", { local: localNombre }));
+        if (activeLocal) loadPlanilla(selectedMes.year, selectedMes.month, activeLocal);
+      } else {
+        toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
+      }
     } finally {
       setSavingRow(null);
     }
@@ -158,6 +170,8 @@ export default function MiPedidoPage() {
 
   async function handleConfirmar(row: PlanillaRow) {
     if (!selectedMes) return;
+    // Confirmar no tiene vuelta atrás para el local: se pregunta antes.
+    if (!window.confirm(t("redexpres.confirmarSeguro", { mes: nombreMes }))) return;
     setConfirming(true);
     try {
       await redexpresApi.confirmar(selectedMes.year, selectedMes.month, row.local_nombre);
@@ -176,6 +190,11 @@ export default function MiPedidoPage() {
   const hasEdits = miRow ? !!edits[miRow.local_nombre] : false;
   const isSaving = miRow ? savingRow === miRow.local_nombre : false;
   const isEditable = !!miRow?.can_edit && !miRow?.confirmado;
+  const estado = estadoDelPedido(meses, selectedMes, miRow);
+  // "Diciembre 2026": el mes elegido, o el actual si todavía no hay ninguno.
+  const nombresMes = t("redexpres.months", { returnObjects: true }) as string[];
+  const mesMostrado = selectedMes ?? { year: new Date().getFullYear(), month: new Date().getMonth() + 1 };
+  const nombreMes = `${nombresMes[mesMostrado.month]} ${mesMostrado.year}`;
 
   return (
     <div className="space-y-4 animate-fade-in max-w-6xl">
@@ -263,8 +282,33 @@ export default function MiPedidoPage() {
             <div className="card p-10 flex items-center justify-center">
               <RefreshCw size={20} className="animate-spin text-slate-400" />
             </div>
+          ) : mesesCargados && (estado === "sinMeses" || estado === "mesNoAbierto") ? (
+            <div className="card p-10 flex flex-col items-center text-center gap-3">
+              <CalendarX size={22} className="text-slate-500 dark:text-slate-400" aria-hidden />
+              <p className="text-sm text-slate-600 dark:text-slate-300 max-w-md">
+                {!isSuperuser
+                  ? t("redexpres.miPedido.noAbierto", { mes: nombreMes })
+                  : estado === "sinMeses"
+                    ? t("redexpres.sinMesesGestor")
+                    // El gestor llega acá cambiando de año a uno sin ese mes: lo abre tocando la pastilla.
+                    : t("redexpres.mesNoHabilitado")}
+              </p>
+            </div>
           ) : selectedMes && miRow ? (
             <div className="space-y-3">
+              {miRow.confirmado && (
+                <div
+                  role="status"
+                  className="flex items-start gap-3 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 px-4 py-3 text-sm font-medium text-emerald-900 dark:text-emerald-100"
+                >
+                  <Lock size={16} className="mt-0.5 shrink-0" aria-hidden />
+                  <p>
+                    {isSuperuser
+                      ? t("redexpres.miPedido.yaConfirmadoGestor")
+                      : t("redexpres.miPedido.yaConfirmado", { mes: nombreMes })}
+                  </p>
+                </div>
+              )}
               {GROUPS.map((g) => (
                 <div key={g.label} className="card p-4">
                   <span className={clsx("inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-lg mb-3", g.color)}>
@@ -283,7 +327,7 @@ export default function MiPedidoPage() {
                           value={getCellValue(miRow, col.key)}
                           disabled={!isEditable}
                           onChange={(e) => handleCellChange(miRow.local_nombre, col.key, e.target.value)}
-                          className="input text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="input text-sm w-full disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
                           placeholder="—"
                         />
                       </div>
@@ -301,16 +345,19 @@ export default function MiPedidoPage() {
                   value={getCellValue(miRow, "otros")}
                   disabled={!isEditable}
                   onChange={(e) => handleCellChange(miRow.local_nombre, "otros", e.target.value)}
-                  className="input text-sm w-full disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="input text-sm w-full disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-700 dark:disabled:text-slate-200 disabled:cursor-not-allowed"
                   placeholder={t("redexpres.notasPlaceholder")}
                 />
               </div>
 
               <div className="card p-4 flex items-center justify-between flex-wrap gap-2">
-                <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
-                  {isSaving && <RefreshCw size={11} className="animate-spin text-brand-400" />}
-                  {t("redexpres.footerAutosave")}
-                </p>
+                {/* Confirmado ya no se guarda nada: el texto de autoguardado confundía. */}
+                {miRow.confirmado ? <span /> : (
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    {isSaving && <RefreshCw size={11} className="animate-spin text-brand-400" />}
+                    {t("redexpres.footerAutosave")}
+                  </p>
+                )}
                 {miRow.confirmado ? (
                   <span className="badge badge-green flex items-center gap-1 text-xs">
                     <CheckCircle2 size={12} /> {t("redexpres.confirmado")}

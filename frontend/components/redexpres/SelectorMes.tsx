@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { clsx } from "clsx";
 import { useTranslation } from "react-i18next";
 
@@ -14,6 +14,8 @@ export interface MesSel { year: number; month: number }
  * Un mes que todavía no existe para ese año (no hay filas en la base) se ve
  * apagado. Quien puede crear meses (`onCrear`, los superusuarios) lo crea con
  * un clic y queda la hoja en blanco; para las sucursales queda deshabilitado.
+ * Abrir un mes no se puede deshacer y les aparece a todos los locales: antes
+ * se pregunta (H-009), y si falla no se salta a ese mes.
  */
 export default function SelectorMes({
   meses, seleccionado, onSeleccionar, onCrear,
@@ -28,6 +30,8 @@ export default function SelectorMes({
   const nombres = t("redexpres.months", { returnObjects: true }) as string[];
   const anioActual = new Date().getFullYear();
   const anio = seleccionado?.year ?? anioActual;
+  // Un doble clic en un mes punteado no tiene que preguntar (ni crear) dos veces.
+  const creando = useRef(false);
 
   const anios = useMemo(() => {
     const existentes = meses.map((m) => m.year);
@@ -68,7 +72,18 @@ export default function SelectorMes({
               disabled={!clickeable}
               title={hay ? undefined : onCrear ? t("redexpres.crearMesAqui") : t("redexpres.mesNoHabilitado")}
               onClick={async () => {
-                if (!hay && onCrear) await onCrear({ year: anio, month: m });
+                if (!hay && onCrear) {
+                  if (creando.current) return;
+                  creando.current = true;
+                  try {
+                    if (!window.confirm(t("redexpres.confirmarCrearMes", { mes: nombres[m], year: anio }))) return;
+                    await onCrear({ year: anio, month: m });
+                  } catch {
+                    return; // el error ya lo avisó quien crea el mes
+                  } finally {
+                    creando.current = false;
+                  }
+                }
                 onSeleccionar({ year: anio, month: m });
               }}
               className={clsx(
@@ -78,8 +93,8 @@ export default function SelectorMes({
                   : hay
                     ? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                     : clickeable
-                      ? "bg-transparent border border-dashed border-slate-300 dark:border-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                      : "bg-transparent text-slate-300 dark:text-slate-700 cursor-not-allowed",
+                      ? "bg-transparent border border-dashed border-slate-400 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      : "bg-transparent text-slate-500 dark:text-slate-400 cursor-not-allowed",
               )}
             >
               {nombres[m]}

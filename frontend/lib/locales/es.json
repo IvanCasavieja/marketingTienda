@@ -722,7 +722,10 @@
     "crearMesLabel": "Crear mes:",
     "crear": "Crear",
     "cancelar": "Cancelar",
-    "noMeses": "No hay meses cargados todavía.",
+    "noMeses": "Todavía no hay ningún mes abierto. Lo abre quien administra Redexpres.",
+    "sinMesesGestor": "Todavía no hay ningún mes abierto. Tocá un mes de arriba o «Nuevo mes» para abrirlo: se arma la planilla para todos los locales.",
+    "confirmarSeguro": "¿Confirmás el pedido de {{mes}}? Después no lo vas a poder cambiar: si hay que corregir algo, se lo tenés que pedir a marketing.",
+    "confirmarCrearMes": "¿Abrir el pedido de {{mes}} {{year}}? Se arma la planilla para todos los locales y ya pueden empezar a cargar. Un mes abierto no se puede borrar.",
     "local": "Local",
     "otrosNotas": "Otros / notas",
     "estado": "Estado",
@@ -794,7 +797,10 @@
       "noLocalAssigned": "Todavía no tenés una sucursal asignada. Hablá con Valentina para que te la asigne.",
       "selectLocalLabel": "Sucursal",
       "selectLocalPlaceholder": "Seleccioná una sucursal para ver su pedido",
-      "noLocalSelected": "Elegí una sucursal arriba para ver y completar su pedido."
+      "noLocalSelected": "Elegí una sucursal arriba para ver y completar su pedido.",
+      "yaConfirmado": "Ya confirmaste el pedido de {{mes}}. Si tenés que cambiar algo, pedíselo a marketing.",
+      "yaConfirmadoGestor": "Este pedido ya está confirmado. Para cambiarlo, desconfirmalo en la Planilla de pedidos.",
+      "noAbierto": "Marketing todavía no abrió el pedido de {{mes}}. Cuando lo abra, lo vas a poder cargar acá."
     }
   },
   "materiales": {
