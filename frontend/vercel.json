@@ -3,5 +3,10 @@
   "installCommand": "npm install --legacy-peer-deps",
   "github": {
     "silent": true
+  },
+  "git": {
+    "deploymentEnabled": {
+      "equipo-nocturno/*": false
+    }
   }
 }

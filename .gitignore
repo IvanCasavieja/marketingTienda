@@ -32,3 +32,4 @@ __pycache__/
 # Los agentes del Equipo nocturno (docs/equipo-nocturno) sí son del proyecto.
 .claude/*
 !.claude/agents/
+!.claude/skills/
