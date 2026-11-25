@@ -51,8 +51,9 @@ from app.core.config import settings
 PERMISOS_DE_EXTERNOS = frozenset({"calendario.view"})
 
 # Las rutas de la API (sin el /api/v1) a las que llega una cuenta externa. Su
-# sesión, el calendario (que se filtra adentro de cada ruta) y la campanita.
-RUTAS_DE_EXTERNOS = ("/auth/", "/calendario/", "/notificaciones")
+# sesión, el calendario (que se filtra adentro de cada ruta), la campanita y
+# la guía de uso (25/11/2026: con solo sus secciones, ver app/services/guia.py).
+RUTAS_DE_EXTERNOS = ("/auth/", "/calendario/", "/notificaciones", "/guia/")
 
 # Cómo se nombra a alguien del equipo cuyo nombre un externo no ve.
 ALGUIEN_DEL_EQUIPO = "Alguien del equipo"
