@@ -2,13 +2,12 @@
 
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from 'react'
 import {
-  CalendarClock, Check, ChevronDown, FileText, GripVertical, Layers, LayoutTemplate, Link2, ListChecks, Mic, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X,
+  CalendarClock, Check, ChevronDown, FileText, GripVertical, Layers, LayoutTemplate, Link2, ListChecks, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
 import { correrUnLugar, moverEntreHermanas } from '@/lib/calendario/orden'
 import { toast } from 'sonner'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
-import { CampoFecha, esFechaGuardable } from './CampoFecha'
-import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
+import { CampoFecha } from './CampoFecha'
 import { useCalendario } from '@/lib/calendario/store'
 import { plantillasSugeridas, textoDeAncla } from '@/lib/calendario/plantillas'
 import {
@@ -18,10 +17,8 @@ import {
 import { proximoPaso } from '@/lib/calendario/entregas'
 import { useVistaEntregas } from '@/store/entregas'
 import { FasesCompactas, faseActualTexto } from './entregas/LineaDeFases'
-import { ModalDeOpciones } from './OpcionesDelTipo'
-import { AdjuntosDeLaTarea, ElegirAdjuntos } from './Adjuntos'
-import { useCatalogoDeTipos, useTableros } from '@/store/tiposDeTarea'
-import { camposVisibles, linkValido, nombreDeTarjeta, tiposDelMundo, valorParaLeer, type TipoDeTarea } from '@/lib/calendario/tipos-de-tarea'
+import { AdjuntosDeLaTarea } from './Adjuntos'
+import { CampoDetalle, FormularioDeTarea, type PedidoDeTarea } from './FormularioDeTarea'
 import { usePermisosCalendario } from '@/lib/calendario/permisos'
 
 /**
@@ -71,59 +68,6 @@ const ESTADOS: EstadoTarea[] = ['pendiente', 'en-proceso', 'hecha']
 
 /** Las pastillas de una tarea (a quién, cuándo, estado): mismo alto y mismo radio. */
 const PASTILLA = 'h-9 rounded-lg border-0 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 sm:h-8'
-
-/** Lo más largo que guarda el servidor en el detalle de una tarea (TareaNueva.descripcion). */
-const MAX_DETALLE = 5000
-
-/** El botón chico que abre el dictado, al lado del título "Detalle". */
-const BOTON_DICTAR = 'flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 active:scale-95 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:h-8'
-
-/**
- * El detalle de una tarea, escrito o dictado. "Dictar el pedido" abre el
- * dictado (components/ia/DictarBrief): lo ordenado por la IA cae en el texto,
- * que todavía se puede corregir antes de guardar.
- */
-function CampoDetalle({ valor, onCambiar, onDictado, id }: {
-  valor: string
-  onCambiar: (v: string) => void
-  /** Además del texto, el pedido ordenado entero (para sacarle el título, por ejemplo). */
-  onDictado?: (brief: BriefListo) => void
-  id: string
-}) {
-  const [dictando, setDictando] = useState(false)
-
-  function usar(brief: BriefListo) {
-    onCambiar(brief.comoTexto.slice(0, MAX_DETALLE))
-    onDictado?.(brief)
-    setDictando(false)
-  }
-
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <label htmlFor={id} className="etiqueta-campo mb-0">Detalle (opcional)</label>
-        {!dictando && (
-          <button type="button" onClick={() => setDictando(true)} className={BOTON_DICTAR}>
-            <Mic className="h-4 w-4" /> Dictar el pedido
-          </button>
-        )}
-      </div>
-      {dictando ? (
-        <DictarBrief etiquetaUsar="Usar en la tarea" onListo={usar} onCancelar={() => setDictando(false)} />
-      ) : (
-        <textarea
-          id={id}
-          value={valor}
-          onChange={e => onCambiar(e.target.value)}
-          rows={valor ? 6 : 2}
-          maxLength={MAX_DETALLE}
-          placeholder="Qué hay que hacer, con los datos para la agencia o el equipo"
-          className="campo h-auto resize-y py-2.5 leading-relaxed"
-        />
-      )}
-    </div>
-  )
-}
 
 /** Editar el detalle de una tarea que ya existe (quien gestiona tareas). */
 function EditorDeDetalle({ tarea, onCerrar }: { tarea: Tarea; onCerrar: () => void }) {
@@ -771,15 +715,12 @@ function ItemTarea({ tarea, personas, usuarioId, gestiona }: {
 /**
  * Nueva tarea: un pedido, en el primer nivel (Ivan, 24/11/2026: "sería
  * simplemente tarea nueva pum poner los banners y descripción o lo que sea
- * que estemos pidiendo"). Un solo formulario:
- *
- *   ¿Qué se pide?  Banners, Mailing, Redes… (con sus opciones) u Otra cosa
- *   ¿Quién la hace? Publicis, Another Monday, Diseñadores o alguien de Tienda
- *   Detalle · Archivos · Responsable de Tienda (si la hace una agencia) · Vence
+ * que estemos pidiendo"). El formulario es FormularioDeTarea, el mismo de
+ * "Nueva tarjeta" en Tableros; acá se crea con el store del calendario, en la
+ * cola de la acción.
  *
  * Se crea UNA tarea; si la hace una agencia, esa misma tarea es su tarjeta en
- * el tablero. Con un tipo, el nombre se arma solo ("<Acción> - <Tipo>") y se
- * puede cambiar. Con dos tipos a la vez se crean dos tareas, una al lado de la
+ * el tablero. Con dos tipos a la vez se crean dos tareas, una al lado de la
  * otra, con el mismo detalle y los mismos archivos.
  */
 function NuevaTarea({ accionId, personas, usuarioId, alLado }: {
@@ -794,76 +735,20 @@ function NuevaTarea({ accionId, personas, usuarioId, alLado }: {
   const personasEstado = useCalendario(s => s.personasEstado)
   // Abierto o cerrado lo lleva el bloque (FormularioAbierto).
   const { abierto: abiertoEnElBloque, abrir, accion } = useContext(FormularioAbierto)
-  const catalogo = useCatalogoDeTipos()
-  const tipos = tiposDelMundo(catalogo.tipos, accion?.mundo)
-  const { tableros } = useTableros(accion?.mundo)
   const abierto = abiertoEnElBloque === 'nueva'
   const setAbierto = (v: boolean) => abrir(v ? 'nueva' : null)
 
-  const [elegidas, setElegidas] = useState<PiezaElegida[]>([])
-  const [titulo, setTitulo] = useState('')
-  // "agencia:Publicis", "persona:12" o "" (nadie todavía).
-  const [quien, setQuien] = useState('')
-  const [responsable, setResponsable] = useState('')
-  const [vence, setVence] = useState('')
-  const [descripcion, setDescripcion] = useState('')
-  const [archivos, setArchivos] = useState<File[]>([])
-
-  const deAgencia = quien.startsWith('agencia:')
-  const nombreAuto = elegidas.length === 1
-    ? nombreDeTarjeta(accion?.nombre ?? '', tipos?.find(t => t.clave === elegidas[0].clave))
-    : ''
-  const linkMalo = elegidas.map(p => linkMaloEn(p, tipos)).find(Boolean) ?? null
-  const falta = elegidas.length === 0 && !titulo.trim() ? 'Escribí qué hay que hacer, o elegí qué se pide.'
-    : elegidas.length > 0 && !quien ? 'Elegí quién la hace.'
-      : linkMalo
-  const cuantas = Math.max(1, elegidas.length)
-
-  function limpiar() {
-    setElegidas([]); setTitulo(''); setQuien(''); setResponsable(''); setVence(''); setDescripcion(''); setArchivos([])
-  }
-
-  function cerrar() {
-    limpiar()
-    setAbierto(false)
-  }
-
-  function enviar(e: React.FormEvent) {
-    e.preventDefault()
-    if (falta) return
-    const venceGuardable = esFechaGuardable(vence) ? vence : null
-    const para = deAgencia ? 'agencia' as const : 'tienda' as const
-    const agencia = deAgencia ? quien.slice('agencia:'.length) : null
-    const asignadoA = quien.startsWith('persona:') ? Number(quien.slice('persona:'.length)) : null
-    const varias = elegidas.length > 1
-    const detalle = descripcion.trim() || null
-    const pedidos: (PiezaElegida | null)[] = elegidas.length > 0 ? elegidas : [null]
+  function enviar(pedidos: PedidoDeTarea[], archivos: File[]) {
+    const varias = pedidos.length > 1
     for (const p of pedidos) {
-      const tipo = p ? tipos?.find(t => t.clave === p.clave) : undefined
-      // Con un tipo, el nombre escrito manda; si no se escribió, el de siempre.
-      const propio = !varias && titulo.trim() !== ''
-      const id = crear(accionId, {
-        titulo: p ? (propio ? titulo.trim() : nombreDeTarjeta(accion?.nombre ?? '', tipo)) : titulo.trim(),
-        nombrePropio: !!p && propio,
-        descripcion: detalle, asignadoA, vence: venceGuardable,
-        para, agencia, responsable: deAgencia && responsable ? Number(responsable) : null,
-        tipo: p?.clave ?? null, opciones: p?.opciones ?? [],
-        detalles: p ? Object.fromEntries(Object.entries(p.detalles).filter(([, v]) => v.trim() !== '')) : undefined,
-        silencioso: varias,
-      })
+      const id = crear(accionId, { ...p, silencioso: varias })
       // En la cola de la acción, detrás de su alta: cada tarea con sus archivos.
       if (id && archivos.length > 0) void adjuntar(accionId, id, archivos)
     }
     if (varias) {
-      toast.success(`Se crearon ${elegidas.length} tareas, cada una con su tarjeta en el tablero.`)
+      toast.success(`Se crearon ${pedidos.length} tareas, cada una con su tarjeta en el tablero.`)
     }
-    cerrar()
-  }
-
-  /** Lo dictado trae un título: si todavía no hay uno ni se eligió qué se
-   *  pide, se usa ese. */
-  function alDictar(brief: BriefListo) {
-    if (!titulo.trim() && elegidas.length === 0) setTitulo(brief.resumen.slice(0, 500))
+    setAbierto(false)
   }
 
   if (!abierto) {
@@ -882,240 +767,17 @@ function NuevaTarea({ accionId, personas, usuarioId, alLado }: {
   }
 
   return (
-    <form
-      onSubmit={enviar}
-      onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); cerrar() } }}
-      className="mt-3 animate-scale-in space-y-3 rounded-2xl border border-brand-200 bg-brand-50/50 p-3.5 dark:border-brand-500/30 dark:bg-brand-500/[.06]"
-    >
-      <p className="text-sm font-semibold text-brand-800 dark:text-brand-200">Nueva tarea</p>
-
-      <QueSePide
-        valor={elegidas}
-        onCambiar={setElegidas}
-        tipos={tipos}
-        error={catalogo.error}
-        reintentar={catalogo.reintentar}
-        otraCosa={elegidas.length === 0}
-        onOtraCosa={() => setElegidas([])}
-      />
-
-      {/* El nombre: con un tipo se arma solo y se puede cambiar; con varios,
-          cada una lleva el suyo; sin tipo (Otra cosa), se escribe. */}
-      {elegidas.length <= 1 ? (
-        <label className="block">
-          <span className="etiqueta-campo">
-            {elegidas.length === 1 ? <>Nombre <span className="font-normal text-slate-500 dark:text-slate-400">(se puede cambiar)</span></> : 'Qué hay que hacer'}
-          </span>
-          <input
-            autoFocus
-            value={titulo}
-            onChange={e => setTitulo(e.target.value)}
-            placeholder={nombreAuto || 'Ej: Arte del header desktop'}
-            aria-label={elegidas.length === 1 ? 'Nombre de la tarea' : 'Qué hay que hacer'}
-            maxLength={500}
-            className="campo"
-          />
-        </label>
-      ) : (
-        <p className="rounded-xl border border-brand-200 bg-white px-3 py-2 text-sm text-slate-700 dark:border-brand-500/30 dark:bg-slate-900 dark:text-slate-200">
-          Se van a crear {elegidas.length} tareas:{' '}
-          <strong className="font-semibold text-slate-900 dark:text-slate-50">
-            {elegidas.map(p => nombreDeTarjeta(accion?.nombre ?? '', tipos?.find(t => t.clave === p.clave))).join(' · ')}
-          </strong>
-        </p>
-      )}
-
-      <label className="block">
-        <span className="etiqueta-campo">¿Quién la hace?</span>
-        <select value={quien} onChange={e => setQuien(e.target.value)} className="campo" aria-label="Quién la hace">
-          <option value="">{elegidas.length > 0 ? 'Elegí quién la hace' : 'Sin asignar por ahora'}</option>
-          {tableros && tableros.length > 0 && (
-            <optgroup label="Agencias">
-              {tableros.map(t => (
-                <option key={t.nombre} value={`agencia:${t.nombre}`}>
-                  {t.nombre}{t.cuentas === 0 ? ' (todavía sin usuarios)' : ''}
-                </option>
-              ))}
-            </optgroup>
-          )}
-          <optgroup label="Tienda Inglesa">
-            {delEquipo(personas).map(p => (
-              <option key={p.id} value={`persona:${p.id}`}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>
-            ))}
-          </optgroup>
-        </select>
-        {personasEstado === 'error' && (
-          <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
-            No se pudo traer la lista de personas. Se vuelve a intentar sola en unos segundos.
-          </span>
-        )}
-        {deAgencia && (
-          <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
-            Le nace su tarjeta en el tablero de {quien.slice('agencia:'.length)} y le avisamos.
-          </span>
-        )}
-      </label>
-
-      <CampoDetalle
-        id={`detalle-nueva-${accionId}`}
-        valor={descripcion}
-        onCambiar={setDescripcion}
-        onDictado={alDictar}
-      />
-      <ElegirAdjuntos
-        valor={archivos}
-        onCambiar={setArchivos}
-        ayuda={deAgencia ? 'Los baja también la agencia, desde su tarjeta' : undefined}
-      />
-      <div className="grid gap-3 sm:grid-cols-2">
-        {deAgencia && (
-          <label className="block">
-            <span className="etiqueta-campo">Responsable de Tienda</span>
-            <select value={responsable} onChange={e => setResponsable(e.target.value)} className="campo">
-              <option value="">Sin asignar por ahora</option>
-              {delEquipo(personas).map(p => <option key={p.id} value={p.id}>{p.nombre}{p.id === usuarioId ? ' (vos)' : ''}</option>)}
-            </select>
-          </label>
-        )}
-        <label className="block">
-          <span className="etiqueta-campo">Vence el (opcional)</span>
-          <input type="date" min="2000-01-01" max="2100-12-31" value={vence} onChange={e => setVence(e.target.value)} className="campo" />
-        </label>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {falta && <p className="mr-auto text-xs text-slate-600 dark:text-slate-400">{falta}</p>}
-        <button type="button" onClick={cerrar} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[40px]">
-          Cancelar
-        </button>
-        <button
-          type="submit"
-          disabled={!!falta}
-          className="min-h-[44px] rounded-xl bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 sm:min-h-[40px]"
-        >
-          {cuantas > 1 ? `Crear ${cuantas} tareas` : 'Crear tarea'}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-/** Un tipo elegido al crear la tarea: lo tildado y los datos de más. */
-type PiezaElegida = { clave: string; opciones: string[]; detalles: Record<string, string> }
-
-/** Un link mal escrito en lo que se pide: frena crear la tarea. */
-function linkMaloEn(p: PiezaElegida, tipos: TipoDeTarea[] | null): string | null {
-  const tipo = tipos?.find(t => t.clave === p.clave)
-  if (!tipo) return null
-  const malo = camposVisibles(tipo, p.opciones).find(c => c.tipo === 'link' && p.detalles[c.clave]?.trim() && !linkValido(p.detalles[c.clave]))
-  return malo ? `${tipo.nombre} · ${malo.nombre}: tiene que empezar con https://` : null
-}
-
-/**
- * ¿Qué se pide? Banners, Mailing, Redes… u Otra cosa. Tocar un tipo lo suma y
- * abre su modal con todas las opciones (Header, Slider, el CTA…); tocarlo de
- * nuevo lo vuelve a abrir. "Otra cosa" es una tarea sin tipo: se escribe qué
- * hay que hacer.
- */
-function QueSePide({ valor, onCambiar, tipos, error, reintentar, otraCosa, onOtraCosa }: {
-  valor: PiezaElegida[]
-  onCambiar: (v: PiezaElegida[]) => void
-  tipos: TipoDeTarea[] | null
-  error: boolean
-  reintentar: () => void
-  otraCosa: boolean
-  onOtraCosa: () => void
-}) {
-  const [editando, setEditando] = useState<string | null>(null)
-  const actual = valor.find(p => p.clave === editando) ?? null
-  const tipoActual = tipos?.find(t => t.clave === editando) ?? null
-
-  function tocar(t: TipoDeTarea) {
-    if (!valor.some(p => p.clave === t.clave)) onCambiar([...valor, { clave: t.clave, opciones: [], detalles: {} }])
-    setEditando(t.clave)
-  }
-  function cambiar(clave: string, cambio: Partial<PiezaElegida>) {
-    onCambiar(valor.map(p => (p.clave === clave ? { ...p, ...cambio } : p)))
-  }
-  const CHIP = 'flex min-h-[40px] items-center gap-1 rounded-xl border px-3 text-sm font-semibold transition active:scale-95'
-  const SI = 'border-brand-600 bg-brand-600 text-white shadow-sm'
-  const NO = 'border-slate-300 bg-white text-slate-700 hover:border-brand-400 hover:text-brand-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-brand-500/60'
-
-  return (
-    // min-w-0: un <fieldset> no se achica por debajo de su contenido, y los
-    // tipos (y el resumen de cada uno) se salían por el costado de la ficha.
-    <fieldset className="min-w-0">
-      <legend className="etiqueta-campo">¿Qué se pide?</legend>
-      {!tipos ? (
-        error ? (
-          <button type="button" onClick={reintentar} className="text-sm font-semibold text-brand-700 underline dark:text-brand-200">
-            No se pudieron traer los tipos. Probar de nuevo
-          </button>
-        ) : <div className="skeleton h-10 rounded-xl" />
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {tipos.map(t => {
-            const elegida = valor.some(p => p.clave === t.clave)
-            return (
-              <button key={t.clave} type="button" aria-pressed={elegida} onClick={() => tocar(t)} className={`${CHIP} ${elegida ? SI : NO}`}>
-                {elegida && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />} {t.nombre}
-              </button>
-            )
-          })}
-          <button type="button" aria-pressed={otraCosa} onClick={onOtraCosa} className={`${CHIP} ${otraCosa ? 'border-brand-600 bg-brand-50 text-brand-800 ring-2 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-500/20 dark:text-brand-100' : NO}`}>
-            {otraCosa && <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />} Otra cosa
-          </button>
-        </div>
-      )}
-
-      {valor.length > 0 && tipos && (
-        <ul className="mt-2 space-y-1.5" aria-label="Lo que se pide">
-          {valor.map(p => {
-            const t = tipos.find(x => x.clave === p.clave)
-            if (!t) return null
-            const datos = camposVisibles(t, p.opciones).filter(c => p.detalles[c.clave]?.trim())
-              .map(c => `${c.nombre}: ${valorParaLeer(c, p.detalles[c.clave])}`)
-            const resumen = [...p.opciones, ...datos].join(' · ')
-            return (
-              <li key={p.clave} className="flex items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 py-2 dark:border-brand-500/30 dark:bg-slate-900">
-                <span className="min-w-0 flex-1 text-sm">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">{t.nombre}</span>
-                  <span className="block truncate text-xs text-slate-600 dark:text-slate-400">
-                    {resumen || (t.opciones.length > 0 ? 'Todavía no elegiste nada' : 'Sin datos de más')}
-                  </span>
-                </span>
-                <button type="button" onClick={() => setEditando(p.clave)} className="min-h-[36px] rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:text-brand-200 dark:hover:bg-brand-500/10">
-                  Cambiar
-                </button>
-                <button type="button" onClick={() => onCambiar(valor.filter(x => x.clave !== p.clave))} aria-label={`Sacar ${t.nombre}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
-                  <X className="h-4 w-4" />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      {actual && tipoActual && (
-        <ModalDeOpciones
-          tipo={tipoActual}
-          opciones={actual.opciones}
-          detalles={actual.detalles}
-          onAlternar={o => cambiar(actual.clave, {
-            opciones: actual.opciones.includes(o) ? actual.opciones.filter(x => x !== o) : [...actual.opciones, o],
-          })}
-          onAgregarOtra={texto => {
-            const o = texto.trim()
-            if (o && !actual.opciones.some(x => x.toLocaleLowerCase('es') === o.toLocaleLowerCase('es'))) {
-              cambiar(actual.clave, { opciones: [...actual.opciones, o] })
-            }
-          }}
-          onDetalle={(k, v) => cambiar(actual.clave, { detalles: { ...actual.detalles, [k]: v } })}
-          onCerrar={() => setEditando(null)}
-        />
-      )}
-    </fieldset>
+    <FormularioDeTarea
+      mundo={accion?.mundo}
+      accion={accion?.nombre ?? ''}
+      personas={personas}
+      personasEstado={personasEstado}
+      usuarioId={usuarioId}
+      encabezado="Nueva tarea"
+      idDetalle={`detalle-nueva-${accionId}`}
+      onEnviar={enviar}
+      onCancelar={() => setAbierto(false)}
+    />
   )
 }
 
