@@ -227,7 +227,7 @@ SECCIONES: tuple[Seccion, ...] = (
                 "en el calendario.",
             ), permisos=("calendario.tareas", "calendario.pedidos")),
             Parte("Análisis de entregas", (
-                "Abajo del tablero: cuánto tarda cada agencia, cuántas piezas se pasan de fecha y cuántas rondas "
+                "Abajo del tablero: cuánto tarda cada agencia, cuántas piezas se pasan de fecha y cuántas versiones "
                 "lleva aprobar. Lo ve solo Tienda; las agencias no.",
             )),
         ),
@@ -235,15 +235,15 @@ SECCIONES: tuple[Seccion, ...] = (
     Seccion(
         clave="tarjeta", titulo="La tarjeta de una pieza", icono="SquareStack",
         quienes=frozenset({EQUIPO, AGENCIA}), permisos=("calendario.view",),
-        resumen="Todo de una pieza en un lugar: a quién le toca, la última ronda, lo que se pidió y lo que se dijo.",
+        resumen="Todo de una pieza en un lugar: a quién le toca, la última versión, lo que se pidió y lo que se dijo.",
         partes=(
             Parte("Qué tiene", (
                 "Arriba: el tipo, la acción (o **Sin acción**), quién la hace y cuándo vence. Después, a quién le "
-                "toca ahora y la última ronda en grande.",
-                "Si la ronda trae varias imágenes, la tira de miniaturas las cambia sin que la pantalla salte.",
-                "**Comparar con la ronda anterior** pone las dos lado a lado, cada una con sus miniaturas.",
+                "toca ahora y la última versión en grande.",
+                "Si la versión trae varias imágenes, la tira de miniaturas las cambia sin que la pantalla salte.",
+                "**Comparar** pone la versión que elijas al lado de la actual, cada una con sus miniaturas.",
                 "**Lo que se pidió**: el detalle y los archivos del pedido para bajar.",
-                "Más abajo: las rondas anteriores con sus marcas, y los comentarios.",
+                "Más abajo: las versiones anteriores con sus marcas, y los comentarios.",
                 "Se pone al día sola cada pocos segundos: no hace falta recargar.",
             )),
             Parte("Los cambios pedidos", (
@@ -311,12 +311,16 @@ SECCIONES: tuple[Seccion, ...] = (
                 "**Corregir** o **Mandar igual**.",
                 "Si no va todo (por ejemplo, mandás primero el KV para que lo aprueben), escribí por qué en "
                 "**¿Por qué no va todo?**.",
+                "Si querés contarle algo a quien revisa, va en **Nota de este envío**.",
             ), numerada=True),
             Parte("Cuando te contestan", (
                 "**Cambios pedidos**: la tarjeta vuelve a En proceso con números rojos sobre la imagen y el "
-                "comentario. Corregís y entregás la ronda siguiente.",
+                "comentario. Corregís y mandás una versión nueva.",
+                "Si a la versión que está esperando solo le faltó algo, **Sumar archivos** lo agrega a esa misma "
+                "versión, sin mandar otra, con una nota corta. A quien revisa le llega el aviso.",
                 "**Te dieron el OK: entregá lo que falta**: esa parte está bien; seguí con el resto y entregalo.",
-                "**Aprobada**: pasa a Finalizado.",
+                "**Aprobada**: pasa a Finalizado. Si después hace falta otro cambio, Tienda la puede **Reabrir para "
+                "otro cambio** y te llega el aviso con lo que hay que cambiar.",
                 "Te enterás por la campanita. Abajo de la tarjeta podés escribirle a Tienda.",
             )),
         ),
