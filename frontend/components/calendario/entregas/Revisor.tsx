@@ -275,7 +275,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // está mal, el bloque va con borde rojo.
   const faltanPiezas = (version.faltan?.length ?? 0) > 0
   // El botón grande (25/11/2026): Avanzar, salvo que ya estén todas las piezas.
-  const grande = botonGrandeAlRevisar(detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan)
+  const grande = botonGrandeAlRevisar(
+    detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan, detalle.limites.imagenes,
+  )
   const esUltimaFase = detalle.fases[detalle.fases.length - 1]?.id === version.faseId
   const turno = detalle.resumen.aprobadorDeTurno
   const lugarEnLaCadena = turno != null ? detalle.aprobadores.indexOf(turno) : -1

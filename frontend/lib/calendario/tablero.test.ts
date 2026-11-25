@@ -272,6 +272,10 @@ igual('faltan piezas: Avanzar', botonGrandeAlRevisar(4, 1, ['Header (mobile)']),
 igual('no se sabe (el pedido no tiene piezas): Avanzar', botonGrandeAlRevisar(0, 2, undefined), 'avanzar')
 igual('solo un link: Avanzar', botonGrandeAlRevisar(4, 0, undefined), 'avanzar')
 igual('vino todo: Aprobar y terminar', botonGrandeAlRevisar(4, 4, []), 'terminar')
+// H-035 (25/11/2026): sin medir, la lista llega vacía; una imagen para dos piezas no es «todas».
+igual('una imagen para dos piezas, aunque no se haya medido: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
+igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP): Aprobar y terminar',
+  botonGrandeAlRevisar(10, 4, undefined, 4), 'terminar')
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
 // El día de cada ronda, en el renglón cerrado.

@@ -1381,6 +1381,7 @@ async def sumar_archivos(
     background_tasks: BackgroundTasks,
     version_id: str,
     nota: str = Form("", max_length=1000),
+    faltan: str | None = Form(None, max_length=20_000),
     imagenes: list[UploadFile] | None = File(None),
     miniaturas: list[UploadFile] | None = File(None),
     current_user: User = Depends(require_permission("calendario.view")),
@@ -1395,7 +1396,11 @@ async def sumar_archivos(
     lo que se sume lo tienen que ver todos: va como versión nueva), y hasta
     MAX_IMAGENES por versión. Queda anotado en la conversación de la tarjeta
     («Sumé 1 archivo a la versión 2: …», con la nota si la hay), le avisa a
-    quien la revisa y la IA la vuelve a mirar entera."""
+    quien la revisa y la IA la vuelve a mirar entera.
+
+    `faltan` (JSON, como al entregar): las piezas del pedido que siguen
+    faltando, medidas de nuevo en el navegador con lo que se suma. Solo
+    achica la lista de la versión: sumar no hace faltar nada."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     version = await db.get(CalendarioVersion, version_id)
     if version is None:
@@ -1423,6 +1428,10 @@ async def sumar_archivos(
         )
     if not imagenes:
         raise HTTPException(status_code=422, detail="Elegí al menos una imagen para sumar")
+    try:
+        quedan = (reglas.faltan_validas(faltan) or []) if faltan is not None else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     if len(miniaturas) != len(imagenes):
         raise HTTPException(status_code=422, detail="Falta la miniatura de alguna imagen: volvé a elegirlas")
     ya = (await db.execute(
@@ -1445,6 +1454,10 @@ async def sumar_archivos(
         datos_mini, tipo_mini = await _leer(mini, MAX_BYTES_MINIATURA, f"La miniatura de {cual.lower()}")
         leidas.append((datos, tipo, datos_mini, tipo_mini))
     await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
+    if quedan is not None and version.faltan:
+        version.faltan = [p for p in version.faltan if p in quedan] or None
+        if not version.faltan:
+            version.por_que_faltan = None
     orden = (ultimo_orden if ultimo_orden is not None else -1) + 1
     for datos, tipo, datos_mini, tipo_mini in leidas:
         db.add(CalendarioVersionImagen(
@@ -1484,7 +1497,7 @@ async def sumar_archivos(
         background_tasks.add_task(revision_ia.revisar_version, version.id)
     return {
         "id": version.id, "ronda": version.ronda, "sumadas": len(leidas), "rev": _rev_para(current_user, rev),
-        "entrega": resumen, "avisados": avisados,
+        "entrega": resumen, "avisados": avisados, "faltan": list(version.faltan or []),
     }
 
 

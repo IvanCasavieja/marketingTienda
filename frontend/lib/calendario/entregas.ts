@@ -383,14 +383,20 @@ export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boole
 /**
  * El botón grande al revisar (Ivan, 25/11/2026): «Avanzar», salvo que ya
  * estén todas las piezas del pedido; ahí, «Aprobar y terminar». Se sabe que
- * están todas cuando el pedido tiene piezas, la ronda trae imágenes y no
- * faltó ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar:
- * no cierra nada. Pura.
+ * están todas cuando el pedido tiene piezas, la versión trae una imagen por
+ * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y no faltó
+ * ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar: no
+ * cierra nada. Pura.
+ *
+ * Una imagen por pieza (H-035 de la auditoría del 25/11/2026): si no se
+ * pudo medir (un ZIP sin medidas), la lista de lo que falta llega vacía y
+ * decía «Ya están todas las piezas» con una imagen para dos piezas.
  */
 export function botonGrandeAlRevisar(
-  piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined,
+  piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined, tope = Infinity,
 ): 'avanzar' | 'terminar' {
-  return piezasPedidas > 0 && imagenes > 0 && !(faltan?.length) ? 'terminar' : 'avanzar'
+  const alcanzan = imagenes > 0 && imagenes >= Math.min(piezasPedidas, tope)
+  return piezasPedidas > 0 && alcanzan && !(faltan?.length) ? 'terminar' : 'avanzar'
 }
 
 /** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase

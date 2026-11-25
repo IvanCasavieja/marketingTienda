@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, Paperclip, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import { prepararImagen, type DetalleEntregas, type ImagenLista, type Version } from '@/lib/calendario/entregas'
+import { piezasQueFaltan } from '@/lib/calendario/piezas'
 
 function detalleDeError(e: unknown): string | null {
   const detail = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -31,6 +32,11 @@ export function SumarArchivos({ detalle, version, onListo, onCancelar }: {
   const [subiendo, setSubiendo] = useState<number | null>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
   const lugar = detalle.limites.imagenes - version.imagenes.length - imagenes.length - preparando
+  // Lo que faltaba del pedido en esta versión (H-042 de la auditoría del
+  // 25/11/2026: entregó una pieza de dos y no podía mandar la otra): a la
+  // vista, y al sumar se mide de nuevo con lo que se suma.
+  const faltaban = version.faltan ?? []
+  const piezasQueFaltaban = (detalle.tarea.piezas ?? []).filter(p => faltaban.includes(p.nombre))
 
   // Las vistas previas (blob:) se sueltan al salir.
   const vistas = useRef<string[]>([])
@@ -63,6 +69,13 @@ export function SumarArchivos({ detalle, version, onListo, onCancelar }: {
     if (imagenes.length === 0 || subiendo !== null) return
     const form = new FormData()
     form.append('nota', nota.trim())
+    if (piezasQueFaltaban.length > 0) {
+      // Las que siguen faltando con lo que se suma (las que ya no están en
+      // el pedido quedan como estaban: no se pueden medir).
+      const siguen = piezasQueFaltan(piezasQueFaltaban, imagenes.map(im => ({ ancho: im.ancho, alto: im.alto })))
+      const sinMedir = faltaban.filter(n => !piezasQueFaltaban.some(p => p.nombre === n))
+      form.append('faltan', JSON.stringify([...siguen.map(p => p.nombre), ...sinMedir]))
+    }
     imagenes.forEach((im, i) => {
       form.append('imagenes', im.grande, `sumada-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)
@@ -87,6 +100,11 @@ export function SumarArchivos({ detalle, version, onListo, onCancelar }: {
         <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
           Para lo que faltó, sin mandar una versión nueva. Si cambia la pieza, mejor mandá una versión nueva.
         </p>
+        {faltaban.length > 0 && (
+          <p className="mt-1 text-sm text-slate-800 dark:text-slate-200">
+            <span className="font-semibold">Falta del pedido:</span> {faltaban.join(' · ')}
+          </p>
+        )}
       </div>
       {imagenes.length + preparando > 0 && (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">

@@ -2371,7 +2371,7 @@ export const entregasApi = {
    *  los 100 s y contesta "no-disponible"); `signal` es "Mandar sin esperar". */
   /** Sumar imágenes a la versión que espera revisión, sin mandar otra (25/11/2026). */
   sumarArchivos: (versionId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
-    api.post<CalendarioEscrito & { ronda: number; sumadas: number; entrega: ResumenEntrega; avisados: number }>(
+    api.post<CalendarioEscrito & { ronda: number; sumadas: number; entrega: ResumenEntrega; avisados: number; faltan: string[] }>(
       `/calendario/versiones/${encodeURIComponent(versionId)}/archivos`, form, {
         timeout: esperaDeEntrega(pesoDelFormulario(form)),
         headers: { "Content-Type": "multipart/form-data" },

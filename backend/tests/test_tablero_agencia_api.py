@@ -4176,3 +4176,36 @@ def test_sumar_archivos_a_la_version_que_espera(monkeypatch):
         r = await _sumar(a1, v1)
         assert r.status_code == 409 and "versión nueva" in r.json()["detail"], r.text
     correr(prueba)
+
+
+def test_sumar_lo_que_faltaba_lo_saca_de_lo_que_falta():
+    """Entregó una pieza de dos (H-042): al sumar la que faltaba, la versión
+    deja de decir que falta. Sumar no hace faltar nada nuevo."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        v1 = f"ve-fal-{d.sufijo}"
+        r = await a1.post(
+            f"/calendario/tareas/{tarea_id}/versiones",
+            data={"versionId": v1, "faltan": '["Story", "Feed"]', "porQueFaltan": "La story va mañana"},
+            files=[("imagenes", ("i.jpg", _jpeg_de_verdad(), "image/jpeg")),
+                   ("miniaturas", ("m.jpg", _jpeg_de_verdad(64, 48), "image/jpeg"))],
+        )
+        assert r.status_code == 201, r.text
+        # Suma la story: queda faltando el feed (lo que diga de más no cuenta).
+        files = [("imagenes", ("s.jpg", _jpeg_de_verdad(color="red"), "image/jpeg")),
+                 ("miniaturas", ("t.jpg", _jpeg_de_verdad(64, 48, "red"), "image/jpeg"))]
+        r = await a1.post(f"/calendario/versiones/{v1}/archivos",
+                          data={"nota": "La story", "faltan": '["Feed", "Otra"]'}, files=files)
+        assert r.status_code == 201 and r.json()["faltan"] == ["Feed"], r.text
+        version = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][0]
+        assert version["faltan"] == ["Feed"] and version["porQueFaltan"] == "La story va mañana"
+        # Suma el feed: ya no falta nada, y el porqué tampoco queda.
+        r = await a1.post(f"/calendario/versiones/{v1}/archivos", data={"faltan": "[]"}, files=files)
+        assert r.status_code == 201 and r.json()["faltan"] == [], r.text
+        version = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][0]
+        assert version["faltan"] == [] and version["porQueFaltan"] is None
+        # Una lista que no tiene la forma esperada, no.
+        r = await a1.post(f"/calendario/versiones/{v1}/archivos", data={"faltan": "no es json"}, files=files)
+        assert r.status_code == 422, r.text
+    correr(prueba)
