@@ -33,8 +33,17 @@ export function muestraBurbuja(
 ): boolean {
   if (!user || user.es_externo) return false
   if (!user.is_superuser && !(user.permissions ?? []).includes('ai.don_tino')) return false
+  if (PANTALLAS_CON_AYUDANTE.includes(pathname)) return false
   return pathname !== '/home'
 }
+
+/**
+ * Las pantallas que tienen su propio ayudante (Tinín en Materiales, Doña Tina
+ * en Precios y Analytics, Dog-Ti en Facturación). Ahí no va la burbuja de Don
+ * Tino: quedaban dos burbujas, una arriba de la otra (Ivan, 25/11/2026: "está
+ * quedando ambas mascotas, cuidado, eso está mal"). Una sola por pantalla.
+ */
+export const PANTALLAS_CON_AYUDANTE = ['/materiales/cenefas', '/materiales/convertidor', '/precios', '/analytics', '/facturacion']
 
 /**
  * Dónde van los botones flotantes, abajo a la derecha. En el teléfono, arriba
@@ -47,4 +56,6 @@ export function muestraBurbuja(
  * a 1,25rem del borde, tapaban «Más»: tocabas «Más» y se abría el chat.
  */
 export const LUGAR_DE_DON_TINO = 'bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 md:bottom-5 md:right-5'
-export const LUGAR_DEL_AYUDANTE = 'bottom-[calc(10rem+env(safe-area-inset-bottom))] right-4 md:bottom-[6.25rem] md:right-5'
+// El ayudante de una pantalla va en el mismo lugar que Don Tino: nunca están
+// los dos a la vez (PANTALLAS_CON_AYUDANTE).
+export const LUGAR_DEL_AYUDANTE = LUGAR_DE_DON_TINO
