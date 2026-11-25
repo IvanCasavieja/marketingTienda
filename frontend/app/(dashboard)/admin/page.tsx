@@ -759,6 +759,7 @@ export default function AdminPage() {
   // Mientras se crea: el botón dice «Creando…» y no se manda dos veces
   // (Ivan, 25/11/2026: "no me muestra que esté cargando ni nada").
   const [creando, setCreando] = useState(false);
+  const yo = useCurrentUserStore((s) => s.user);
 
   // Superadmin no se ofrece como rol asignable desde el panel — es un flag
   // reservado para la cuenta principal, no algo que se elija en un select.
