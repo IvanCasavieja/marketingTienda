@@ -109,7 +109,7 @@ if URL:
 
     from app.core.config import settings
     from app.models.adjuntos import CalendarioAdjunto
-    from test_tablero_agencia_api import Cliente, _pedir_banners, correr
+    from test_tablero_agencia_api import MUNDO, Cliente, _pedir_banners, correr
 
 _con_base = pytest.mark.skipif(not URL, reason="Sin TEST_DATABASE_URL: estas pruebas necesitan una base Postgres")
 
@@ -223,4 +223,11 @@ def test_cada_tarea_tiene_sus_archivos():
         assert (await _detalle(lider, otra))["adjuntos"] == []
         # La otra agencia no lo baja ni diciendo que mira desde su tarjeta.
         assert (await bruno.get(f"/calendario/adjuntos/{adj}", params={"desde": otra})).status_code == 404
+
+        # La ficha de la acción dice cuántos tiene cada pedido, sin bajar la
+        # lista (24/11/2026: "Publicis · 2 archivos"). Solo si tiene.
+        assert (await _adjuntar(lider, banners, ("Referencias.csv", b"a;b\n"))).status_code == 201
+        datos = (await lider.get("/calendario/datos", params={"mundo": MUNDO})).json()
+        archivos = {t["id"]: t.get("archivos") for b in datos["barras"] for t in b.get("tareas", [])}
+        assert archivos[banners] == 2 and archivos[otra] is None
     correr(prueba)

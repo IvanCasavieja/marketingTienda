@@ -132,7 +132,7 @@ Cada tipo de acción lleva casi siempre las mismas tareas. Una **plantilla**
 relativo: N días antes o después del **inicio** o del **fin** de la acción, y
 opcionalmente un responsable fijo y la categoría a la que va.
 
-- **Usar plantilla**, en la pestaña Tareas de la ficha, crea sus tareas con la
+- **Usar plantilla**, en las tareas de la ficha, crea sus tareas con la
   fecha ya calculada. Si la acción tiene una categoría con plantilla, la ficha
   la sugiere ("¿Usar la plantilla Mega evento?"); "Ahora no" la saca de esa
   acción en ese navegador. A cada responsable le llega UN aviso con todas sus
@@ -251,8 +251,14 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   acciones de 2026 (aditiva: no duplica ni pisa nada). La hoja "Valen" son las
   tareas de Valentina en cada acción (Lanzar, Cierre, Imprenta...): todavía
   no se cargan, primero se validan con ella.
-- **Tareas minimizadas.** En la ficha, cada tarea muestra solo su título (y
-  qué agencia la hace); se despliega tocándola.
+- **La ficha simple (24/11/2026).** Sin pestañas: se ven las tareas. Avisos y
+  Fotos son botones chicos con su número al lado del título; las piezas del
+  cronograma van abajo y solo si hay ("Agregar piezas" las carga). Cada tarea
+  va en 2 o 3 líneas: nombre y vence; quién la hace y cuántos archivos
+  (`archivos` en /datos); y, si tiene tarjeta, a quién le toca y "Abrir la
+  tarjeta". La de una agencia no lleva casilla ni estado (lo da la tarjeta).
+  El detalle, los archivos y lo de editar (quién, responsable, vence, nombre,
+  borrar) están en el "⋯". Reemplazó a las tareas minimizadas del 18/11.
 - **Una tarea sin tipo.** «Otra cosa»: puede ser solo el nombre y el detalle
   (idea de Valentina).
 - **El tablero, libre como Trello** para el equipo (0075): lleva la tarjeta a
@@ -278,14 +284,13 @@ evento y cómo se dice) y `components/calendario/MiAgenda.tsx`.
   saca el envío y, al copiar la acción, pasa al envío de la copia
   (`lib/calendario/avisos.ts` y `fecha_base` en el servidor).
 - **Las tareas se renombran y se ordenan arrastrando (20/11/2026).** Quien
-  gestiona las tareas les cambia el nombre ("Nombre") y las ordena con la
+  gestiona las tareas les cambia el nombre (en el "⋯") y las ordena con la
   manija ⋮⋮, con el mouse, el dedo o las flechas; entre hermanas
   (`lib/calendario/orden.ts`, `PUT /barras/{id}/tareas/orden`).
 - **Piezas de Redexpres:** Imprenta, Video monitores, Bases escribana y
   Afiche bombas se ofrecen solo en sus acciones (`mundos` en el catálogo).
 - **La campanita, arriba a la derecha** (`components/layout/Campanita.tsx`),
   con su nombre y el número. En el teléfono la abre "Avisos", abajo.
-- Una tarea minimizada se abre tocando cualquier parte del renglón.
 - **Los avisos, también por mail (0079).** Todo lo que llega a la campanita sale
   por mail al minuto, uno por aviso (`backend/app/services/avisos_por_mail.py`).
   Cada uno lo apaga en "Mi perfil". No se mandan avisos de hace más de un día.

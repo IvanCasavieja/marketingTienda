@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
-  AlertTriangle, Bell, BellPlus, CalendarDays, Check, Clock, CopyPlus, LayoutPanelTop, Pencil, Plus, Send, X,
+  AlertTriangle, Bell, BellPlus, CalendarDays, Camera, Check, Clock, CopyPlus, LayoutPanelTop, Pencil, Plus, Send, X,
   type LucideIcon,
 } from 'lucide-react'
 import { BloqueTareas } from './BloqueTareas'
@@ -119,8 +119,6 @@ function BotonesDeEncabezado({ editar, onEditar, onCopiar }: {
   )
 }
 
-type Pestana = 'tareas' | 'piezas' | 'avisos' | 'fotos'
-
 export function PanelAccion() {
   const abierta = useCalendario(s => s.abierta)
   const cerrar = useCalendario(s => s.cerrarAccion)
@@ -158,26 +156,28 @@ export function PanelAccion() {
   useDialogo(visible, cajaRef, cerrarRef)
   useDeslizarParaCerrar(cajaRef, visible, cerrar)
 
-  // Qué se mira de la ficha. Arranca en las tareas: es a lo que viene la
-  // mayoría (a ver qué le toca), y las piezas y los avisos quedan a un toque.
-  // Salvo que se haya pedido otra: el aviso de que mandaron todas las fotos
-  // abre la ficha en las fotos.
-  const [pestana, setPestana] = useState<Pestana>('tareas')
+  // Sin pestañas (Ivan, 24/11/2026: "al tener solo las tareas, tener todas
+  // esas pastillas es al pedo"): se ven las tareas directo. Avisos y Fotos
+  // son botones chicos al lado del título que abren lo suyo arriba de las
+  // tareas; las piezas del cronograma van abajo, solo si la acción tiene
+  // (`piezas`: quien edita abrió "Agregar piezas" para cargar la primera).
+  // El aviso de que mandaron todas las fotos abre la ficha con las fotos.
+  const [abiertos, setAbiertos] = useState({ avisos: false, fotos: false, piezas: false })
   useEffect(() => {
-    setPestana(useCalendario.getState().pestanaPedida === 'fotos' ? 'fotos' : 'tareas')
+    setAbiertos({ avisos: false, fotos: useCalendario.getState().pestanaPedida === 'fotos', piezas: false })
   }, [abierta])
+  const alternar = (que: keyof typeof abiertos) => setAbiertos(a => ({ ...a, [que]: !a[que] }))
 
   // Las fotos de colocación: las pide y las revisa quien edita el calendario,
   // en las acciones de un mundo que tiene locales con usuario (Redexpres hoy;
   // Tienda Inglesa cuando den de alta los suyos). Si la acción ya tiene un
-  // pedido, la pestaña está aunque después se hayan dado de baja los locales.
+  // pedido, el botón está aunque después se hayan dado de baja los locales.
   const mundo = useCalendario(s => s.mundo)
   const localesDelMundo = useLocalesDelMundo(s => s.porMundo[mundo])
   const pedirLocales = useLocalesDelMundo(s => s.pedir)
   useEffect(() => { if (editable) pedirLocales(mundo) }, [editable, mundo, pedirLocales])
   const conFotos = editable && accion?.seccion === 'comercial' &&
     (Boolean(accion?.fotos) || (localesDelMundo?.length ?? 0) > 0)
-  const pestanaVista: Pestana = pestana === 'fotos' && !conFotos ? 'tareas' : pestana
 
   // "Copiar a otra fecha" (pedido de Ivan, 15/11/2026). Se anota DE QUÉ
   // acción se abrió: si la ficha pasa a otra (la copia recién hecha, un aviso
@@ -199,23 +199,8 @@ export function PanelAccion() {
   // Una cuenta externa (la agencia) ve sus tareas y las piezas; los avisos son
   // del equipo (el servidor ni se los manda).
   const externo = esExterno(user)
-  const pestanas: { id: Pestana; nombre: string; n: number }[] = [
-    { id: 'tareas', nombre: externo ? 'Mis tareas' : 'Tareas', n: tareas.length },
-    { id: 'piezas', nombre: 'Piezas', n: piezas.length },
-    ...(externo ? [] : [{ id: 'avisos' as const, nombre: 'Avisos', n: (accion?.avisos ?? []).length }]),
-    // El número es a cuántos locales se les pidió la foto.
-    ...(conFotos ? [{ id: 'fotos' as const, nombre: 'Fotos', n: accion?.fotos?.locales ?? 0 }] : []),
-  ]
-
-  /** Flechas izquierda y derecha para moverse entre pestañas, como en cualquier lista de pestañas. */
-  function teclaEnPestanas(e: ReactKeyboardEvent<HTMLDivElement>) {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
-    e.preventDefault()
-    const i = pestanas.findIndex(p => p.id === pestanaVista)
-    const siguiente = pestanas[(i + (e.key === 'ArrowRight' ? 1 : pestanas.length - 1)) % pestanas.length]
-    setPestana(siguiente.id)
-    e.currentTarget.querySelector<HTMLButtonElement>(`#pestana-${siguiente.id}`)?.focus()
-  }
+  const verAvisos = abiertos.avisos && !externo
+  const verFotos = abiertos.fotos && conFotos
 
   const ahora = accion ? momento(accion.desde, accion.hasta, accion.seccion === 'envio') : null
 
@@ -295,22 +280,6 @@ export function PanelAccion() {
             </header>
             <ChoquesDeLaFicha accion={accion} />
 
-            <div className="flex shrink-0 items-center gap-3 border-b border-slate-300 bg-slate-50 px-5 py-2.5 text-xs dark:border-slate-700 dark:bg-slate-800/40 sm:px-6">
-              <span className="font-medium tabular-nums text-slate-700 dark:text-slate-300">
-                {piezas.length === 0
-                  ? 'Todavía no tiene piezas cargadas'
-                  : `${publicadas} de ${piezas.length} piezas publicadas`}
-              </span>
-              {piezas.length > 0 && (
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-[width] duration-500 ease-suave"
-                    style={{ width: `${(publicadas / piezas.length) * 100}%` }}
-                  />
-                </div>
-              )}
-            </div>
-
             {/* Estado del header: la pieza que toca el calendario de abajo */}
             {piezas.some(esPiezaHeader) && (noEntro || tramo) && (
               <div className={`shrink-0 border-b px-5 py-2.5 text-xs sm:px-6 ${
@@ -336,92 +305,96 @@ export function PanelAccion() {
               </div>
             )}
 
-            <div
-              className="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-300 px-3 dark:border-slate-700 sm:px-4"
-              role="tablist"
-              aria-label="Qué ver de la acción"
-              onKeyDown={teclaEnPestanas}
-            >
-              {pestanas.map(t => {
-                const activa = pestanaVista === t.id
-                return (
-                  <button
-                    key={t.id}
-                    id={`pestana-${t.id}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={activa}
-                    aria-controls="ficha-contenido"
-                    tabIndex={activa ? 0 : -1}
-                    onClick={() => setPestana(t.id)}
-                    className={`relative -mb-px flex min-h-[48px] items-center gap-1.5 px-3 text-sm font-semibold transition after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors ${
-                      activa
-                        ? 'text-brand-700 after:bg-brand-600 dark:text-brand-200 dark:after:bg-brand-400'
-                        : 'text-slate-500 after:bg-transparent hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
-                    }`}
-                  >
-                    {t.nombre}
-                    <span className={`min-w-[20px] rounded-full px-1.5 text-center text-xs font-bold tabular-nums transition-colors ${
-                      activa ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-200' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                    }`}>{t.n}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div
-              id="ficha-contenido"
-              role="tabpanel"
-              aria-labelledby={`pestana-${pestanaVista}`}
-              className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6"
-            >
-              <div key={pestanaVista} className="animate-fade-in">
-                {pestanaVista === 'fotos' && <BloqueFotos accion={accion} />}
-
-                {pestanaVista === 'tareas' && (
-                  <BloqueTareas
-                    accion={accion}
-                    personas={personas}
-                    usuarioId={user?.id ?? null}
-                    gestiona={gestionaTareas}
-                    conTitulo={false}
-                  />
-                )}
-
-                {pestanaVista === 'avisos' && !externo && (
-                  <BloqueAvisos
-                    accion={accion}
-                    editable={editable}
-                    personas={personas}
-                    usuarioId={user?.id ?? null}
-                  />
-                )}
-
-                {pestanaVista === 'piezas' && (<>
-                  <div className="space-y-6">
-                    {CATALOGO_PIEZAS.map(area => (
-                      <BloqueArea
-                        key={area.area}
-                        area={area.area}
-                        titulo={area.titulo}
-                        formatos={area.formatos}
-                        piezas={piezas.filter(p => p.area === area.area)}
-                        editable={editable}
-                        inicioAccion={accion.desde}
-                        onAgregar={formato => agregarPieza(area.area, formato)}
-                        onQuitar={quitarPieza}
-                        onEstado={(id, estado) => actualizarPieza(id, { estado })}
-                        onEnvio={(id, cambios) => actualizarPieza(id, cambios)}
-                      />
-                    ))}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6">
+              <BloqueTareas
+                accion={accion}
+                personas={personas}
+                usuarioId={user?.id ?? null}
+                gestiona={gestionaTareas}
+                titulo={externo ? 'Mis tareas' : 'Tareas'}
+                herramientas={(!externo || conFotos) ? (<>
+                  {!externo && (
+                    <BotonDeLaFicha icono={Bell} nombre="Avisos" n={(accion.avisos ?? []).length} abierto={verAvisos} onClick={() => alternar('avisos')} />
+                  )}
+                  {/* El número es a cuántos locales se les pidió la foto. */}
+                  {conFotos && (
+                    <BotonDeLaFicha icono={Camera} nombre="Fotos" n={accion.fotos?.locales ?? 0} abierto={verFotos} onClick={() => alternar('fotos')} />
+                  )}
+                </>) : undefined}
+                debajoDelTitulo={(verAvisos || verFotos) ? (
+                  <div className="mb-5 space-y-4">
+                    {verAvisos && (
+                      <div className="animate-scale-in rounded-2xl border border-slate-300 p-4 dark:border-slate-700">
+                        <BloqueAvisos accion={accion} editable={editable} personas={personas} usuarioId={user?.id ?? null} />
+                      </div>
+                    )}
+                    {verFotos && (
+                      <div className="animate-scale-in rounded-2xl border border-slate-300 p-4 dark:border-slate-700">
+                        <BloqueFotos accion={accion} />
+                      </div>
+                    )}
                   </div>
+                ) : undefined}
+              />
 
-                  <p className="mt-6 rounded-xl bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-600 dark:bg-slate-800/40 dark:text-slate-400">
-                    Agregar <strong>Web · Home → Header</strong> baja la acción sola al calendario de
-                    headers, igual que hace Retail Media con sus tres posiciones.
-                  </p>
-                </>)}
-              </div>
+              {/* Las piezas del cronograma (las del Excel: Web, Email, Header…):
+                  abajo, y solo si la acción tiene. Quien edita las sigue
+                  pudiendo cargar: "Agregar piezas" abre el catálogo (el header
+                  de la home sale de acá). */}
+              {(piezas.length > 0 || (editable && abiertos.piezas)) ? (
+                <section className="mt-8 border-t border-slate-200 pt-5 dark:border-slate-800">
+                  <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Piezas del cronograma</h3>
+                    {piezas.length > 0 && (
+                      <span className="text-sm tabular-nums text-slate-600 dark:text-slate-400">{publicadas} de {piezas.length} publicadas</span>
+                    )}
+                    {editable && (
+                      <button
+                        type="button"
+                        onClick={() => alternar('piezas')}
+                        aria-expanded={abiertos.piezas}
+                        className="ml-auto flex min-h-[40px] items-center gap-1 rounded-xl px-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-brand-200"
+                      >
+                        <Plus className={`h-4 w-4 transition-transform duration-200 ${abiertos.piezas ? 'rotate-45' : ''}`} />
+                        {abiertos.piezas ? 'Listo' : 'Agregar piezas'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-6">
+                    {CATALOGO_PIEZAS
+                      .filter(area => abiertos.piezas || piezas.some(p => p.area === area.area))
+                      .map(area => (
+                        <BloqueArea
+                          key={area.area}
+                          area={area.area}
+                          titulo={area.titulo}
+                          formatos={area.formatos}
+                          piezas={piezas.filter(p => p.area === area.area)}
+                          editable={editable}
+                          inicioAccion={accion.desde}
+                          onAgregar={formato => agregarPieza(area.area, formato)}
+                          onQuitar={quitarPieza}
+                          onEstado={(id, estado) => actualizarPieza(id, { estado })}
+                          onEnvio={(id, cambios) => actualizarPieza(id, cambios)}
+                        />
+                      ))}
+                  </div>
+                  {abiertos.piezas && (
+                    <p className="mt-5 rounded-xl bg-slate-50 px-3.5 py-3 text-[13px] leading-relaxed text-slate-600 dark:bg-slate-800/40 dark:text-slate-400">
+                      Agregar <strong>Web · Home → Header</strong> baja la acción sola al calendario de
+                      headers, igual que hace Retail Media con sus tres posiciones.
+                    </p>
+                  )}
+                </section>
+              ) : editable && (
+                <button
+                  type="button"
+                  onClick={() => alternar('piezas')}
+                  className="mt-6 flex min-h-[40px] items-center gap-1.5 rounded-xl px-2 text-left text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-brand-700 active:scale-95 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-brand-200"
+                >
+                  <Plus className="h-4 w-4 shrink-0" /> Agregar piezas del cronograma (header de la home, envíos…)
+                </button>
+              )}
             </div>
           </>
         )}
@@ -432,6 +405,35 @@ export function PanelAccion() {
         <CopiarAccion key={accion.id} accion={accion} onCerrar={() => setCopiarDe(null)} />
       )}
     </>
+  )
+}
+
+/** Un botón chico al lado del título de las tareas (Avisos, Fotos): abre y
+ *  cierra lo suyo arriba de las tareas. Lleva su número a la vista. */
+function BotonDeLaFicha({ icono: Icono, nombre, n, abierto, onClick }: {
+  icono: LucideIcon
+  nombre: string
+  n: number
+  abierto: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={abierto}
+      className={`flex min-h-[40px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
+        abierto
+          ? 'bg-brand-600 text-white shadow-sm hover:bg-brand-700'
+          : 'bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700'
+      }`}
+    >
+      <Icono className="h-4 w-4" aria-hidden />
+      {nombre}
+      <span className={`min-w-[20px] rounded-full px-1.5 text-center text-xs font-bold tabular-nums ${
+        abierto ? 'bg-white/25 text-white' : 'bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'
+      }`}>{n}</span>
+    </button>
   )
 }
 
