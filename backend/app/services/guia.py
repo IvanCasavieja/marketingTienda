@@ -263,6 +263,8 @@ SECCIONES: tuple[Seccion, ...] = (
                 "en rojo, lo dudoso en ámbar, lo hecho en verde) y lo que encontró la IA en la pieza.",
                 "Para pedir un cambio, tocá la imagen donde está: queda una marca numerada en rojo y escribís qué "
                 "cambiar. Lo que vio la IA lo pasás a marca con **Hacer marca**, o lo sacás con **Descartar**.",
+                "Si la IA vio lo mismo en varias imágenes, va una sola vez («Está en las imágenes 1 y 2»): **Hacer "
+                "una marca en cada una** las marca todas y **Descartar** las descarta juntas.",
                 "La IA es una ayuda y se puede equivocar: decidís vos.",
             )),
             Parte("Decidir", (
@@ -478,6 +480,12 @@ SECCIONES: tuple[Seccion, ...] = (
         quienes=frozenset({EQUIPO, LOCAL}), permisos=("ai.don_tino",),
         resumen="Preguntale lo que quieras de la plataforma: te guía y consulta por vos.",
         partes=(
+            Parte("Dónde está", (
+                "Siempre a mano: la burbuja de abajo a la derecha, en cualquier pantalla. Se abre sin salir de lo "
+                "que estás haciendo (en el celular, casi a pantalla entera) y se cierra con la X.",
+                "En **Inicio** lo tenés grande. La conversación es la misma en los dos lados: no se pierde al "
+                "cambiar de pantalla.",
+            )),
             Parte("Qué hace", (
                 "Te explica paso a paso cómo se hace algo en la plataforma.",
                 "Consulta por vos, con tus permisos: el calendario, tus tareas, cómo vienen las piezas en el tablero, "

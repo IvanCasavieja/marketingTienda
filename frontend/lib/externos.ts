@@ -24,8 +24,9 @@ export function esExterno(user: CurrentUser | null | undefined): boolean {
 /** Las pantallas de una cuenta externa (16/11/2026): su tablero de tarjetas
  *  y, si un admin le habilitó el calendario (su alcance no es "No lo ve"), el
  *  calendario. Las demás la mandan a su tablero (y el servidor igual no le
- *  contestaría). */
-export const RUTAS_DE_EXTERNOS = ['/entregas', '/perfil', '/mundos']
+ *  contestaría). La guía de uso, desde el 25/11/2026: el servidor le manda
+ *  solo sus secciones (su tablero, la tarjeta y lo básico). */
+export const RUTAS_DE_EXTERNOS = ['/entregas', '/perfil', '/mundos', '/ayuda']
 export const RUTAS_DEL_CALENDARIO = ['/calendario', '/mis-tareas']
 
 /** A dónde entra: a su trabajo, el tablero (que ya muestra solo lo suyo). */

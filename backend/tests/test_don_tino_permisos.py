@@ -12,8 +12,8 @@ from types import SimpleNamespace
 from app.api.routes.chat import _ejecutar_tool, _puede_usar_tool, _tools_para
 
 
-def _usuario(*permisos, super_=False):
-    return SimpleNamespace(is_superuser=super_, permissions=list(permisos))
+def _usuario(*permisos, super_=False, mundos=()):
+    return SimpleNamespace(is_superuser=super_, permissions=list(permisos), mundos=list(mundos))
 
 
 def test_sin_el_buscador_no_se_le_ofrece_buscar_precio():
@@ -38,6 +38,7 @@ def test_el_superadmin_las_tiene_todas():
         "buscar_precio", "consultar_estado_cenefa", "resumen_ultimo_debate",
         "calendario_acciones", "calendario_accion", "calendario_piezas",
         "calendario_tareas", "calendario_carga", "calendario_avisos",
+        "tablero_tarjetas", "redexpres_pedidos",
     ]
 
 
@@ -46,6 +47,8 @@ def test_las_del_calendario_piden_calendario_view():
     assert nombres == [
         "calendario_acciones", "calendario_accion", "calendario_piezas",
         "calendario_tareas", "calendario_carga", "calendario_avisos",
+        # El tablero (25/11/2026), con lo mismo que la pantalla.
+        "tablero_tarjetas",
     ]
     assert not any(n.startswith("calendario_") for n in [t["name"] for t in _tools_para(_usuario("ai.don_tino"))])
 
@@ -64,3 +67,12 @@ def test_ejecutar_sin_permiso_no_busca_y_lo_dice():
 def test_una_herramienta_desconocida_tampoco_pasa():
     salida = asyncio.run(_ejecutar_tool("otra_cosa", {}, _usuario(super_=True), None))
     assert "error" in json.loads(salida)
+
+
+def test_los_pedidos_de_redexpres_los_tiene_quien_tiene_la_planilla_o_un_local():
+    # 25/11/2026: el local ve el suyo (lo cuida la herramienta); el equipo de otro mundo, nada.
+    assert _puede_usar_tool(_usuario("redexpres.view"), "redexpres_pedidos")
+    assert _puede_usar_tool(_usuario("ai.don_tino", mundos=("redexpres",)), "redexpres_pedidos")
+    assert not _puede_usar_tool(_usuario("ai.don_tino", "calendario.view", mundos=("tienda_inglesa",)),
+                                "redexpres_pedidos")
+

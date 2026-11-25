@@ -49,7 +49,7 @@ igual('la agencia arranca sin calendario', alcanceDe(agencia), 'nada')
 igual('el equipo arranca con todo', alcanceDe(delEquipoUsuario), 'todo')
 ok('con 2 meses ve el calendario', veCalendario(agenciaConCalendario))
 
-for (const r of ['/entregas', '/perfil', '/mundos']) {
+for (const r of ['/entregas', '/perfil', '/mundos', '/ayuda']) {
   ok(`la agencia tiene ${r}`, rutaDeExterno(r, agencia))
 }
 for (const r of ['/calendario', '/mis-tareas']) {
@@ -59,7 +59,7 @@ for (const r of ['/calendario', '/mis-tareas']) {
   ok(`alguien del equipo sin alcance ${r === '/mis-tareas' ? 'conserva' : 'no tiene'} ${r}`,
     calendarioVedado(r, delEquipoSinCalendario) === (r !== '/mis-tareas'))
 }
-for (const r of ['/admin', '/materiales/cenefas', '/precios', '/facturacion', '/dashboard', '/colocacion', '/fotos', '/home', '/ayuda', '/calendariox']) {
+for (const r of ['/admin', '/materiales/cenefas', '/precios', '/facturacion', '/dashboard', '/colocacion', '/fotos', '/home', '/ayudax', '/calendariox']) {
   ok(`la agencia no tiene ${r}`, !rutaDeExterno(r, agenciaConCalendario))
 }
 

@@ -779,7 +779,12 @@ async def chat_message(
         import anthropic
 
         client = ia_cliente.cliente_anthropic()
-        secciones = [s.titulo for s in guia.secciones_para(current_user, await guia.tiene_local(db, current_user))]
+        # Qué partes de la guía puede usar quien pregunta. Es una ayuda: si
+        # no se pudiera saber, Don Tino contesta igual.
+        try:
+            secciones = [s.titulo for s in guia.secciones_para(current_user, await guia.tiene_local(db, current_user))]
+        except Exception:
+            secciones = None
 
         # El prompt de sistema son ~8.250 tokens de conocimiento de la
         # plataforma que no cambian nunca, y viajaban enteros en CADA llamada
