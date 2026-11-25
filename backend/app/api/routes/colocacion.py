@@ -62,7 +62,7 @@ from app.models.colocacion import ColocacionFoto, ColocacionLocal, ColocacionPed
 from app.models.local_asignacion import LocalAsignacion
 from app.models.notificacion import Notificacion
 from app.models.user import User
-from app.services import colocacion as reglas
+from app.services import colocacion as reglas, sin_accion
 from app.services.calendario_avisos import hoy_en_uruguay
 from app.services.espacio import MENSAJE_SIN_LUGAR, hay_lugar
 
@@ -276,6 +276,9 @@ def _exigir_a_la_vista(usuario: User, barra: CalendarioBarra, mensaje: str) -> N
 
 
 async def _barra_de_promo(db: AsyncSession, barra_id: str, usuario: User, *, bloquear: bool = False) -> CalendarioBarra:
+    if sin_accion.es_sin_accion(barra_id):
+        # La de las tarjetas sin acción no es una acción: no lleva fotos.
+        raise HTTPException(status_code=404, detail="Esta acción ya no existe: la borró otra persona.")
     consulta = select(CalendarioBarra).where(CalendarioBarra.id == barra_id)
     if bloquear:
         consulta = consulta.with_for_update()

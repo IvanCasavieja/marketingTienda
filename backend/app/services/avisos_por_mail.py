@@ -38,6 +38,7 @@ from app.core.database import AsyncSessionLocal
 from app.models.notificacion import Notificacion
 from app.models.user import User
 from app.services import email_service
+from app.services.sin_accion import PREFIJO as SIN_ACCION
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,10 @@ def destino(n) -> str:
     tipo = n.origen_tipo
     if tipo == "campaign_alert":
         return "/campaigns"
+    if tipo == "calendario_tarea" and partes[0].startswith(SIN_ACCION) and len(partes) > 1 and partes[1]:
+        # Una tarjeta sin acción (app/services/sin_accion.py): no hay ficha
+        # de acción que abrir; se abre la tarjeta, como en la campanita.
+        return f"/entregas?tarea={partes[1]}"
     if tipo in ("calendario_aviso", "calendario_tarea") and partes[0]:
         return f"/calendario?accion={partes[0]}"
     if tipo == "calendario_accion":
