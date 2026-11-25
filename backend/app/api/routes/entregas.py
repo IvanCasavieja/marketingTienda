@@ -412,6 +412,23 @@ async def quitar_entregas(
     return {"id": tarea_id, "rev": _rev_para(current_user, rev), "borrada": True}
 
 
+async def _a_quien_avisar_lo_entregado(db: AsyncSession, entrega, tarea, barra, usuario: User) -> list[int]:
+    """A quién le llega que hay algo nuevo para revisar (una versión, o
+    archivos sumados a la que espera): al aprobador que le toca; sin cadena,
+    a quien creó la tarea (que la puede decidir como respaldo si tiene
+    calendario.tareas).
+
+    Si a quien le tocaría es quien acaba de entregar y no puede decidir sobre
+    lo suyo (una pieza de Tienda que se pidió a sí mismo), se les avisa a
+    quienes pueden aprobarla como respaldo: si no, quedaba en Esperando
+    feedback sin que nadie se enterara. En una pieza de una agencia de afuera
+    no hace falta: quien la carga la decide (ver _autor)."""
+    destino = entrega.aprobador_de_turno_id or tarea.creado_por_id
+    if destino == usuario.id and _autor(tarea, usuario.id) is not None:
+        return list(await reglas.gestores_del_mundo(db, barra.mundo, menos=usuario.id))
+    return [destino] if destino is not None and destino != usuario.id else []
+
+
 async def _ultima_version(db: AsyncSession, fase_id: str | None) -> CalendarioVersion | None:
     if fase_id is None:
         return None
@@ -624,7 +641,14 @@ async def ver_entregas(
         "personas": {str(k): v for k, v in nombres.items()},
         "columna": columna,
         "puedo": {
-            "entregar": entrega_yo and entrega.momento in ("produccion", "cambios") and not cancelada,
+            # Mientras la fase no esté aprobada, también esperando feedback: la
+            # nueva reemplaza a la que espera (25/11/2026, "ir y venir").
+            "entregar": entrega_yo and entrega.momento in ("produccion", "cambios", "revision") and not cancelada,
+            # Sumar archivos a la versión que espera, mientras nadie la decidió.
+            "sumar": (
+                entrega_yo and not cancelada and actual is not None and actual.estado == "revision"
+                and not decisiones_actual and len(imagenes.get(actual.id, [])) < MAX_IMAGENES
+            ),
             "decidir": puede_decidir,
             "comoRespaldo": como_respaldo,
             "configurar": _puede_gestionar_tareas(current_user),
@@ -1161,11 +1185,12 @@ async def entregar(
         )
     fase = await db.get(CalendarioFase, entrega.fase_actual_id)
     ultima = await _ultima_version(db, entrega.fase_actual_id)
-    if ultima is not None and ultima.estado == "revision":
-        raise HTTPException(
-            status_code=409,
-            detail=f"La ronda {ultima.ronda} de {fase.nombre} todavía está en revisión: esperá a que la decidan",
-        )
+    # Ir y venir (25/11/2026, Ivan: "que la agencia pueda enviar entregas sin
+    # esperar nuestra respuesta, mientras la tarjeta no esté aprobada"): si
+    # la anterior todavía espera revisión, la nueva la reemplaza. La de antes
+    # queda en el historial como reemplazada (se puede comparar con ella) y
+    # la cadena de aprobación arranca de nuevo con la nueva.
+    reemplaza = ultima if ultima is not None and ultima.estado == "revision" else None
 
     try:
         ya_subidas = json.loads(zipYaSubidas or "[]")
@@ -1252,6 +1277,9 @@ async def entregar(
     # y en la base: ver _guardar_el_zip.
 
     ronda = (ultima.ronda if ultima else 0) + 1
+    if reemplaza is not None:
+        reemplaza.estado = reglas.REEMPLAZADA
+        reemplaza.decidida_at = datetime.now(timezone.utc)
     # Solo cuentan las marcas de ESTA tarea que estaban sin corregir: lo
     # demás (una que ya tildó otro, un id viejo) se ignora.
     marcas = (await db.execute(
@@ -1292,23 +1320,14 @@ async def entregar(
         con_zip=zip_datos is not None, version_id=versionId, ids_de_imagenes=ids_de_imagenes,
     )
 
-    # Al aprobador que le toca; sin cadena, a quien creó la tarea (que la
-    # puede decidir como respaldo si tiene calendario.tareas).
-    destino = entrega.aprobador_de_turno_id or tarea.creado_por_id
     avisados = 0
-    # Si a quien le tocaría es quien acaba de entregar y no puede decidir
-    # sobre lo suyo (una pieza de Tienda que se pidió a sí mismo), se les
-    # avisa a quienes pueden aprobarla como respaldo: si no, quedaba en
-    # Esperando feedback sin que nadie se enterara. En una pieza de una
-    # agencia de afuera no hace falta: quien la carga la decide (ver _autor).
-    if destino == current_user.id and _autor(tarea, current_user.id) is not None:
-        destinos = await reglas.gestores_del_mundo(db, barra.mundo, menos=current_user.id)
-    else:
-        destinos = [destino] if destino != current_user.id else []
-    for uid in destinos:
+    for uid in await _a_quien_avisar_lo_entregado(db, entrega, tarea, barra, current_user):
         if await reglas.avisar(
             db, uid,
-            reglas.mensaje_para_revisar(_quien(current_user), ronda, fase.nombre, tarea.titulo, barra.nombre),
+            reglas.mensaje_para_revisar(
+                _quien(current_user), ronda, fase.nombre, tarea.titulo, barra.nombre,
+                nota=comentario, reemplaza=reemplaza.ronda if reemplaza is not None else None,
+            ),
             reglas.referencia(barra.id, tarea.id, versionId, f"revisar-{uid}"),
         ):
             avisados += 1
@@ -1339,6 +1358,8 @@ async def entregar(
         )
     return {
         "id": versionId, "rev": _rev_para(current_user, rev), "ronda": ronda, "entrega": resumen, "avisados": avisados,
+        # La que reemplazó, si esperaba revisión (25/11/2026): su número.
+        "reemplazo": reemplaza.ronda if reemplaza is not None else None,
         # El ZIP: si se guardó (si no, la pantalla avisa), cuántas imágenes de
         # la ronda salieron de él en el servidor, qué más se le va a mirar y
         # qué no es imagen ni PDF, para que quien entrega lo vea en el acto.
@@ -1350,6 +1371,120 @@ async def entregar(
             "archivos": [e.nombre for e in inventario if e.clase != "otro" and e.indice not in saltar_ia],
             "ignorados": [e.nombre for e in inventario if e.clase == "otro"],
         },
+    }
+
+
+@router.post("/versiones/{version_id}/archivos", status_code=201)
+@limiter.limit("20/minute")
+async def sumar_archivos(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    version_id: str,
+    nota: str = Form("", max_length=1000),
+    imagenes: list[UploadFile] | None = File(None),
+    miniaturas: list[UploadFile] | None = File(None),
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sumar archivos a la versión que está esperando revisión, sin mandar
+    una nueva (25/11/2026, Ivan: "si solo les faltó algo, pueden sumarlo a
+    la versión actual sin generar una nueva").
+
+    Solo quien la hace (`puede_entregar`), solo a la última versión de la
+    fase en curso, mientras nadie la decidió (si ya la empezaron a aprobar,
+    lo que se sume lo tienen que ver todos: va como versión nueva), y hasta
+    MAX_IMAGENES por versión. Queda anotado en la conversación de la tarjeta
+    («Sumé 1 archivo a la versión 2: …», con la nota si la hay), le avisa a
+    quien la revisa y la IA la vuelve a mirar entera."""
+    imagenes, miniaturas = imagenes or [], miniaturas or []
+    version = await db.get(CalendarioVersion, version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail="Esa versión ya no existe")
+    tarea, barra = await _tarea_y_barra(db, version.tarea_id, current_user, bloquear=True)
+    entrega = await _entrega_bloqueada(db, tarea.id)
+    if not puede_entregar(current_user, tarea):
+        raise HTTPException(status_code=403, detail="Suma archivos solo quien hace la tarea")
+    # Con la entrega bloqueada, se vuelve a leer: pudieron decidirla recién.
+    await db.refresh(version)
+    if reglas.archivada_sin_terminar(entrega):
+        raise HTTPException(
+            status_code=409,
+            detail="Esta tarjeta está archivada: para entregarla, el equipo tiene que sacarla del archivo",
+        )
+    if version.fase_id != entrega.fase_actual_id or version.estado != "revision":
+        raise HTTPException(
+            status_code=409,
+            detail="Esa versión ya no está esperando revisión: mandá una versión nueva",
+        )
+    if await reglas.decisiones_de(db, version.id):
+        raise HTTPException(
+            status_code=409,
+            detail="Ya la empezaron a revisar: para sumar algo, mandá una versión nueva",
+        )
+    if not imagenes:
+        raise HTTPException(status_code=422, detail="Elegí al menos una imagen para sumar")
+    if len(miniaturas) != len(imagenes):
+        raise HTTPException(status_code=422, detail="Falta la miniatura de alguna imagen: volvé a elegirlas")
+    ya = (await db.execute(
+        select(func.count(), func.max(CalendarioVersionImagen.orden))
+        .where(CalendarioVersionImagen.version_id == version.id)
+    )).one()
+    cuantas, ultimo_orden = int(ya[0] or 0), ya[1]
+    if cuantas + len(imagenes) > MAX_IMAGENES:
+        lugar = MAX_IMAGENES - cuantas
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Esta versión ya tiene {cuantas} y entran hasta {MAX_IMAGENES}"
+                    + (f": podés sumar {lugar} más" if lugar > 0 else "")
+                    + ". Si hace falta más, mandá una versión nueva"),
+        )
+    leidas = []
+    for i, (grande, mini) in enumerate(zip(imagenes, miniaturas), 1):
+        cual = f"La imagen {i}" if len(imagenes) > 1 else "La imagen"
+        datos, tipo = await _leer(grande, MAX_BYTES_IMAGEN, cual)
+        datos_mini, tipo_mini = await _leer(mini, MAX_BYTES_MINIATURA, f"La miniatura de {cual.lower()}")
+        leidas.append((datos, tipo, datos_mini, tipo_mini))
+    await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
+    orden = (ultimo_orden if ultimo_orden is not None else -1) + 1
+    for datos, tipo, datos_mini, tipo_mini in leidas:
+        db.add(CalendarioVersionImagen(
+            id=reglas.nuevo_id("im"), version_id=version.id, orden=orden, tipo_mime=tipo, datos=datos,
+            tipo_mime_miniatura=tipo_mini, miniatura=datos_mini, tamano=len(datos),
+        ))
+        orden += 1
+    # Queda en la conversación de la tarjeta: lo ven el equipo y la agencia, y
+    # cambia la huella (la tarjeta abierta del otro lado se pone al día sola).
+    nota_limpia = " ".join((nota or "").split())
+    cuantos = "1 archivo" if len(leidas) == 1 else f"{len(leidas)} archivos"
+    db.add(CalendarioComentario(
+        id=reglas.nuevo_id("co"), tarea_id=tarea.id, autor_id=current_user.id,
+        texto=f"Sumé {cuantos} a la versión {version.ronda}" + (f": {nota_limpia}" if nota_limpia else "."),
+    ))
+    await db.flush()
+
+    avisados = 0
+    mensaje = reglas.mensaje_de_archivos_sumados(_quien(current_user), len(leidas), version.ronda, tarea.titulo, nota)
+    referencia = reglas.referencia(barra.id, tarea.id, version.id, f"sumados-{cuantas + len(leidas)}")
+    for uid in await _a_quien_avisar_lo_entregado(db, entrega, tarea, barra, current_user):
+        if await reglas.avisar(db, uid, mensaje, referencia):
+            avisados += 1
+    # La IA la vuelve a mirar entera, con lo sumado (si ya la había mirado; si
+    # está mirándola ahora, lo sumado lo ve quien revisa).
+    volver_a_mirar = False
+    anterior_ia = await db.get(CalendarioRevisionIA, version.id)
+    if anterior_ia is not None and anterior_ia.estado != "pendiente":
+        await db.delete(anterior_ia)
+        volver_a_mirar = True
+    elif anterior_ia is None:
+        volver_a_mirar = True
+    resumen = await _resumen(db, tarea.id)
+    rev = await _nueva_revision(db, barra.mundo)
+    await db.commit()
+    if volver_a_mirar and revision_ia.activa():
+        background_tasks.add_task(revision_ia.revisar_version, version.id)
+    return {
+        "id": version.id, "ronda": version.ronda, "sumadas": len(leidas), "rev": _rev_para(current_user, rev),
+        "entrega": resumen, "avisados": avisados,
     }
 
 
@@ -1414,6 +1549,12 @@ async def decidir(
     await db.refresh(version)
     if version.fase_id != entrega.fase_actual_id:
         raise HTTPException(status_code=409, detail="Esa versión ya no es la que está en revisión: recargá")
+    if version.estado == reglas.REEMPLAZADA:
+        # Mientras la revisaba, la agencia mandó otra (25/11/2026).
+        raise HTTPException(
+            status_code=409,
+            detail="La agencia mandó una versión nueva mientras revisabas: recargá para ver la última",
+        )
     if reglas.archivada_sin_terminar(entrega):
         raise HTTPException(
             status_code=409,
@@ -1491,7 +1632,7 @@ async def devolver_aprobada(
     await reglas.recalcular(db, entrega, tarea)
 
     avisados = 0
-    mensaje = reglas.mensaje_de_devolucion(
+    mensaje = reglas.mensaje_de_reapertura(
         current_user.full_name, tarea.titulo, barra.nombre, nombre, payload.comentario,
     )
     for uid in await reglas.destinatarios_de_la_tarjeta(db, tarea, barra.mundo):
@@ -1995,7 +2136,7 @@ async def _tarjetas(db: AsyncSession, filas, usuario: User, hoy=None) -> list[di
             "entrega": resumenes.get(t.id),
             "miniatura": miniaturas.get(ultima[0]) if ultima else None,
             "puedo": {
-                "entregar": quien.entrega and e.momento in ("produccion", "cambios") and not cancelada,
+                "entregar": quien.entrega and e.momento in ("produccion", "cambios", "revision") and not cancelada,
                 "decidir": decide,
                 "mover": reglas.destinos_posibles(
                     columna, quien, hay_versiones=ultima is not None, vuelve_a=reglas.columna_al_desarchivar(e),
@@ -2159,14 +2300,17 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
       mundo que se mira (ver `_tiempos` y reglas.analisis_por_agencia)."""
     mundos = mundos_de(usuario)
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
-    # Las rondas con el OK para avanzar (25/11/2026) no son retrabajo: la
+    # Las rondas con el OK para avanzar (25/11/2026) y las que la agencia
+    # reemplazó antes de que las revisaran (ir y venir, el mismo día) no son
+    # retrabajo: la
     # agencia entregó por partes (primero el KV, después el resto), nadie le
     # pidió que corrija nada. Se descuentan de la ronda en que se aprobó: un
     # KV con OK y el resto aprobado a la primera es «a la primera».
     otra = aliased(CalendarioVersion)
     con_ok = (
         select(func.count()).select_from(otra)
-        .where(otra.fase_id == CalendarioVersion.fase_id, otra.estado == reglas.AVANZAR,
+        .where(otra.fase_id == CalendarioVersion.fase_id,
+               otra.estado.in_((reglas.AVANZAR, reglas.REEMPLAZADA)),
                otra.ronda < CalendarioVersion.ronda)
         .correlate(CalendarioVersion).scalar_subquery()
     )
