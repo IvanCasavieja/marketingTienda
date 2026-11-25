@@ -12,7 +12,10 @@ from app.core.database import get_db
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token
+from app.core.security import (
+    create_access_token, create_refresh_token, decode_token, hash_password_async, necesita_actualizar,
+    verify_password_async,
+)
 from app.core.deps import get_current_user, _needs_password_change, client_ip as _client_ip
 from app.models.user import User
 from app.core import alcance
@@ -121,7 +124,7 @@ async def login(payload: UserLogin, request: Request, response: Response, db: As
         # genérico ya avisa del bloqueo.
         raise HTTPException(status_code=401, detail=_CREDENCIALES_INVALIDAS)
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user or not await verify_password_async(payload.password, user.hashed_password):
         if user:
             user.failed_login_attempts += 1
             if user.failed_login_attempts >= _LOGIN_FAIL_LIMIT:
@@ -137,6 +140,10 @@ async def login(payload: UserLogin, request: Request, response: Response, db: As
 
     user.failed_login_attempts = 0
     user.locked_until = None
+    # La contraseña guardada con el cifrado de antes (más pesado) se pasa al
+    # de hoy, ya que la tenemos en la mano: el próximo ingreso es más rápido.
+    if necesita_actualizar(user.hashed_password):
+        user.hashed_password = await hash_password_async(payload.password)
     db.add(user)
     db.add(AuditLog(user_id=user.id, action="user.login", ip_address=_client_ip(request)))
 
@@ -313,7 +320,7 @@ async def reset_password(
         raise HTTPException(status_code=400, detail="Token inválido o expirado")
     reset_token, user = row
 
-    user.hashed_password = hash_password(payload.new_password)
+    user.hashed_password = await hash_password_async(payload.new_password)
     user.tokens_invalidated_at = now
     user.password_changed_at = now
     user.must_change_password = False  # la eligió el propio dueño de la cuenta
@@ -352,13 +359,13 @@ async def change_password(
             detail="Los usuarios de sucursal no pueden cambiar su propia contraseña — pedile a un administrador que la resetee",
         )
 
-    if not verify_password(payload.current_password, current_user.hashed_password):
+    if not await verify_password_async(payload.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="La contraseña actual no es correcta")
     if payload.new_password == payload.current_password:
         raise HTTPException(status_code=400, detail="La nueva contraseña tiene que ser distinta de la actual")
 
     now = datetime.now(timezone.utc)
-    current_user.hashed_password = hash_password(payload.new_password)
+    current_user.hashed_password = await hash_password_async(payload.new_password)
     current_user.tokens_invalidated_at = now
     current_user.password_changed_at = now
     current_user.must_change_password = False
