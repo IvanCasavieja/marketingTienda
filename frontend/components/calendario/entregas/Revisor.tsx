@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
-  Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2,
+  ArrowRight, Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import { imagenParaComparar } from '@/lib/calendario/comparar'
 import {
-  fechaYHora, type DetalleEntregas, type Marca, type TipoDecision, type Version,
+  botonGrandeAlRevisar, fechaYHora, textoDeAprobar, type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
   VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, puntosParaMostrar, textoConArchivo, tieneLugar,
@@ -76,9 +76,14 @@ function pinesDe(marcas: Marca[], imagenId: string): Pin[] {
  * (queda un pin numerado con su texto) y decidir. Se puede comparar con la
  * versión anterior: lado a lado en la notebook, con pestañas en el teléfono.
  *
- * Dos botones y nada más (19/11/2026: se sacó «Aprobado con cambios», que
- * confundía): sin marcas, «Aprobar»; con marcas, «Pedir cambios» y la pieza
- * vuelve a la agencia. La línea de arriba de los botones dice cuál va.
+ * Se sacó «Aprobado con cambios» (19/11/2026), que confundía: con marcas,
+ * «Pedir cambios» y la pieza vuelve a la agencia. Sin marcas, «Avanzar» (Ivan,
+ * 25/11/2026: "si bien se hizo un pedido de muchos banners, ellos primero
+ * deben pasarme uno para aprobar y luego trabajar en el resto"): el OK a esa
+ * ronda, la agencia sigue con lo que falta y nada se cierra. «Aprobar y
+ * terminar» queda abajo, chico, para cuando ya está todo; si ya vinieron todas
+ * las piezas del pedido, se invierten (ver botonGrandeAlRevisar). La línea de
+ * arriba de los botones dice qué hace cada uno.
  *
  * Lo que hay que mirar va todo junto y abierto, en el costado (en el
  * teléfono, arriba de la imagen): las piezas del pedido que faltan, lo que
@@ -265,6 +270,14 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // Lo que hay que mirar, todo junto en el costado (24/11/2026): si algo
   // está mal, el bloque va con borde rojo.
   const faltanPiezas = (version.faltan?.length ?? 0) > 0
+  // El botón grande (25/11/2026): Avanzar, salvo que ya estén todas las piezas.
+  const grande = botonGrandeAlRevisar(detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan)
+  const esUltimaFase = detalle.fases[detalle.fases.length - 1]?.id === version.faseId
+  const turno = detalle.resumen.aprobadorDeTurno
+  const lugarEnLaCadena = turno != null ? detalle.aprobadores.indexOf(turno) : -1
+  const textoAprobar = textoDeAprobar(
+    esUltimaFase, lugarEnLaCadena === -1 ? 0 : detalle.aprobadores.length - lugarEnLaCadena - 1,
+  )
   const algoMal = faltanPiezas
     || (revisionIA?.estado === 'lista' && revisionIA.observaciones.some(o => o.estado === 'nueva'))
     || !!puntos?.puntos.some(p => p.veredicto !== 'hecho')
@@ -351,7 +364,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       })
       const texto = decision === 'cambios'
         ? 'Listo: volvió a la agencia con tus marcas.'
-        : data.resultado === 'aprobada'
+        : decision === 'avanzar'
+          ? 'Listo: le diste el OK. Sigue con lo que falta.'
+          : data.resultado === 'aprobada'
           ? (data.entrega?.momento === 'aprobada' ? '¡Aprobada! Era la última fase: la tarea quedó hecha.' : `Aprobaste ${fase?.nombre ?? 'la fase'}: ahora le toca a la agencia la siguiente.`)
           : 'Aprobaste tu parte: ahora la revisa el siguiente de la cadena.'
       toast.success(texto)
@@ -795,7 +810,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               <p className="flex-1 text-xs text-slate-600 dark:text-slate-400">
                 {hayMarcas
                   ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios».'
-                  : '¿Está bien? Aprobala. ¿Hay algo para cambiar? Tocá la imagen donde está.'}
+                  : grande === 'avanzar'
+                    ? '«Avanzar»: va bien y sigue con lo que falta. ¿Algo para cambiar? Tocá la imagen.'
+                    : 'Ya están todas las piezas del pedido. ¿Algo para cambiar? Tocá la imagen.'}
               </p>
               <button
                 type="button"
@@ -815,23 +832,53 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               >
                 Cancelar
               </button>
-              <div className="grid flex-1 grid-cols-2 gap-2 sm:ml-auto sm:flex sm:flex-none">
-                <BotonDecision
-                  onClick={() => void decidir('aprobada')} cargando={enviando === 'aprobada'}
-                  deshabilitado={!!enviando || hayMarcas}
-                  titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : undefined}
-                  clase="bg-emerald-600 text-white hover:bg-emerald-700"
-                  icono={<Check className="h-4 w-4" strokeWidth={3} />}
-                  texto="Aprobar"
-                />
-                <BotonDecision
-                  onClick={() => void decidir('cambios')} cargando={enviando === 'cambios'}
-                  deshabilitado={!!enviando || !hayParaQuienEntrega}
-                  titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué cambiar' : undefined}
-                  clase="bg-rose-600 text-white hover:bg-rose-700"
-                  icono={<RotateCcw className="h-4 w-4" />}
-                  texto="Pedir cambios"
-                />
+              <div className="flex flex-1 flex-col gap-1 sm:ml-auto sm:flex-none">
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                  <BotonDecision
+                    onClick={() => void decidir('cambios')} cargando={enviando === 'cambios'}
+                    deshabilitado={!!enviando || !hayParaQuienEntrega}
+                    titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué cambiar' : undefined}
+                    clase="bg-rose-600 text-white hover:bg-rose-700"
+                    icono={<RotateCcw className="h-4 w-4" />}
+                    texto="Pedir cambios"
+                  />
+                  {grande === 'avanzar' ? (
+                    <BotonDecision
+                      onClick={() => void decidir('avanzar')} cargando={enviando === 'avanzar'}
+                      deshabilitado={!!enviando || hayMarcas}
+                      titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : 'Va bien: la agencia sigue con lo que falta'}
+                      clase="bg-emerald-600 text-white hover:bg-emerald-700"
+                      icono={<Check className="h-4 w-4" strokeWidth={3} />}
+                      texto="Avanzar"
+                    />
+                  ) : (
+                    <BotonDecision
+                      onClick={() => void decidir('aprobada')} cargando={enviando === 'aprobada'}
+                      deshabilitado={!!enviando || hayMarcas}
+                      titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : undefined}
+                      clase="bg-emerald-600 text-white hover:bg-emerald-700"
+                      icono={<Check className="h-4 w-4" strokeWidth={3} />}
+                      texto={textoAprobar}
+                    />
+                  )}
+                </div>
+                {/* La otra salida, chica (Ivan, 25/11/2026: «¿Ya está todo?
+                    Aprobar y terminar»; si ya vino todo, al revés). */}
+                <button
+                  type="button"
+                  onClick={() => void decidir(grande === 'avanzar' ? 'aprobada' : 'avanzar')}
+                  disabled={!!enviando || hayMarcas}
+                  className="flex min-h-[36px] items-center justify-end gap-1 self-end rounded-lg px-2 text-[13px] text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {enviando && enviando !== 'cambios' && enviando !== (grande === 'avanzar' ? 'avanzar' : 'aprobada')
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : null}
+                  <span>{grande === 'avanzar' ? '¿Ya está todo?' : '¿Falta algo?'}</span>
+                  <span className="font-bold text-emerald-700 underline underline-offset-2 dark:text-emerald-300">
+                    {grande === 'avanzar' ? textoAprobar : 'Avanzar'}
+                  </span>
+                  {grande === 'terminar' && <ArrowRight className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />}
+                </button>
               </div>
             </div>
           </>

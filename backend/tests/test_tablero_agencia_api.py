@@ -3977,3 +3977,78 @@ def test_lo_que_falta_del_pedido_viaja_con_la_entrega_y_lo_ven_quien_aprueba_y_l
             v1 = await s.get(CalendarioVersion, f"ve-1-{d.sufijo}")
             assert v1.faltan == ["Header (mobile)", "Checkout"] and v1.por_que_faltan == "Es el KV, para aprobarlo antes"
     correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# «Avanzar» (Ivan, 25/11/2026): "si bien se hizo un pedido de muchos banners,
+# ellos primero deben pasarme uno para aprobar y luego trabajar en el resto"
+# ---------------------------------------------------------------------------
+
+def test_avanzar_devuelve_la_ronda_con_el_ok_y_la_tarea_sigue_abierta():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        lucia, a1, lider = Cliente(d.http, d.lucia), Cliente(d.http, d.a1), Cliente(d.http, d.lider)
+        v1, v2 = f"ve-av1-{d.sufijo}", f"ve-av2-{d.sufijo}"
+        assert (await _entregar_link(a1, tarea_id, v1)).status_code == 201
+        r = await _decidir(lucia, v1, "avanzar")
+        assert r.status_code == 200, r.text
+        assert r.json()["resultado"] == "avanzar"
+        assert r.json()["entrega"]["momento"] == "produccion" and r.json()["entrega"]["ronda"] == 1
+
+        # A la agencia le toca entregar lo que falta: En proceso, con el aviso.
+        t = await _tarjeta(a1, tarea_id)
+        assert t["columna"] == "en-proceso" and t["puedo"]["entregar"] is True
+        avisos = [n for n in await _avisos(d, d.a1, tarea_id) if n.origen_ref.endswith(":avanzar")]
+        assert len(avisos) == 1 and "dio el OK a la ronda 1" in avisos[0].mensaje
+        assert "avanzá con lo que falta" in avisos[0].mensaje
+        # La tarea no se cerró y a quien la pidió no le llega «hecha».
+        assert await _estado(d, tarea_id) == "en-proceso"
+        assert not [n for n in await _avisos(d, d.lucia, tarea_id) if n.origen_ref.endswith(":hecha")]
+        # En la historia: la ronda con el OK, distinta de aprobada.
+        det = await _detalle(lucia, tarea_id)
+        version = det["fases"][0]["versiones"][0]
+        assert version["estado"] == "avanzar"
+        assert [x["decision"] for x in version["decisiones"]] == ["avanzar"]
+        assert det["fases"][0]["estado"] == "en-curso"
+
+        # La ronda 2 trae el resto y se aprueba: ahí sí termina.
+        assert (await _entregar_link(a1, tarea_id, v2)).status_code == 201
+        r = await _decidir(lucia, v2, "aprobada")
+        assert r.status_code == 200 and r.json()["entrega"]["momento"] == "aprobada"
+        assert await _estado(d, tarea_id) == "hecha"
+
+        # En el análisis, el OK no es retrabajo: aprobada «a la primera».
+        m = (await lider.get("/calendario/entregas/metricas", params={"mundo": MUNDO})).json()
+        assert m["fases"] == 1 and m["rondasPromedio"] == 1.0 and m["aLaPrimera"] == 100
+    correr(prueba)
+
+
+def test_avanzar_tiene_las_mismas_reglas_que_aprobar():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lider)
+        lider, marca, lucia, a1 = (Cliente(d.http, u) for u in (d.lider, d.aprob2, d.lucia, d.a1))
+        r = await lider.put(f"/calendario/tareas/{tarea_id}/entregas", json={
+            "tipoPieza": "banner", "aprobadores": [d.aprob2.id, d.lucia.id], "fases": [{"nombre": "Entrega"}]})
+        assert r.status_code == 200, r.text
+        v1 = f"ve-avr-{d.sufijo}"
+        assert (await _entregar(a1, tarea_id, v1, imagenes=1)).status_code == 201
+        imagen = (await _detalle(lider, tarea_id))["fases"][0]["versiones"][0]["imagenes"][0]["id"]
+        # La agencia no decide.
+        assert (await _decidir(a1, v1, "avanzar")).status_code == 403
+        # A Lucía todavía no le toca: primero Marca.
+        r = await _decidir(lucia, v1, "avanzar")
+        assert r.status_code == 403 and "no te toca" in r.text
+        # Con marcas, «Avanzar» las perdería: se pide cambios.
+        r = await marca.post(f"/calendario/versiones/{v1}/decision", json={
+            "decision": "avanzar", "marcas": [{"imagenId": imagen, "x": 0.5, "y": 0.5, "texto": "El logo"}]})
+        assert r.status_code == 422 and "Avanzar" in r.text
+        # Marca da el OK: la ronda vuelve a la agencia; la cadena no sigue con Lucía.
+        r = await _decidir(marca, v1, "avanzar")
+        assert r.status_code == 200 and r.json()["resultado"] == "avanzar"
+        t = await _tarjeta(lucia, tarea_id)
+        assert t["columna"] == "en-proceso" and t["puedo"]["decidir"] is False
+        assert not [n for n in await _avisos(d, d.lucia, tarea_id) if "Te toca revisarla" in n.mensaje]
+        # Ya decidida: otro OK llega tarde.
+        r = await _decidir(lider, v1, "avanzar")
+        assert r.status_code == 409
+    correr(prueba)

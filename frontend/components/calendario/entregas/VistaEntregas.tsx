@@ -703,6 +703,8 @@ const ESTADO_VERSION = {
   revision: { texto: 'En revisión', tono: 'text-slate-700 dark:text-slate-300' },
   aprobada: { texto: 'Aprobada', tono: 'text-emerald-700 dark:text-emerald-300' },
   cambios: { texto: 'Volvió con cambios', tono: 'text-rose-700 dark:text-rose-300' },
+  // El OK para avanzar con lo que falta (25/11/2026): no es «Aprobada».
+  avanzar: { texto: 'OK para avanzar', tono: 'text-emerald-700 dark:text-emerald-300' },
 } as const
 
 /**
@@ -921,7 +923,7 @@ function Decisiones({ detalle, version }: { detalle: DetalleEntregas; version: V
             {d.decision === 'cambios'
               ? <RotateCcw className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" aria-hidden />
               : <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={3} aria-hidden />}
-            <span className="font-semibold">{nombreDe(d.aprobador)} {etiquetaDecision(d.decision).toLowerCase()}</span>
+            <span className="font-semibold">{nombreDe(d.aprobador)} {etiquetaDecision(d.decision).replace(/^./, c => c.toLowerCase())}</span>
             {d.decididoPor !== d.aprobador && d.decididoPor != null && (
               <span className="text-xs text-slate-500 dark:text-slate-400">(decidió {nombreDe(d.decididoPor)} como respaldo)</span>
             )}

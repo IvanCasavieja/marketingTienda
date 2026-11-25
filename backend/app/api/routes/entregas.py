@@ -77,6 +77,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import LargeBinary, String, and_, delete, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.routes.calendario import (
     _ID, _exigir_gestion_de_tareas, _nueva_revision, _puede_gestionar_tareas, _puede_ver_el_mundo,
@@ -1376,7 +1377,7 @@ class MarcaNueva(BaseModel):
 
 
 class DecisionNueva(BaseModel):
-    # 'aprobada' o 'cambios' (reglas.DECISIONES). Es un texto y no un Literal
+    # 'aprobada', 'cambios' o 'avanzar' (reglas.DECISIONES). Es un texto y no un Literal
     # a propósito: así el 422 de «aprobado con cambios» (que ya no existe,
     # 19/11/2026) lleva un mensaje para la persona y no el genérico de
     # pydantic. Lo controla reglas.validar_decision al decidir.
@@ -1515,17 +1516,20 @@ async def _aplicar_decision(
     arrastrando la tarjeta en el tablero (POST /mover): las reglas de la
     cadena son una sola. No hace commit. Devuelve (resultado de la versión, a
     cuántos se avisó). `decision` ya viene validada (reglas.validar_decision):
-    'aprobada' o 'cambios'."""
+    'aprobada', 'cambios' o 'avanzar' (el OK a la ronda para que la agencia
+    siga con lo que falta, 25/11/2026: no aprueba la fase)."""
     comentario = (comentario or "").strip() or None
     nota_interna = (nota_interna or "").strip() or None
-    if decision == "aprobada" and marcas:
+    if decision in ("aprobada", reglas.AVANZAR) and marcas:
         # Con marcas no hay aprobación: desde el 19/11/2026 una marca es
-        # siempre algo que la agencia tiene que corregir en otra ronda.
+        # siempre algo que la agencia tiene que corregir en otra ronda. Lo
+        # mismo con el OK para avanzar.
+        boton = "Aprobar" if decision == "aprobada" else "Avanzar"
         raise HTTPException(
             status_code=422,
-            detail="Con marcas, elegí «Pedir cambios»: «Aprobar» las perdería",
+            detail=f"Con marcas, elegí «Pedir cambios»: «{boton}» las perdería",
         )
-    if decision != "aprobada" and not marcas and not comentario:
+    if decision == "cambios" and not marcas and not comentario:
         # La nota interna no cuenta: quien entrega no la ve, y no sabría qué cambiar.
         raise HTTPException(status_code=422, detail="Decí qué hay que cambiar: poné una marca sobre la imagen o un comentario")
 
@@ -1578,7 +1582,7 @@ async def _aplicar_decision(
 
     resultado = reglas.resultado_de_version(aprobadores, previas + [(aprobador, decision)])
     fase = await db.get(CalendarioFase, version.fase_id)
-    if resultado in ("aprobada", "cambios"):
+    if resultado in ("aprobada", "cambios", reglas.AVANZAR):
         version.estado = resultado
         version.decidida_at = ahora
     if resultado == "aprobada":
@@ -1614,6 +1618,13 @@ async def _aplicar_decision(
             await avisar(uid, reglas.mensaje_de_cambios(
                 quien, version.ronda, fase.nombre, tarea.titulo, len(marcas),
             ), "cambios")
+    elif resultado == reglas.AVANZAR:
+        # El OK para avanzar (25/11/2026): a quien la hace, que siga con lo
+        # que falta. La fase no se aprobó: nada para quien la pidió.
+        for uid in quienes_la_hacen:
+            await avisar(uid, reglas.mensaje_de_avanzar(
+                quien, version.ronda, tarea.titulo, comentario,
+            ), "avanzar")
     else:
         terminada = entrega.momento == "aprobada"
         siguiente_fase = None
@@ -2148,9 +2159,20 @@ async def _metricas(db: AsyncSession, usuario: User, mundo: str, dias: int) -> d
       mundo que se mira (ver `_tiempos` y reglas.analisis_por_agencia)."""
     mundos = mundos_de(usuario)
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
+    # Las rondas con el OK para avanzar (25/11/2026) no son retrabajo: la
+    # agencia entregó por partes (primero el KV, después el resto), nadie le
+    # pidió que corrija nada. Se descuentan de la ronda en que se aprobó: un
+    # KV con OK y el resto aprobado a la primera es «a la primera».
+    otra = aliased(CalendarioVersion)
+    con_ok = (
+        select(func.count()).select_from(otra)
+        .where(otra.fase_id == CalendarioVersion.fase_id, otra.estado == reglas.AVANZAR,
+               otra.ronda < CalendarioVersion.ronda)
+        .correlate(CalendarioVersion).scalar_subquery()
+    )
     consulta = (
         select(CalendarioEntrega.tipo_pieza, CalendarioVersion.subida_por_id, CalendarioBarra.mundo,
-               CalendarioVersion.ronda, CalendarioTarea.para, CalendarioTarea.agencia)
+               CalendarioVersion.ronda - con_ok, CalendarioTarea.para, CalendarioTarea.agencia)
         .select_from(CalendarioVersion)
         .join(CalendarioTarea, CalendarioTarea.id == CalendarioVersion.tarea_id)
         .join(CalendarioEntrega, CalendarioEntrega.tarea_id == CalendarioTarea.id)
