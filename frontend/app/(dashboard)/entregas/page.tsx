@@ -479,10 +479,13 @@ export default function TableroPage() {
     ...c,
     lista: ordenar(tarjetas.filter(t => t.columna === c.clave), c.clave, meToca),
   }));
-  // En el teléfono se ve una columna: la que tiene algo mío, o la primera con algo.
+  // En el teléfono se ve una columna: la que tiene algo que me volvió con
+  // cambios (H-038 de la auditoría del 25/11/2026: la agencia abría en
+  // «Ingresado» y no veía lo devuelto), la que tiene algo mío, o la primera con algo.
+  const conCambiosParaMi = columnas.find(c => c.clave !== "archivado" && c.lista.some(t => t.volvioConCambios && meToca(t)))?.clave;
   const conMiTurno = columnas.find(c => c.clave !== "archivado" && c.lista.some(meToca))?.clave;
   const conAlgo = columnas.find(c => c.lista.length > 0)?.clave;
-  const activa: Columna = pestana ?? conMiTurno ?? conAlgo ?? "ingresado";
+  const activa: Columna = pestana ?? conCambiosParaMi ?? conMiTurno ?? conAlgo ?? "ingresado";
   const totalArchivadas = filtro ? columnas[4].lista.length : (delMundo?.archivadas.total ?? 0);
 
   return (
@@ -551,14 +554,17 @@ export default function TableroPage() {
 
           {/* En el teléfono no entran cinco columnas: se elige cuál ver. */}
           <div className="segmentado mb-3 md:hidden" role="tablist" aria-label="Columna del tablero">
-            {columnas.map(c => (
+            {columnas.map(c => {
+              // Y la pestaña lo dice, para verlo desde cualquier columna (H-038).
+              const volvieron = c.clave === "archivado" ? 0 : c.lista.filter(t => t.volvioConCambios).length;
+              return (
               <button
                 key={c.clave}
                 type="button"
                 role="tab"
                 aria-selected={activa === c.clave}
                 onClick={() => setPestana(c.clave)}
-                title={c.titulo}
+                title={volvieron > 0 ? `${c.titulo}: ${volvieron === 1 ? "1 volvió" : `${volvieron} volvieron`} con cambios` : c.titulo}
                 // En 12 px y sin cortar el nombre: si no entra (un teléfono
                 // angosto, la letra agrandada), pasa a dos renglones.
                 className="segmento !min-h-[48px] !flex-1 !px-0.5 flex-col !gap-0 text-xs leading-tight"
@@ -566,10 +572,17 @@ export default function TableroPage() {
                 <span className="flex items-center gap-1 font-bold tabular-nums">
                   <span className={`h-1.5 w-1.5 rounded-full ${c.punto}`} aria-hidden />
                   {c.clave === "archivado" ? totalArchivadas : c.lista.length}
+                  {volvieron > 0 && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-rose-100 px-1 text-[11px] text-rose-800 dark:bg-rose-500/20 dark:text-rose-200">
+                      <RotateCcw className="h-2.5 w-2.5" aria-hidden />{volvieron}
+                      <span className="sr-only">{volvieron === 1 ? " volvió" : " volvieron"} con cambios</span>
+                    </span>
+                  )}
                 </span>
                 <span className="w-full break-words">{c.clave === "esperando" ? "Feedback" : c.titulo}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex gap-3 md:overflow-x-auto md:pb-2">
