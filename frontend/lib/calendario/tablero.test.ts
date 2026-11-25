@@ -14,7 +14,10 @@ import {
   seMovioElDedo, sePuedeSoltar, tableroDeTarjeta, textoDeFecha,
 } from './tablero'
 import { diaEnUruguay } from './fechas'
-import { etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, type ResumenEntrega, type Tarjeta } from './entregas'
+import {
+  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, textoDeAprobar,
+  type ResumenEntrega, type Tarjeta,
+} from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
 let fallos = 0
@@ -253,6 +256,24 @@ igual('sin pedido, entero', detalleSinPedido(' Algo ', null), 'Algo')
 // ronda vieja que la trae se lee como aprobada, que es lo que fue).
 igual('cómo se lee cada decisión', [etiquetaDecision('aprobada'), etiquetaDecision('cambios'), etiquetaDecision('aprobada-con-cambios')],
   ['Aprobó', 'Pidió cambios', 'Aprobó'])
+// «Avanzar» (Ivan, 25/11/2026): el OK a una ronda, la agencia sigue con lo que falta.
+igual('cómo se lee el OK', etiquetaDecision('avanzar'), 'Dio el OK para avanzar')
+const conElOk: ResumenEntrega = { ...enRevision, momento: 'produccion', ronda: 1, aprobadorDeTurno: null }
+igual('con el OK: le toca a la agencia y ya hubo una ronda', [conOk(conElOk), conOk(devuelta), conOk(enRevision)], [true, false, false])
+const aLaAgencia = proximoPaso(conElOk, null, 3, nombreDe, false, { entregoYo: true })
+igual('a la agencia se le dice que le dieron el OK', [aLaAgencia.texto, aLaAgencia.accion],
+  ['Te dieron el OK: entregá lo que falta (ronda 2)', 'entregar'])
+igual('al equipo, que le toca a la agencia lo que falta',
+  proximoPaso(conElOk, null, 7, nombreDe, false, { hace: { tipo: 'agencia', nombre: 'Publicis' } }).texto,
+  'Le toca a Publicis: entregar lo que falta (ronda 2)')
+igual('la fase dice que tuvo el OK', estadoDeFase(conElOk.fases[0], conElOk).texto, 'OK a la ronda 1 · falta lo demás')
+// El botón grande al revisar: Avanzar, salvo que ya estén todas las piezas.
+igual('faltan piezas: Avanzar', botonGrandeAlRevisar(4, 1, ['Header (mobile)']), 'avanzar')
+igual('no se sabe (el pedido no tiene piezas): Avanzar', botonGrandeAlRevisar(0, 2, undefined), 'avanzar')
+igual('solo un link: Avanzar', botonGrandeAlRevisar(4, 0, undefined), 'avanzar')
+igual('vino todo: Aprobar y terminar', botonGrandeAlRevisar(4, 4, []), 'terminar')
+igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
+  ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
 // El día de cada ronda, en el renglón cerrado.
 igual('el día de una ronda', [fechaDia(null), fechaDia('x'), fechaDia('2026-11-19T12:00:00')], ['', '', '19/11'])
 

@@ -24,11 +24,12 @@ export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
 /** Las columnas del tablero: le toca a la agencia, a un aprobador, volvió, terminó. */
 export type MomentoEntrega = 'produccion' | 'revision' | 'cambios' | 'aprobada'
 export type EstadoFase = 'pendiente' | 'en-curso' | 'aprobada'
-export type EstadoVersion = 'revision' | 'aprobada' | 'cambios'
-/** Dos decisiones y nada más (19/11/2026): se sacó «Aprobado con cambios»,
- *  que confundía. Con marcas la pieza vuelve a la agencia; sin marcas, se
- *  aprueba. El servidor hace lo mismo. */
-export type TipoDecision = 'aprobada' | 'cambios'
+export type EstadoVersion = 'revision' | 'aprobada' | 'cambios' | 'avanzar'
+/** Se sacó «Aprobado con cambios» (19/11/2026), que confundía. Con marcas la
+ *  pieza vuelve a la agencia; sin marcas, «Avanzar» (25/11/2026: el OK a esa
+ *  ronda para que siga con lo que falta, sin cerrar nada) o «Aprobar y
+ *  terminar». El servidor hace lo mismo. */
+export type TipoDecision = 'aprobada' | 'cambios' | 'avanzar'
 
 /** Las columnas del tablero estilo Trello (16/11/2026). La calcula el
  *  servidor (backend/app/services/entregas.py: columna_de). */
@@ -353,13 +354,44 @@ export const TONO_MOMENTO: Record<MomentoEntrega, string> = {
 export const ETIQUETA_DECISION: Record<TipoDecision, string> = {
   aprobada: 'Aprobó',
   cambios: 'Pidió cambios',
+  avanzar: 'Dio el OK para avanzar',
 }
 
 /** Qué decidió alguien, para leer: "Pidió cambios" o "Aprobó". Una ronda
  *  vieja puede traer «Aprobado con cambios» (sacada el 19/11/2026): se lee
  *  como aprobada, que es lo que fue. */
 export function etiquetaDecision(decision: Decision['decision']): string {
-  return decision === 'cambios' ? ETIQUETA_DECISION.cambios : ETIQUETA_DECISION.aprobada
+  if (decision === 'cambios' || decision === 'avanzar') return ETIQUETA_DECISION[decision]
+  return ETIQUETA_DECISION.aprobada
+}
+
+/**
+ * Si a quien la hace le dieron el OK para avanzar (25/11/2026): le toca
+ * entregar y la fase en curso ya tiene rondas. Solo pasa después de
+ * «Avanzar»: con cambios el momento es 'cambios', y una fase nueva arranca
+ * sin rondas. Lo mismo que reglas.con_ok en el servidor. Pura.
+ */
+export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boolean {
+  return resumen.momento === 'produccion' && resumen.ronda > 0
+}
+
+/**
+ * El botón grande al revisar (Ivan, 25/11/2026): «Avanzar», salvo que ya
+ * estén todas las piezas del pedido; ahí, «Aprobar y terminar». Se sabe que
+ * están todas cuando el pedido tiene piezas, la ronda trae imágenes y no
+ * faltó ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar:
+ * no cierra nada. Pura.
+ */
+export function botonGrandeAlRevisar(
+  piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined,
+): 'avanzar' | 'terminar' {
+  return piezasPedidas > 0 && imagenes > 0 && !(faltan?.length) ? 'terminar' : 'avanzar'
+}
+
+/** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase
+ *  y no queda nadie después en la cadena. Si no, «Aprobar». Pura. */
+export function textoDeAprobar(esUltimaFase: boolean, quedanDespuesEnLaCadena: number): string {
+  return esUltimaFase && quedanDespuesEnLaCadena <= 0 ? 'Aprobar y terminar' : 'Aprobar'
 }
 
 /** "Fase 1 · Boceto": el estado de cada fase en una línea corta. */
@@ -372,6 +404,7 @@ export function estadoDeFase(
   if (fase.estado === 'pendiente') return { texto: 'Pendiente', tono: 'pendiente' }
   if (resumen.momento === 'revision') return { texto: `En revisión · ronda ${resumen.ronda}`, tono: 'actual' }
   if (resumen.momento === 'cambios') return { texto: `Con cambios · ronda ${resumen.ronda}`, tono: 'cambios' }
+  if (conOk(resumen)) return { texto: `OK a la ronda ${resumen.ronda} · falta lo demás`, tono: 'actual' }
   return { texto: resumen.ronda === 0 ? 'En producción' : `En producción · ronda ${resumen.ronda + 1}`, tono: 'actual' }
 }
 
@@ -437,10 +470,14 @@ export function proximoPaso(
     }
   }
   const ronda = resumen.ronda + 1
+  const ok = conOk(resumen)
   const que = resumen.momento === 'cambios'
     ? `corregir y entregar la ronda ${ronda}${deFase}`
-    : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la ronda ${ronda}${deFase}`
+    : ok ? `entregar lo que falta (ronda ${ronda}${deFase})`
+      : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la ronda ${ronda}${deFase}`
   const soyYo = quien.entregoYo ?? (usuarioId != null && responsableId === usuarioId)
+  // Con el OK para avanzar (25/11/2026), a quien entrega se le dice así.
+  if (soyYo && ok) return { texto: `Te dieron el OK: entregá lo que falta (ronda ${ronda}${deFase})`, accion: 'entregar', aQuien: 'vos' }
   if (soyYo) return { texto: `Te toca: ${que}`, accion: 'entregar', aQuien: 'vos' }
   // Una agencia (de la plataforma o de afuera) se nombra por la agencia.
   if (quien.hace && quien.hace.tipo !== 'tienda' && quien.hace.nombre) {
