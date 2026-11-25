@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 34 abiertos (24 confirmados, 10 para confirmar) · 0 en curso · 1 hecho · 0 descartados. Última noche: 25/11/2026 (miércoles, locales y Redexpres): 16 nuevos (🟠 6 · 🟡 9 · ⚪ 1).
+**Resumen:** 31 abiertos (21 confirmados, 10 para confirmar) · 3 en curso · 1 hecho · 0 descartados. Última noche: 25/11/2026 (miércoles, locales y Redexpres): 16 nuevos (🟠 6 · 🟡 9 · ⚪ 1).
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -13,12 +13,6 @@ en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detal
 > pantalla antes de trabajarlos.
 
 ## En curso
-
-_Nada._ (La rama de anoche ya está en `main`: ver Hechos.)
-
-## Abiertos (de más a menos importante)
-
-> Orden del 25/11: arriba el paquete propuesto para la noche (Redexpres: H-020, H-021, H-009); después por gravedad × gente × frecuencia ÷ esfuerzo; al final los «para confirmar».
 
 ### H-020 · Después de confirmar el pedido, queda trancado sin decirlo y sin saber cómo corregir
 - **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** Mi pedido `/redexpres/mi-pedido`, celular claro
@@ -29,6 +23,7 @@ _Nada._ (La rama de anoche ya está en `main`: ver Hechos.)
 - **Idea de arreglo:** pedir confirmación antes, y después mostrar los campos como bloqueados con un texto «Ya lo confirmaste. Si tenés que cambiar algo, pedile a <quién> que lo vuelva a abrir».
 - **Prueba a ciegas (Martina, 25/11):** abandonó. Tocó el 300 y escribió 30: no cambió, «números grisecitos», nada dice que está bloqueado; Notas libres tampoco deja; en «Más» no hay cómo pedir el cambio → «le mando un WhatsApp a marketing». Pidió un cartel «Ya confirmaste; para cambiarlo pedíselo a marketing». ![H-020 Martina](recorridos/2026-11-25/H-020-martina.jpg)
 - **Visto:** 25/11 (Martina a ciegas)
+- **Estado:** En curso desde 25/11/2026 · rama `nocturno/2026-11-25-redexpres-sin-trabas` (Ramiro: VERDE) · esperando el ok de Ivan.
 
 ### H-021 · La Planilla de Redexpres está escondida al fondo de Herramientas, debajo de Medios
 - **Gravedad:** 🟠 Traba · **Quién:** equipo de Redexpres · **Dónde:** menú lateral en el mundo Redexpres, notebook claro
@@ -39,6 +34,7 @@ _Nada._ (La rama de anoche ya está en `main`: ver Hechos.)
 - **Idea de arreglo:** en el mundo Redexpres, «Planilla de pedidos» arriba, junto a Colocación.
 - **Prueba a ciegas (Martina, 25/11):** lo logró con dificultad, 11 pasos (~5 dando vueltas): ningún «Pedidos» en el menú, entró a Cenefas creyendo que era el material, el menú corta en «Campañas» y no se nota que sigue; recién al fondo, abajo de Medios, encontró «Planilla de pedidos». La planilla en sí se entendió («1/60 confirmados», fila confirmada distinguible). Detalle: en las celdas vacías de otros locales aparecen cajitas editables y da miedo tocar algo. ![H-021 Martina](recorridos/2026-11-25/H-021-martina.jpg)
 - **Visto:** 25/11 (Martina a ciegas)
+- **Estado:** En curso desde 25/11/2026 · rama `nocturno/2026-11-25-redexpres-sin-trabas` (Ramiro: VERDE) · esperando el ok de Ivan.
 
 ### H-009 · Sin mes abierto, el local y la planilla muestran doce meses apagados y nada más
 - **Gravedad:** 🟠 Traba · **Quién:** local, equipo de Redexpres · **Dónde:** Mi pedido `/redexpres/mi-pedido` (celular) y Planilla `/redexpres/planilla` (notebook)
@@ -50,6 +46,11 @@ _Nada._ (La rama de anoche ya está en `main`: ver Hechos.)
 - **Idea de arreglo:** usar el texto de «todavía no hay meses» que ya existe y pedir confirmación al crear un mes tocándolo.
 - **Lucía (25/11):** en notebook los meses no abiertos se ven igual de apagados.
 - **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) (Lucía)
+- **Estado:** En curso desde 25/11/2026 · rama `nocturno/2026-11-25-redexpres-sin-trabas` (Ramiro: VERDE) · esperando el ok de Ivan.
+
+## Abiertos (de más a menos importante)
+
+> Orden del 25/11: el paquete de la noche (H-020, H-021, H-009) pasó a En curso; arriba lo que sigue, por gravedad × gente × frecuencia ÷ esfuerzo; al final los «para confirmar».
 
 ### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
 - **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
