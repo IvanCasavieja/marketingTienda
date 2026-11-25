@@ -5,7 +5,8 @@
  *     npm run test:calendario
  */
 import {
-  VEREDICTO_IA, archivoDe, cambiosPorMarca, marcaDesdeObservacion, ordenarObservaciones, puntosParaMostrar,
+  VEREDICTO_IA, agruparIguales, archivoDe, cambiosPorMarca, marcaDesdeObservacion, ordenarObservaciones, puntosParaMostrar,
+  textoDeImagenes,
   textoConArchivo, textoRevisados, tieneLugar, tituloRevisionIA,
   type CambioPedidoIA, type ObservacionIA, type PuntosPedidosIA, type RevisionIA,
 } from './revision-ia'
@@ -135,6 +136,21 @@ igual('lo que no tiene la forma esperada no se muestra', puntosParaMostrar(conPu
 igual('con puntos y sin observaciones, «nada nuevo»',
   tituloRevisionIA([], puntosParaMostrar(conPuntos({ inicial: true, puntos: [cta] })) != null),
   'La IA no encontró nada nuevo para marcar')
+
+console.log('Lo mismo en varias imágenes, una sola vez (25/11/2026)')
+{
+  const fecha = { tipo: 'precio_vigencia', gravedad: 'a_revisar', texto: 'Dice "Del 2 al 4 de diciembre"' }
+  const a = { ...fecha, id: 'a', abierta: true }
+  const b = { ...fecha, id: 'b', abierta: true, texto: '  dice "Del 2 al 4  de diciembre" ' }
+  const c = { tipo: 'ortografia', gravedad: 'importante', texto: 'OFERAT', id: 'c', abierta: true }
+  const d = { ...fecha, id: 'd', abierta: false }
+  const grupos = agruparIguales([a, c, b, d], x => x.abierta)
+  igual('las iguales van juntas, en el lugar de la primera', grupos.map(g => g.map(x => x.id)), [['a', 'b'], ['c'], ['d']])
+  igual('una ya cerrada no se junta', agruparIguales([d, a], x => x.abierta).map(g => g.length), [1, 1])
+  igual('otra gravedad no es lo mismo', agruparIguales([a, { ...a, id: 'e', gravedad: 'importante' }]).length, 2)
+  igual('textos de imágenes', [textoDeImagenes([2]), textoDeImagenes([2, 1]), textoDeImagenes([3, 1, 2, 2])],
+    ['la imagen 2', 'las imágenes 1 y 2', 'las imágenes 1, 2 y 3'])
+}
 
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nrevision-ia: todo bien')

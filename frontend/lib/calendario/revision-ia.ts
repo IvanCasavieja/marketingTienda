@@ -129,6 +129,38 @@ export function tituloRevisionIA(observaciones: ObservacionIA[], conCambiosPedid
 /** Las que siguen abiertas primero (las importantes antes), después las que
  *  ya son marca y al final las descartadas. Dentro de cada grupo, en el orden
  *  en que las dio la IA. */
+/**
+ * Junta las observaciones que dicen lo mismo (mismo tipo, gravedad y texto)
+ * en distintas imágenes (25/11/2026, Ivan: "¿se repiten?"). La IA mira cada
+ * imagen por separado y repetía lo mismo una vez por imagen («Dice "Del 2 al
+ * 4 de diciembre"…» en la 1 y en la 2). Solo junta las que `juntable` deja
+ * (las que siguen abiertas): una ya marcada o descartada va sola. Cada grupo
+ * queda donde estaba la primera.
+ */
+export function agruparIguales<T extends { tipo: string; texto: string; gravedad: string }>(
+  lista: T[], juntable: (o: T) => boolean = () => true,
+): T[][] {
+  const clave = (o: T) => `${o.tipo}|${o.gravedad}|${o.texto.replace(/\s+/g, ' ').trim().toLowerCase()}`
+  const grupos: T[][] = []
+  const porClave = new Map<string, T[]>()
+  for (const o of lista) {
+    if (!juntable(o)) { grupos.push([o]); continue }
+    const k = clave(o)
+    const grupo = porClave.get(k)
+    if (grupo) grupo.push(o)
+    else { const nuevo = [o]; porClave.set(k, nuevo); grupos.push(nuevo) }
+  }
+  return grupos
+}
+
+/** «la imagen 2», «las imágenes 1 y 2», «las imágenes 1, 2 y 3». */
+export function textoDeImagenes(numeros: number[]): string {
+  const n = [...new Set(numeros)].sort((a, b) => a - b)
+  if (n.length === 0) return ''
+  if (n.length === 1) return `la imagen ${n[0]}`
+  return `las imágenes ${n.slice(0, -1).join(', ')} y ${n[n.length - 1]}`
+}
+
 export function ordenarObservaciones(observaciones: ObservacionIA[]): ObservacionIA[] {
   const peso = (o: ObservacionIA) =>
     o.estado === 'descartada' ? 3 : o.estado === 'marca' ? 2 : o.gravedad === 'importante' ? 0 : 1
