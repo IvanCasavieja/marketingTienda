@@ -144,6 +144,8 @@ export type Tarea = {
   /** Si lleva entregas por fases (15/11/2026): en qué fase va y a quién le
    *  toca. Solo el resumen; la historia y las imágenes se piden al abrirla. */
   entrega?: ResumenEntrega
+  /** Cuántos archivos lleva el pedido (24/11/2026). Solo viene si tiene alguno. */
+  archivos?: number
 }
 
 /** Desde dónde se cuenta el vencimiento de una tarea de plantilla. */
