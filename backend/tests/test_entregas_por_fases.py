@@ -76,9 +76,10 @@ def test_una_decision_vieja_aprobada_con_cambios_se_sigue_leyendo_como_aprobada(
 
 def test_aprobado_con_cambios_ya_no_se_acepta():
     """Ivan (19/11/2026): "me resulta raro ese botón. No creo que sume nada".
-    Quedan 'aprobada' y 'cambios'; la decisión vieja se rechaza con un
+    Quedan 'aprobada' y 'cambios' (y, desde el 25/11/2026, 'avanzar': el OK a
+    una ronda sin aprobar la fase); la decisión vieja se rechaza con un
     mensaje que dice qué elegir en su lugar."""
-    assert DECISIONES == ("aprobada", "cambios")
+    assert DECISIONES == ("aprobada", "cambios", "avanzar")
     assert validar_decision("aprobada") == "aprobada"
     assert validar_decision(" cambios ") == "cambios"
     with pytest.raises(ValueError, match="ya no existe"):
