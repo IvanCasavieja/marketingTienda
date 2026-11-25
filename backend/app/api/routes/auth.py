@@ -20,6 +20,7 @@ from app.core.deps import get_current_user, _needs_password_change, client_ip as
 from app.models.user import User
 from app.core import alcance
 from app.core.mundos import mundos_de
+from app.services import agencias
 from app.models.audit_log import AuditLog
 from app.models.local_asignacion import LocalAsignacion
 from app.schemas.auth import (
@@ -69,7 +70,8 @@ def _clear_auth_cookies(response: Response) -> None:
 
 
 def _user_response(
-    user: User, assigned_locales: list[str] | None = None, must_change_password: bool = False
+    user: User, assigned_locales: list[str] | None = None, must_change_password: bool = False,
+    mundos: list[str] | None = None,
 ) -> UserResponse:
     role = user.role
     # Qué fechas del calendario ve hoy (0070): el menú y el aviso de arriba
@@ -86,7 +88,9 @@ def _user_response(
         role_name=role.name if role else None,
         permissions=user.permissions or [],
         assigned_locales=assigned_locales or [],
-        mundos=mundos_de(user),
+        # Una cuenta externa no tiene mundos propios: los de su trabajo
+        # (agencias.mundos_con_trabajo, 25/11/2026), calculados por quien llama.
+        mundos=mundos if mundos is not None else mundos_de(user),
         must_change_password=must_change_password,
         es_externo=bool(user.es_externo),
         empresa=user.empresa,
@@ -206,7 +210,11 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
     )
     assigned_locales = list(locales_result.scalars().all())
     must_change = await _needs_password_change(current_user, db)
-    return _user_response(result.scalar_one(), assigned_locales, must_change)
+    usuario = result.scalar_one()
+    # La agencia: los mundos donde tiene trabajo (para el calendario, si se lo
+    # habilitan); su tablero los junta todos.
+    mundos = await agencias.mundos_con_trabajo(db, usuario) if usuario.es_externo else None
+    return _user_response(usuario, assigned_locales, must_change, mundos)
 
 
 class Preferencias(BaseModel):

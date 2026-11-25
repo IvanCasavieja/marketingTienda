@@ -32,6 +32,7 @@ from app.core import alcance, externos
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.core.mundos import mundos_de
+from app.services import agencias
 from app.models.calendario import CalendarioBarra, CalendarioTarea
 from app.models.local_asignacion import LocalAsignacion
 from app.models.user import User
@@ -531,10 +532,13 @@ async def _recortar_al_alcance(db: AsyncSession, user: User, notifs, *, externo:
     acciones = {a for n in del_calendario if (a := _accion_de(n.origen_ref or ""))}
     en_alcance: set[str] = set()
     if acciones:
+        # Una cuenta externa no tiene mundos propios (25/11/2026): los de su
+        # calendario son los mundos donde su agencia tiene trabajo.
+        mundos = await agencias.mundos_con_trabajo(db, user) if externo else mundos_de(user)
         en_alcance = set((await db.execute(
             select(CalendarioBarra.id).where(
                 CalendarioBarra.id.in_(acciones),
-                CalendarioBarra.mundo.in_(mundos_de(user)),
+                CalendarioBarra.mundo.in_(mundos),
                 alcance.condicion(CalendarioBarra, v),
             )
         )).scalars())

@@ -30,7 +30,7 @@ from app.models.calendario import CalendarioTarea
 from app.models.local_asignacion import LocalAsignacion
 from app.models.role import Role, ALL_PERMISSIONS, is_view_permission
 from app.core import alcance, externos
-from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
+from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_puede_dar
 from app.core.tableros import tablero_de
 from app.models.user import User
 from app.services import agencias
@@ -102,24 +102,6 @@ def _ensure_externo_puede_tener(target: User, permissions: list[str]) -> None:
             status_code=422,
             detail=f"Una cuenta externa solo puede ver el calendario: no se le pueden dar {de_mas}",
         )
-
-
-def _validar_mundos_pedidos(current_user: User, antes, pedidos: list[str]) -> list[str]:
-    """Los mundos pedidos, en el orden del catálogo, con las mismas reglas que
-    PATCH /users/{id}/mundos: que existan, al menos uno, y nadie da un mundo al
-    que no entra."""
-    desconocidos = [m for m in pedidos if m not in MUNDOS]
-    if desconocidos:
-        raise HTTPException(status_code=422, detail=f"Mundos desconocidos: {desconocidos}")
-    if not pedidos:
-        raise HTTPException(status_code=422, detail="Tiene que quedar al menos un mundo.")
-    ajenos = mundos_que_no_puede_dar(current_user, antes, pedidos)
-    if ajenos:
-        raise HTTPException(
-            status_code=403,
-            detail="No podés dar acceso a un mundo al que vos no entrás: " + ", ".join(MUNDOS[m] for m in ajenos),
-        )
-    return [m for m in MUNDOS if m in set(pedidos)]
 
 
 def _ensure_not_self(current_user: User, user_id: int) -> None:
@@ -298,8 +280,11 @@ class CreateUserRequest(BaseModel):
     # vista limitada de app/core/externos.py. La empresa es obligatoria.
     es_externo: bool = False
     empresa: str | None = Field(None, max_length=120)
-    # Solo para una cuenta externa: los mundos donde trabaja (por defecto
-    # Tienda Inglesa). A una interna se le dan según su rol, como siempre.
+    # Ya no se usa (25/11/2026, Ivan: elegirle mundos a una agencia "sería al
+    # pedo, porque tienen acceso a su tablero"): una cuenta externa ve su
+    # trabajo de cualquier mundo (app/core/mundos.py, `mundos_de`). Queda para
+    # no romper un panel abierto desde antes; si viene, no se mira. A una
+    # interna se le dan según su rol, como siempre.
     mundos: list[str] | None = None
     # Hasta dónde ve el calendario (0070). Sin decirlo: una externa, "No lo
     # ve"; una del equipo, "Todo" (ver app/core/alcance.py).
@@ -471,8 +456,9 @@ async def _crear_externo(
     payload: CreateUserRequest, request: Request, current_user: User, db: AsyncSession,
 ) -> dict:
     """Una cuenta externa: sin rol, con solo ver el calendario (la vista
-    limitada la ponen las rutas) y en los mundos pedidos. Como cualquier cuenta
-    nueva, tiene que elegir su contraseña al entrar la primera vez."""
+    limitada la ponen las rutas) y sin mundos propios: ve las tarjetas de su
+    agencia de cualquier mundo (25/11/2026). Como cualquier cuenta nueva,
+    tiene que elegir su contraseña al entrar la primera vez."""
     if payload.role_id is not None:
         raise HTTPException(
             status_code=422,
@@ -486,7 +472,8 @@ async def _crear_externo(
     permisos = sorted(externos.PERMISOS_DE_EXTERNOS)
     # Igual que con cualquier cuenta: nadie da lo que no tiene.
     _ensure_can_grant(current_user, permisos)
-    mundos = _validar_mundos_pedidos(current_user, [], payload.mundos or [MUNDO_POR_DEFECTO])
+    # Sin mundos: su trabajo le llega de cualquiera (ver mundos.mundos_de).
+    mundos: list[str] = []
     try:
         _validate_password_strength(payload.password)
     except ValueError as exc:
@@ -972,13 +959,21 @@ async def update_mundos(
     acceso a un mundo al que él mismo no entra: el mundo es lo único que
     separa los datos de un negocio de los de otro. Tiene que quedar al menos
     uno: sin mundo no se puede entrar a la plataforma (para eso se desactiva
-    la cuenta)."""
+    la cuenta).
+
+    Una cuenta externa (la agencia) no tiene mundos: ve las tarjetas de su
+    agencia de cualquier mundo (25/11/2026)."""
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if user.id != current_user.id:
         await _check_not_protected_admin(current_user, user, db)
+    if user.es_externo:
+        raise HTTPException(
+            status_code=422,
+            detail="Una cuenta de agencia no elige mundos: ve en su tablero lo que le piden de cualquier mundo.",
+        )
 
     desconocidos = [m for m in payload.mundos if m not in MUNDOS]
     if desconocidos:

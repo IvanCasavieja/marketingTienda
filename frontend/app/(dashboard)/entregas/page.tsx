@@ -16,6 +16,9 @@ import {
 import { diaEnUruguay, hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
 import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
+
+/** El tablero de la agencia: el de todos los mundos (25/11/2026). */
+const TODOS_LOS_MUNDOS = "todos";
 import { esExterno } from "@/lib/externos";
 import { useTableros } from "@/store/tiposDeTarea";
 import { useVistaEntregas } from "@/store/entregas";
@@ -113,13 +116,18 @@ export default function TableroPage() {
   const movioAlguna = useRef(false);
   const claveMundo = mundo?.clave;
   const externo = esExterno(user);
+  // De qué es el tablero que se mira: el mundo elegido o, para la agencia,
+  // todos (25/11/2026: no elige mundos; ve lo que le piden de cualquiera). Lo
+  // que se le pide al servidor: el mundo, o nada (todos).
+  const claveTablero = externo ? TODOS_LOS_MUNDOS : claveMundo;
+  const mundoParaPedir = externo ? null : claveMundo ?? null;
   const yo = user?.id ?? null;
   const creaTarjetas = !externo
     && (hasPermission(user, PERMISOS_CALENDARIO.tareas) || hasPermission(user, PERMISOS_CALENDARIO.pedidos));
   const { tableros } = useTableros(claveMundo);
 
   const cargar = useCallback(async (desdeCero: boolean) => {
-    if (!claveMundo) return;
+    if (!claveTablero) return;
     const n = ++pedido.current;
     try {
       // Si cambió el día, una tarjeta pudo haber pasado sola a Archivado sin
@@ -127,7 +135,7 @@ export default function TableroPage() {
       // que manda el servidor (con el de la computadora, en otra zona horaria
       // daba distinto siempre y se bajaba todo en cada pregunta).
       const nuevoDia = datosRef.current && datosRef.current.hoy !== diaEnUruguay();
-      const { data } = await entregasApi.tablero(claveMundo, desdeCero || nuevoDia ? null : rev.current);
+      const { data } = await entregasApi.tablero(mundoParaPedir, desdeCero || nuevoDia ? null : rev.current);
       // Salió otro pedido después, o se está moviendo una tarjeta: esto
       // puede ser de antes. Lo trae el pedido que sigue.
       if (n !== pedido.current || enVuelo.current > 0) return;
@@ -137,11 +145,11 @@ export default function TableroPage() {
       setDatos(d => {
         // Lo que se trajo con "Ver más" de Archivado no se borra con cada
         // refresco (ver conservarArchivadas). Al cambiar de mundo, sí.
-        const tarjetas = d && d.mundo === claveMundo ? conservarArchivadas(d.tarjetas, nuevas) : nuevas;
+        const tarjetas = d && d.mundo === claveTablero ? conservarArchivadas(d.tarjetas, nuevas) : nuevas;
         const locales = tarjetas.filter(t => t.columna === "archivado").length;
         const total = data.archivadas?.total ?? 0;
         return {
-          mundo: claveMundo, hoy: data.hoy ?? diaEnUruguay(), tarjetas,
+          mundo: claveTablero, hoy: data.hoy ?? diaEnUruguay(), tarjetas,
           archivadas: { total, mostradas: Math.max(data.archivadas?.mostradas ?? 0, locales) },
         };
       });
@@ -149,7 +157,7 @@ export default function TableroPage() {
     } catch {
       if (n === pedido.current) setError(true);
     }
-  }, [claveMundo]);
+  }, [claveTablero, mundoParaPedir]);
 
   // Se pregunta cada SEGUNDOS_DEL_TABLERO si cambió algo (si no, la
   // respuesta es una línea), al volver a la pestaña y al volver a la ventana
@@ -157,7 +165,7 @@ export default function TableroPage() {
   // la pestaña). Después de entregar o decidir algo en el detalle, se trae
   // todo.
   useEffect(() => {
-    if (!allowed || !claveMundo) return;
+    if (!allowed || !claveTablero) return;
     void cargar(true);
     // La pestaña y la ventana avisan juntas a veces: una sola pregunta.
     let ultima = 0;
@@ -174,7 +182,7 @@ export default function TableroPage() {
       document.removeEventListener("visibilitychange", revisar);
       window.removeEventListener("focus", revisar);
     };
-  }, [allowed, claveMundo, cargar, cambios]);
+  }, [allowed, claveTablero, cargar, cambios]);
 
   // ---------------------------------------------------------------------
   // Mover
@@ -431,11 +439,11 @@ export default function TableroPage() {
   // ---------------------------------------------------------------------
 
   async function verMas() {
-    if (!claveMundo || !datos) return;
+    if (!claveTablero || !datos) return;
     setCargandoMas(true);
     try {
       const yaArchivadas = datos.tarjetas.filter(t => t.columna === "archivado").length;
-      const { data } = await entregasApi.archivadas(claveMundo, yaArchivadas);
+      const { data } = await entregasApi.archivadas(mundoParaPedir, yaArchivadas);
       setDatos(d => d && {
         ...d,
         tarjetas: [...d.tarjetas, ...data.tarjetas.filter(n => !d.tarjetas.some(t => t.tareaId === n.tareaId))],
@@ -458,7 +466,7 @@ export default function TableroPage() {
   }
 
   const hoy = datos?.hoy ?? hoyIso();
-  const delMundo = datos && datos.mundo === claveMundo ? datos : null;
+  const delMundo = datos && datos.mundo === claveTablero ? datos : null;
   const todas = delMundo?.tarjetas ?? [];
   // Tres tableros (17/11/2026: "asignar a Publicis, asignar a Another Monday
   // o asignar a diseñadores, esos son los 3"). El equipo los ve en pestañas;
@@ -508,7 +516,7 @@ export default function TableroPage() {
         {creaTarjetas && claveMundo && (
           <NuevaTarjeta mundo={claveMundo} tablero={filtro} usuarioId={yo} onCreada={() => { void cargar(true); }} />
         )}
-        <Buscador mundo={claveMundo ?? null} usuarioId={yo} hoy={hoy} />
+        <Buscador mundo={claveTablero ?? null} usuarioId={yo} hoy={hoy} conMundo={externo} />
       </header>
 
       {!delMundo && !error && (
@@ -618,6 +626,7 @@ export default function TableroPage() {
                           usuarioId={yo}
                           hoy={hoy}
                           orden={i}
+                          conMundo={externo}
                           onMoverA={a => void moverA(t, a)}
                           onPointerDown={alApretar(t)}
                           mostrarQuien={!externo}
@@ -822,7 +831,11 @@ function PedirCambios({ tarjeta, onCancelar, onMandar, onRevisionCompleta }: {
  * banners" encuentra "Ciberlunes - Banners"). Encuentra también lo archivado
  * que ya no se carga en el tablero, aparte.
  */
-function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: number | null; hoy: string }) {
+function Buscador({ mundo, usuarioId, hoy, conMundo = false }: {
+  mundo: string | null; usuarioId: number | null; hoy: string
+  /** La agencia: busca en todos los mundos y cada tarjeta dice el suyo. */
+  conMundo?: boolean
+}) {
   const [q, setQ] = useState("");
   // El resultado queda atado a lo que se buscó: si la persona sigue
   // escribiendo, el de antes no se muestra como si fuera el de ahora.
@@ -836,7 +849,7 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
     if (!mundo || texto.length < 2) return;
     let vivo = true;
     const reloj = window.setTimeout(() => {
-      entregasApi.buscar(mundo, texto)
+      entregasApi.buscar(mundo === TODOS_LOS_MUNDOS ? null : mundo, texto)
         .then(({ data }) => { if (vivo) setHallado({ q: texto, enTablero: data.enTablero, archivadas: data.archivadas }); })
         .catch(() => { if (vivo) setHallado({ q: texto, enTablero: [], archivadas: [], fallo: true }); });
     }, 250);
@@ -885,7 +898,7 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
                 <div>
                   <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">En el tablero · {resultado.enTablero.length}</p>
                   <ul className="space-y-2">
-                    {resultado.enTablero.map(t => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={usuarioId} hoy={hoy} />)}
+                    {resultado.enTablero.map(t => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={usuarioId} hoy={hoy} conMundo={conMundo} />)}
                   </ul>
                 </div>
               )}
@@ -893,7 +906,7 @@ function Buscador({ mundo, usuarioId, hoy }: { mundo: string | null; usuarioId: 
                 <div>
                   <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Archivadas hace más de 30 días · {resultado.archivadas.length}</p>
                   <ul className="space-y-2">
-                    {resultado.archivadas.map(t => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={usuarioId} hoy={hoy} />)}
+                    {resultado.archivadas.map(t => <TarjetaEntrega key={t.tareaId} tarjeta={t} usuarioId={usuarioId} hoy={hoy} conMundo={conMundo} />)}
                   </ul>
                 </div>
               )}

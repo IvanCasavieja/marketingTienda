@@ -2408,20 +2408,21 @@ export const entregasApi = {
       onDownloadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
     }),
   /** El tablero del mundo, o `sinCambios` si sigue en la revisión `rev`.
-   *  Liviano: las columnas activas y la primera página de Archivado. */
-  tablero: (mundo: string, rev?: number | null) =>
+   *  Liviano: las columnas activas y la primera página de Archivado. Sin
+   *  mundo (`null`: una cuenta externa), lo suyo de todos los mundos. */
+  tablero: (mundo: string | null, rev?: number | null) =>
     api.get<{
       rev: number; sinCambios?: boolean; hoy?: string; tarjetas?: Tarjeta[];
       archivadas?: { total: number; mostradas: number }; dias?: { archivar: number; ocultar: number };
-    }>("/calendario/entregas", { ...ESPERA, params: rev == null ? { mundo } : { mundo, rev } }),
+    }>("/calendario/entregas", { ...ESPERA, params: { ...(mundo ? { mundo } : {}), ...(rev == null ? {} : { rev }) } }),
   /** "Ver más" de Archivado. */
-  archivadas: (mundo: string, desde: number) =>
+  archivadas: (mundo: string | null, desde: number) =>
     api.get<{ tarjetas: Tarjeta[]; total: number; hasta: number }>(
-      "/calendario/entregas/archivadas", { ...ESPERA, params: { mundo, desde } }),
+      "/calendario/entregas/archivadas", { ...ESPERA, params: { ...(mundo ? { mundo } : {}), desde } }),
   /** El buscador: lo del tablero y, aparte, lo archivado de verdad. */
-  buscar: (mundo: string, q: string) =>
+  buscar: (mundo: string | null, q: string) =>
     api.get<{ enTablero: Tarjeta[]; archivadas: Tarjeta[]; palabras: string[] }>(
-      "/calendario/entregas/buscar", { ...ESPERA, params: { mundo, q } }),
+      "/calendario/entregas/buscar", { ...ESPERA, params: { ...(mundo ? { mundo } : {}), q } }),
   /** El análisis de entregas (ex «Retrabajo»): aparte del tablero, que no cambia con cada movimiento. */
   metricas: (mundo: string, dias = 90) =>
     api.get<Metricas>("/calendario/entregas/metricas", { ...ESPERA, params: { mundo, dias } }),

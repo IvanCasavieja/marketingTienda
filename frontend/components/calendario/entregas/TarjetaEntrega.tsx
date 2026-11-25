@@ -21,6 +21,7 @@ import { Miniatura } from './ImagenConMarcas'
  */
 export function TarjetaEntrega({
   tarjeta, usuarioId, hoy, orden = 0, onMoverA, onPointerDown, arrastrandose = false, fantasma = false, mostrarQuien = true,
+  conMundo = false,
 }: {
   tarjeta: Tarjeta
   usuarioId: number | null
@@ -36,6 +37,8 @@ export function TarjetaEntrega({
   fantasma?: boolean
   /** Quién la hace. La agencia no necesita leer su propio nombre en cada tarjeta. */
   mostrarQuien?: boolean
+  /** De qué mundo es, escrito: el tablero de la agencia junta todos (25/11/2026). */
+  conMundo?: boolean
 }) {
   const abrir = useVistaEntregas(s => s.abrir)
   const r = tarjeta.entrega
@@ -138,14 +141,20 @@ export function TarjetaEntrega({
           )}
         </button>
 
-        {(quien || (onMoverA && destinos.length > 0)) && (
+        {(quien || (conMundo && mundo) || (onMoverA && destinos.length > 0)) && (
           <div className="flex items-center gap-2 border-t border-slate-300 py-1.5 pl-4 pr-1.5 dark:border-slate-700">
-            {quien && (
+            {quien ? (
               <span className="flex min-w-0 flex-1 items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
                 {tarjeta.hace?.tipo === 'tienda' ? <UserRound className="h-3.5 w-3.5 shrink-0" /> : <Building2 className="h-3.5 w-3.5 shrink-0" />}
                 <span className="truncate" title={quien}>{quien}</span>
               </span>
-            )}
+            ) : conMundo && mundo ? (
+              // De qué mundo es: el tablero de la agencia junta todos (25/11/2026).
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: mundo.color }} />
+                <span className="truncate">{mundo.nombre}</span>
+              </span>
+            ) : null}
             {onMoverA && destinos.length > 0 && !fantasma && (
               <MoverA tarjeta={tarjeta} destinos={destinos} onMoverA={onMoverA} />
             )}

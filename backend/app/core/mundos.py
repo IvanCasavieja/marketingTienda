@@ -59,13 +59,29 @@ def es_mundo(clave: str) -> bool:
     return clave in MUNDOS
 
 
-def mundos_de(usuario) -> list[str]:
-    """Los mundos a los que entra una persona, en el orden del catálogo.
+def es_de_afuera(usuario) -> bool:
+    """Si es una cuenta externa (la agencia). Lo mismo que externos.es_externo,
+    acá para no importar ese módulo."""
+    return bool(getattr(usuario, "es_externo", False))
 
-    Nadie queda sin mundo: sin ninguno no podría entrar a la plataforma. A
-    quien todavía no se le asignó ninguno (una cuenta creada por un script
-    viejo, por ejemplo) le toca el de siempre, Tienda Inglesa. Para sacarle el
-    acceso a alguien se lo desactiva, no se le vacía esta lista."""
+
+def mundos_de(usuario) -> list[str]:
+    """Los mundos a los que entra una persona del equipo, en el orden del
+    catálogo.
+
+    Nadie del equipo queda sin mundo: sin ninguno no podría entrar a la
+    plataforma. A quien todavía no se le asignó ninguno (una cuenta creada por
+    un script viejo, por ejemplo) le toca el de siempre, Tienda Inglesa. Para
+    sacarle el acceso a alguien se lo desactiva, no se le vacía esta lista.
+
+    Una cuenta externa (la agencia) no tiene mundos propios (25/11/2026, Ivan:
+    "al ser agencia, ¿por qué tiene accesos a estos mundos? Sería al pedo,
+    porque tienen acceso a su tablero"): sus tarjetas las ve de cualquier
+    mundo, y el calendario, si se lo habilitan, solo de los mundos donde su
+    agencia tiene trabajo (agencias.mundos_con_trabajo). Lo que tenga guardado
+    en `users.mundos` de antes no se usa."""
+    if es_de_afuera(usuario):
+        return []
     if getattr(usuario, "is_superuser", False):
         return list(MUNDOS)
     propios = set(getattr(usuario, "mundos", None) or [])
@@ -73,13 +89,35 @@ def mundos_de(usuario) -> list[str]:
 
 
 def puede_abrir(usuario, mundo: str) -> bool:
+    """Si a la persona le puede llegar trabajo de ese mundo: es lo que se mira
+    para asignarle una tarea, avisarle de una tarjeta o ponerla a aprobar.
+
+    Una cuenta externa, de cualquiera: a la agencia le piden piezas en todos
+    los mundos, y de cada uno ve solo lo suyo (lo recorta cada ruta). Antes,
+    si a una agencia le pedían algo en un mundo que no tenía tildado, no lo
+    veía ni le llegaba el aviso, y nadie se enteraba."""
+    if es_de_afuera(usuario):
+        return es_mundo(mundo)
     return mundo in mundos_de(usuario)
 
 
-def exigir_mundo(usuario, mundo: str) -> str:
-    """El mundo, si existe y la persona puede entrar. Si no, 422 o 403."""
+def exigir_mundo(usuario, mundo: str, *, propio: bool = False) -> str:
+    """El mundo, si existe y la persona puede entrar. Si no, 422 o 403.
+
+    Una cuenta externa entra a un mundo solo por algo que ya se sabe que es
+    suyo (`propio`: una tarjeta de su agencia, ya comprobado por quien llama).
+    Para ver el calendario de un mundo, agencias.exigir_mundo_del_calendario,
+    que mira dónde tiene trabajo; si alguna ruta se olvidara de eso, acá
+    contesta 403: mejor de menos que de más."""
     if not es_mundo(mundo):
         raise HTTPException(status_code=422, detail="Ese mundo no existe")
+    if es_de_afuera(usuario):
+        if propio:
+            return mundo
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No tenés acceso a {MUNDOS[mundo]}",
+        )
     if not puede_abrir(usuario, mundo):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
