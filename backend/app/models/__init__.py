@@ -42,6 +42,7 @@ from app.models.entregas import (
 from app.models.revision_ia import CalendarioRevisionIA
 from app.models.adjuntos import CalendarioAdjunto
 from app.models.agenda import AgendaExterna
+from app.models.clientes_vip import VipCarga, VipCliente, VipClienteMes, VipInforme, VipMesDimension
 
 __all__ = [
     "User", "Role", "PlatformConnection", "Platform",
@@ -62,4 +63,5 @@ __all__ = [
     "CalendarioEntrega", "CalendarioFase", "CalendarioVersion", "CalendarioVersionImagen", "CalendarioVersionZip", "CalendarioMarca",
     "CalendarioDecision", "CalendarioRevisionIA", "CalendarioComentario", "CalendarioAdjunto",
     "AgendaExterna",
+    "VipCarga", "VipCliente", "VipClienteMes", "VipInforme", "VipMesDimension",
 ]

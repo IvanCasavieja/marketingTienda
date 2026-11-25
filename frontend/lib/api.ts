@@ -8,6 +8,10 @@ import type { MiAgenda } from "@/lib/calendario/mi-agenda";
 import type { ControlPrevio } from "@/lib/calendario/control-previo";
 import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
 import type { Adjunto } from "@/lib/calendario/adjuntos";
+import type {
+  ClienteVip, MesDeCliente as MesDeClienteVip, SegmentoResumen as SegmentoVip, Tablero as TableroVip,
+} from "@/lib/clientes-vip/tipos";
+import type { FilaResumen as FilaResumenVip, TotalDelMes as TotalDelMesVip } from "@/lib/clientes-vip/resumen";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2466,4 +2470,21 @@ export const adjuntosApi = {
 /** La guía de uso (/ayuda): las secciones que la persona puede usar (25/11/2026). */
 export const guiaApi = {
   ver: () => api.get<{ secciones: import("./guia").SeccionDeGuia[] }>("/guia", ESPERA),
+};
+
+/** Clientes VIP (25/11/2026): el tablero y la carga del resumen mensual. */
+export const clientesVipApi = {
+  tablero: () => api.get<TableroVip>("/clientes-vip/tablero", { timeout: 60_000 }),
+  clientes: (params: { segmento?: string; q?: string; orden?: string; pagina?: number }) =>
+    api.get<{ total: number; pagina: number; por_pagina: number; filas: ClienteVip[] }>(
+      "/clientes-vip/clientes", { params, timeout: 30_000 }),
+  cliente: (id: number) =>
+    api.get<{ cliente: ClienteVip | null; meses: MesDeClienteVip[] }>(`/clientes-vip/clientes/${id}`, { timeout: 30_000 }),
+  empezar: (body: { archivo: string; meses: string[]; filas_archivo: number; filas: number }) =>
+    api.post<{ id: number; meses: string[] }>("/clientes-vip/cargas", body, { timeout: 60_000 }),
+  tanda: (cargaId: number, filas: FilaResumenVip[]) =>
+    api.post<{ filas: number }>(`/clientes-vip/cargas/${cargaId}/filas`, { filas }, { timeout: 120_000 }),
+  terminar: (cargaId: number, body: { dimensiones: TotalDelMesVip[]; clientes: number; venta: number }) =>
+    api.post<{ id: number; clientes: number; filas: number; segmentos: SegmentoVip[] }>(
+      `/clientes-vip/cargas/${cargaId}/terminar`, body, { timeout: 180_000 }),
 };

@@ -7,7 +7,7 @@ import {
   ChevronRight, Presentation, Globe, ShieldCheck, HelpCircle, X, Tag,
   Sun, Moon, ClipboardList, Star, Activity, Check,
   FileSpreadsheet, BookOpen, Receipt, Landmark, ScanSearch, CalendarDays,
-  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers, PanelLeftClose, PanelLeftOpen,
+  ListChecks, Wrench, ChevronDown, ArrowLeftRight, MessageCircle, Camera, Layers, PanelLeftClose, PanelLeftOpen, Crown,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { ES, GB, BR } from "country-flag-icons/react/3x2";
@@ -181,6 +181,8 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/facturacion/cuentas",     label: t("sidebar.facturacionCuentas"), icon: Landmark, section: t("sidebar.facturacion"),  perm: "facturacion.manage" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,          section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,       section: t("sidebar.comercial"),     perm: "precios.search" },
+    // Datos confidenciales: solo con el permiso propio, que no trae ningún rol (0091).
+    { href: "/clientes-vip",            label: t("sidebar.clientesVip", "Clientes VIP"), icon: Crown, section: t("sidebar.comercial"), perm: "clientes_vip.view" },
     ...(hasPermission(currentUser, "platform.admin")
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),

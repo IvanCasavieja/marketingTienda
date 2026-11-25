@@ -151,6 +151,7 @@ export const RUTAS_DE_MUNDO: { prefijo: string; nombre: string; mundos: string[]
   { prefijo: '/redes-sociales', nombre: 'La validación de redes sociales', mundos: SOLO_TIENDA_INGLESA },
   { prefijo: '/redexpres', nombre: 'Los pedidos de Redexpres', mundos: ['redexpres'] },
   { prefijo: '/precios', nombre: 'Los precios', mundos: SOLO_TIENDA_INGLESA },
+  { prefijo: '/clientes-vip', nombre: 'Clientes VIP', mundos: SOLO_TIENDA_INGLESA },
 ]
 
 /** La herramienta a la que pertenece una ruta, o null si es de todos los mundos. */
