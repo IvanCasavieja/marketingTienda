@@ -81,6 +81,7 @@ from app.core.deps import client_ip as _client_ip, require_permission
 from app.core import alcance, externos
 from app.core.tableros import TABLEROS, tablero_de
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
+from app.models.adjuntos import CalendarioAdjunto
 from app.models.audit_log import AuditLog
 from app.models.entregas import CalendarioDecision, CalendarioEntrega, CalendarioMarca, CalendarioVersion
 from app.models.calendario import (
@@ -309,7 +310,7 @@ def _aviso_json(a: CalendarioAviso) -> dict:
     return out
 
 
-def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
+def _tarea_json(t: CalendarioTarea, entrega: dict | None = None, archivos: int = 0) -> dict:
     out = {
         "id": t.id,
         "parentId": t.parent_id,
@@ -344,6 +345,10 @@ def _tarea_json(t: CalendarioTarea, entrega: dict | None = None) -> dict:
     # Solo el resumen: las imágenes y la historia se piden al abrirla.
     if entrega is not None:
         out["entrega"] = entrega
+    # Cuántos archivos lleva el pedido (24/11/2026): la fila de la tarea dice
+    # "Publicis · 2 archivos" sin pedir la lista. Solo si tiene.
+    if archivos:
+        out["archivos"] = archivos
     return out
 
 
@@ -360,7 +365,7 @@ def _plantilla_json(p: CalendarioPlantilla) -> dict:
 def _barra_json(
     b: CalendarioBarra, piezas: list[CalendarioPieza], avisos: list[CalendarioAviso],
     tareas: list[CalendarioTarea] | None = None, fotos: dict | None = None,
-    entregas: dict[str, dict] | None = None,
+    entregas: dict[str, dict] | None = None, archivos: dict[str, int] | None = None,
 ) -> dict:
     out = {
         "id": b.id,
@@ -386,7 +391,9 @@ def _barra_json(
             out["hora"] = b.hora
     if b.seccion in _CON_AVISOS:
         out["avisos"] = [_aviso_json(a) for a in avisos]
-        out["tareas"] = [_tarea_json(t, (entregas or {}).get(t.id)) for t in (tareas or [])]
+        out["tareas"] = [
+            _tarea_json(t, (entregas or {}).get(t.id), (archivos or {}).get(t.id, 0)) for t in (tareas or [])
+        ]
     return out
 
 
@@ -492,6 +499,15 @@ async def _armar_datos(db: AsyncSession, mundo: str, v: alcance.Ventana | None, 
     entregas = await resumenes_de_entregas(
         db, consulta_tareas.with_only_columns(CalendarioTarea.id),
     ) if ids_tareas else {}
+    # Cuántos archivos tiene cada pedido, con la misma subconsulta: un número
+    # por tarea, sin los archivos (que se piden al abrir la tarjeta).
+    archivos: dict[str, int] = {
+        tarea_id: n for tarea_id, n in (await db.execute(
+            select(CalendarioAdjunto.tarea_id, func.count(CalendarioAdjunto.id))
+            .where(CalendarioAdjunto.tarea_id.in_(consulta_tareas.with_only_columns(CalendarioTarea.id)))
+            .group_by(CalendarioAdjunto.tarea_id)
+        )).all()
+    } if ids_tareas else {}
     # Retail Media es de la web de Tienda Inglesa: los otros mundos no tienen
     # esa parte del calendario y no tienen por qué bajar sus posiciones. Con
     # ventana, solo los meses que toca.
@@ -510,7 +526,9 @@ async def _armar_datos(db: AsyncSession, mundo: str, v: alcance.Ventana | None, 
     propias = set(ids_tareas)
 
     def barra_json(b: CalendarioBarra) -> dict:
-        out = _barra_json(b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), fotos.get(b.id), entregas)
+        out = _barra_json(
+            b, piezas.get(b.id, []), avisos.get(b.id, []), tareas.get(b.id, []), fotos.get(b.id), entregas, archivos,
+        )
         if externo is not None:
             # Una tarea suya que cuelga de otra que no es suya (la madre la
             # tiene alguien del equipo) se muestra suelta: la madre no viaja.
