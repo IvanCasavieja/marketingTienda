@@ -50,7 +50,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const user = useCurrentUserStore((s) => s.user);
   const elegido = useMundoElegido((s) => s.elegido);
   const mundo = mundoEfectivo(user, elegido);
-  const faltaElegir = authChecked && !mustChangePassword && !!user && !mundo
+  // A la agencia nunca: su tablero junta todos los mundos (25/11/2026).
+  const faltaElegir = authChecked && !mustChangePassword && !!user && !mundo && !user.es_externo
     && mundosDe(user).length > 1 && pathname !== "/mundos";
   useEffect(() => {
     if (faltaElegir) router.replace("/mundos");

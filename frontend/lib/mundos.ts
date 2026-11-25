@@ -99,9 +99,15 @@ export function mundoDe(clave: string | null | undefined): Mundo | null {
   return MUNDOS.find(m => m.clave === clave) ?? null
 }
 
-/** Los mundos a los que entra la persona, en el orden del selector. */
+/** Los mundos a los que entra la persona, en el orden del selector.
+ *
+ *  Una cuenta externa (la agencia) no elige mundos (25/11/2026, Ivan: "sería
+ *  al pedo, porque tienen acceso a su tablero"): su tablero junta lo que le
+ *  piden de todos. El servidor le manda los mundos donde tiene trabajo, y
+ *  cuentan solo para el calendario, si se lo habilitaron. */
 export function mundosDe(user: CurrentUser | null | undefined): Mundo[] {
   if (!user) return []
+  if (user.es_externo && !veCalendario(user)) return []
   // Un servidor de antes de los mundos no manda la lista. Vercel y Render
   // despliegan cada uno por su lado: si este front sale primero, todos
   // quedarían "sin ningún calendario asignado" hasta que llegue el backend.
@@ -121,6 +127,9 @@ export function mundoEfectivo(user: CurrentUser | null | undefined, elegido: str
   const propios = mundosDe(user)
   const el = propios.find(m => m.clave === elegido)
   if (el) return el
+  // A la agencia no se la hace elegir: el primero de los suyos (lo puede
+  // cambiar desde el menú si ve el calendario de varios).
+  if (user?.es_externo) return propios[0] ?? null
   return propios.length === 1 ? propios[0] : null
 }
 

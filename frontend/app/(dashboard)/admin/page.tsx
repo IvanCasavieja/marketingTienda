@@ -134,40 +134,6 @@ function ElegirAgencia({ valor, agencias, actual, onCambiar }: {
   );
 }
 
-/** Los mundos de una cuenta nueva o externa, como chips que se tildan. */
-function ChipsDeMundos({ elegidos, puedoDar, onAlternar }: {
-  elegidos: Set<string>;
-  puedoDar: Set<string>;
-  onAlternar: (clave: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {MUNDOS.map((m) => {
-        const activo = elegidos.has(m.clave);
-        const ajeno = !activo && !puedoDar.has(m.clave);
-        return (
-          <button
-            key={m.clave}
-            type="button"
-            onClick={() => onAlternar(m.clave)}
-            disabled={ajeno}
-            aria-pressed={activo}
-            title={ajeno ? "No entrás a este mundo: no lo podés dar" : undefined}
-            className={`flex min-h-[36px] items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-              activo
-                ? "border-brand-500 bg-brand-50 text-brand-800 dark:bg-brand-950/40 dark:text-brand-200"
-                : "border-slate-300 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400"
-            }`}
-          >
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: m.color, opacity: activo ? 1 : 0.35 }} />
-            {m.nombre}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 interface RoleItem {
   id: number;
   name: string;
@@ -343,7 +309,8 @@ function UserEditorModal({
       // Los mundos van antes que los permisos: uno se los puede cambiar a sí
       // mismo, y los permisos propios no (el servidor lo rechaza y corta acá).
       const distintos = (a: Set<string>, b: Set<string>) => a.size !== b.size || [...a].some((x) => !b.has(x));
-      const cambiaronMundos = distintos(mundos, new Set(user.mundos ?? []));
+      // A una agencia no: no elige mundos (el servidor contesta 422).
+      const cambiaronMundos = !externo && distintos(mundos, new Set(user.mundos ?? []));
       if (cambiaronMundos) {
         await api.patch(`/admin/users/${user.id}/mundos`, { mundos: [...mundos] });
         // Si se editó a sí misma, el menú y el mundo en el que está tienen que
@@ -412,7 +379,14 @@ function UserEditorModal({
           </div>
 
           {/* Mundos: a qué negocios entra. Cada mundo es la plataforma entera
-              para ese negocio. Con uno solo entra derecho; con varios, elige. */}
+              para ese negocio. Con uno solo entra derecho; con varios, elige.
+              Una cuenta de agencia no elige (25/11/2026): ve su trabajo de
+              cualquier mundo. */}
+          {externo ? (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+              Una cuenta de agencia no elige mundos: ve en su tablero lo que le piden de cualquier mundo.
+            </p>
+          ) : (
           <div>
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1">Mundos</p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mb-2">
@@ -452,6 +426,7 @@ function UserEditorModal({
               </p>
             )}
           </div>
+          )}
 
           {/* Cuenta externa: la agencia o un diseñador de afuera. */}
           {!user.is_superuser && !esSucursal && (
@@ -589,9 +564,9 @@ function UserEditorModal({
         ) : (
           <div className="flex justify-end gap-2 px-6 py-4 border-t border-slate-100 dark:border-slate-800">
             <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">{t("common.cancel")}</button>
-            <button onClick={save} disabled={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
+            <button onClick={save} disabled={saving} aria-busy={saving} className="btn-primary text-sm px-4 py-2 flex items-center gap-2">
               {saving && <Loader2 size={13} className="animate-spin" />}
-              {t("common.save")}
+              {saving ? t("admin.userEditor.saving", "Guardando…") : t("common.save")}
             </button>
           </div>
         )}
@@ -777,24 +752,13 @@ export default function AdminPage() {
   const [form, setForm] = useState({
     email: "", full_name: "", password: "",
     role_id: "" as string | number,
-    // Cuenta externa (la agencia): sin rol, con su empresa y sus mundos.
+    // Cuenta externa (la agencia): sin rol y con su empresa. Sin mundos
+    // (25/11/2026, Ivan: "sería al pedo"): ve su trabajo de cualquiera.
     es_externo: false, empresa: "",
   });
-  const [mundosNuevos, setMundosNuevos] = useState<Set<string>>(new Set(["tienda_inglesa"]));
-  const yo = useCurrentUserStore((s) => s.user);
-  const puedoDarMundos = new Set(yo?.is_superuser ? MUNDOS.map((m) => m.clave) : (yo?.mundos ?? []));
-  function alternarMundoNuevo(clave: string) {
-    setMundosNuevos((prev) => {
-      const next = new Set(prev);
-      if (next.has(clave)) {
-        if (next.size === 1) { toast.error("Tiene que quedar al menos un mundo."); return prev; }
-        next.delete(clave);
-      } else {
-        next.add(clave);
-      }
-      return next;
-    });
-  }
+  // Mientras se crea: el botón dice «Creando…» y no se manda dos veces
+  // (Ivan, 25/11/2026: "no me muestra que esté cargando ni nada").
+  const [creando, setCreando] = useState(false);
 
   // Superadmin no se ofrece como rol asignable desde el panel — es un flag
   // reservado para la cuenta principal, no algo que se elija en un select.
@@ -864,11 +828,13 @@ export default function AdminPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+    if (creando) return;
+    setCreando(true);
     try {
       await api.post("/admin/users", form.es_externo
         ? {
           email: form.email, full_name: form.full_name, password: form.password,
-          es_externo: true, empresa: form.empresa.trim(), mundos: [...mundosNuevos],
+          es_externo: true, empresa: form.empresa.trim(),
         }
         : {
           email: form.email, full_name: form.full_name, password: form.password,
@@ -880,10 +846,11 @@ export default function AdminPage() {
       setShowForm(false);
       if (form.es_externo) setLista("externas");
       setForm({ email: "", full_name: "", password: "", role_id: "", es_externo: false, empresa: "" });
-      setMundosNuevos(new Set(["tienda_inglesa"]));
       await load();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("admin.createForm.createError"));
+    } finally {
+      setCreando(false);
     }
   }
 
@@ -1110,14 +1077,12 @@ export default function AdminPage() {
             </div>
             )}
           </div>
-          {form.es_externo && (
-            <div>
-              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mundos donde trabaja</p>
-              <ChipsDeMundos elegidos={mundosNuevos} puedoDar={puedoDarMundos} onAlternar={alternarMundoNuevo} />
-            </div>
-          )}
           <div className="flex gap-2">
-            <button type="submit" className="btn-primary text-sm px-4 py-2">{t("admin.createForm.create")}</button>
+            <button type="submit" disabled={creando} aria-busy={creando}
+              className="btn-primary text-sm px-4 py-2 flex items-center gap-2 disabled:cursor-wait disabled:opacity-70">
+              {creando && <Loader2 size={13} className="animate-spin" />}
+              {creando ? t("admin.createForm.creating", "Creando…") : t("admin.createForm.create")}
+            </button>
             <button type="button" onClick={() => setShowForm(false)} className="btn-secondary text-sm px-4 py-2">{t("admin.createForm.cancel")}</button>
           </div>
         </form>

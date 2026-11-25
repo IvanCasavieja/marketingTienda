@@ -592,6 +592,7 @@
       "emailPlaceholder": "Email",
       "passwordPlaceholder": "Senha (6 a 20 caracteres)",
       "create": "Criar",
+      "creating": "Criando…",
       "cancel": "Cancelar",
       "created": "Usuário criado",
       "createError": "Erro ao criar usuário"
@@ -618,6 +619,7 @@
       "delete": "Excluir função"
     },
     "userEditor": {
+      "saving": "Salvando…",
       "title": "Editar usuário",
       "fullName": "Nome completo",
       "email": "Email",

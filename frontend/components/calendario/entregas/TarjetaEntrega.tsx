@@ -21,6 +21,7 @@ import { Miniatura } from './ImagenConMarcas'
  */
 export function TarjetaEntrega({
   tarjeta, usuarioId, hoy, orden = 0, onMoverA, onPointerDown, arrastrandose = false, fantasma = false, mostrarQuien = true,
+  conMundo = false,
 }: {
   tarjeta: Tarjeta
   usuarioId: number | null
@@ -36,6 +37,8 @@ export function TarjetaEntrega({
   fantasma?: boolean
   /** Quién la hace. La agencia no necesita leer su propio nombre en cada tarjeta. */
   mostrarQuien?: boolean
+  /** De qué mundo es, escrito: el tablero de la agencia junta todos (25/11/2026). */
+  conMundo?: boolean
 }) {
   const abrir = useVistaEntregas(s => s.abrir)
   const r = tarjeta.entrega
@@ -81,6 +84,12 @@ export function TarjetaEntrega({
           <span className="flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-inset ring-black/10 dark:ring-white/40" style={{ backgroundColor: tarjeta.accion.color ?? mundo?.color ?? '#cbd5e1' }} />
             <span className="truncate" title={mundo ? `${tarjeta.accion.nombre} · ${mundo.nombre}` : tarjeta.accion.nombre}>{tarjeta.accion.nombre}</span>
+            {conMundo && mundo && (
+              <span className="ml-auto flex shrink-0 items-center gap-1 pl-1 text-slate-500 dark:text-slate-400">
+                <span aria-hidden className="h-2 w-2 rounded-full" style={{ backgroundColor: mundo.color }} />
+                {mundo.nombre}
+              </span>
+            )}
           </span>
 
           <span className="flex items-start gap-2.5">
