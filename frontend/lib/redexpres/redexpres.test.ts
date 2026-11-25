@@ -1,9 +1,11 @@
 /**
- * El guardado de la planilla de Redexpres (lib/redexpres/ediciones.ts).
+ * El guardado de la planilla de Redexpres (lib/redexpres/ediciones.ts) y en
+ * qué situación está el pedido del mes (lib/redexpres/estado.ts).
  *
  *     npm run test:redexpres
  */
 import { conEdicion, sinLoGuardado, type Ediciones } from './ediciones'
+import { estadoDelPedido, mesExiste } from './estado'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -33,6 +35,18 @@ igual('las otras filas no se tocan',
   sinLoGuardado({ Pocitos: { cenefas: '12' }, Centro: { afiches: '3' } }, 'Pocitos', { cenefas: '12' }), { Centro: { afiches: '3' } })
 const igualito: Ediciones = { Centro: { afiches: '3' } }
 igual('un local sin pendientes devuelve lo mismo', sinLoGuardado(igualito, 'Pocitos', { a: '1' }) === igualito, true)
+
+console.log('Estado del pedido')
+const dic26 = { year: 2026, month: 12 }
+const dic27 = { year: 2027, month: 12 }
+igual('sin meses abiertos: sinMeses', estadoDelPedido([], null), 'sinMeses')
+igual('sin meses aunque haya uno elegido: sinMeses', estadoDelPedido([], dic26), 'sinMeses')
+igual('el mismo mes de otro año: mesNoAbierto', estadoDelPedido([dic26], dic27), 'mesNoAbierto')
+igual('ninguno elegido con meses: mesNoAbierto', estadoDelPedido([dic26], null), 'mesNoAbierto')
+igual('fila confirmada: confirmado', estadoDelPedido([dic26], dic26, { confirmado: true }), 'confirmado')
+igual('fila sin confirmar: abierto', estadoDelPedido([dic26], dic26, { confirmado: false }), 'abierto')
+igual('todavía sin fila: abierto', estadoDelPedido([dic26], dic26, undefined), 'abierto')
+igual('mesExiste distingue el año', [mesExiste([dic26], dic26), mesExiste([dic26], dic27)], [true, false])
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)
