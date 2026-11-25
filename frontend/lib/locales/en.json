@@ -722,7 +722,10 @@
     "crearMesLabel": "Create month:",
     "crear": "Create",
     "cancelar": "Cancel",
-    "noMeses": "No months loaded yet.",
+    "noMeses": "No month is open yet. Whoever manages Redexpres opens it.",
+    "sinMesesGestor": "No month is open yet. Tap a month above or «New month» to open it: the sheet is set up for every store.",
+    "confirmarSeguro": "Confirm the order for {{mes}}? You won't be able to change it afterwards: to fix something you'll have to ask marketing.",
+    "confirmarCrearMes": "Open the order for {{mes}} {{year}}? The sheet is set up for every store and they can start filling it in. An open month can't be deleted.",
     "local": "Store",
     "otrosNotas": "Other / notes",
     "estado": "Status",
@@ -794,7 +797,10 @@
       "noLocalAssigned": "You don't have a store assigned yet. Ask Valentina to assign you one.",
       "selectLocalLabel": "Store",
       "selectLocalPlaceholder": "Select a store to view its order",
-      "noLocalSelected": "Pick a store above to view and fill in its order."
+      "noLocalSelected": "Pick a store above to view and fill in its order.",
+      "yaConfirmado": "You already confirmed the order for {{mes}}. If you need to change something, ask marketing.",
+      "yaConfirmadoGestor": "This order is already confirmed. To change it, unconfirm it in the Order sheet.",
+      "noAbierto": "Marketing hasn't opened the order for {{mes}} yet. Once it's open, you'll be able to fill it in here."
     }
   },
   "materiales": {

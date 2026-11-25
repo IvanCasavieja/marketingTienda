@@ -1,16 +1,22 @@
 # Equipo nocturno de Core Tienda
 
-Seis agentes que, de lunes a viernes a las 2 de la mañana (hora de Montevideo),
-proponen, construyen y prueban **una** mejora para Core Tienda y se la presentan
-a Ivan. Corren en la nube de Anthropic (una rutina de Claude Code): no usan
-ninguna PC. Lo que tienen que saber de la plataforma está en
-[CONTEXTO.md](CONTEXTO.md).
+Siete agentes que, de lunes a viernes a las 2 de la mañana (hora de
+Montevideo), **recorren Core Tienda entera como las personas que la usan**,
+anotan todo lo que encuentran en un cuaderno, eligen lo que más vale la pena,
+lo construyen, lo prueban y se lo presentan a Ivan con el antes y el después.
+Corren en la nube de Anthropic (una rutina de Claude Code): no usan ninguna PC.
+
+Lo que tienen que saber de la plataforma: [CONTEXTO.md](CONTEXTO.md) (visión,
+personas, reglas) y [el mapa](plataforma/README.md) (pantalla por pantalla).
+Cómo hacen el trabajo: los skills `.claude/skills/recorrido-humano/` y
+`.claude/skills/cuaderno-de-hallazgos/`.
 
 ## La regla de oro
 
 - **Nada entra a `main` sin que Ivan lo revise y diga OK.** El equipo trabaja en
   una rama nueva y abre un PR. Nunca: push a `main`, merge, aprobar, cerrar PRs,
-  force-push, ni borrar ramas que no sean las de esta noche.
+  force-push, ni borrar ramas que no sean las de esta noche. La única rama
+  que se escribe directo es la del cuaderno (`equipo-nocturno/cuaderno`).
 - **No se toca producción.** Ni la base, ni Render, ni Vercel, ni claves. En la
   nube no hay claves: no las busques ni las pidas.
 
@@ -18,42 +24,60 @@ ninguna PC. Lo que tienen que saber de la plataforma está en
 
 | Nombre | Rol | Archivo |
 |---|---|---|
-| Sofía | Analista (el rol *Forward Deployed Engineer*): entiende qué necesita Tienda y elige la mejora | `.claude/agents/sofia-analista.md` |
-| Tomás | Lógica: decide cómo se hace, qué se toca y qué se puede romper; frena lo que no vale la pena | `.claude/agents/tomas-logica.md` |
-| Bruno | Desarrollo: programa la mejora con sus pruebas | `.claude/agents/bruno-desarrollo.md` |
-| Lucía | Diseño: que se vea bien en notebook y celular, con buen contraste | `.claude/agents/lucia-diseno.md` |
-| Ramiro | Tester: corre todo e intenta romperlo | `.claude/agents/ramiro-tester.md` |
-| Clara | Informe: lo cuenta paso a paso, en criollo | `.claude/agents/clara-informe.md` |
+| Sofía | Analista (Forward Deployed Engineer + investigación de usuarios + producto): recorre, mantiene el cuaderno y elige | `.claude/agents/sofia-analista.md` |
+| Martina | Usuaria a ciegas: hace de persona nueva, solo ve capturas y toca por coordenadas | `.claude/agents/martina-usuaria.md` |
+| Lucía | Diseñadora de producto: revisa todas las capturas con ojo de persona y hace la parte visual con antes/después | `.claude/agents/lucia-diseno.md` |
+| Tomás | Líder técnico: decide si sigue, arma el plan y los riesgos | `.claude/agents/tomas-logica.md` |
+| Bruno | Desarrollador: programa con pruebas, textos en 3 idiomas y permisos en el servidor | `.claude/agents/bruno-desarrollo.md` |
+| Ramiro | QA: pruebas con base, punta a punta en el navegador, barrido antes/después, intenta romperla | `.claude/agents/ramiro-tester.md` |
+| Clara | Informe: lo cuenta en criollo, con imágenes | `.claude/agents/clara-informe.md` |
 
 La sesión de la rutina es la que coordina: lanza a cada uno, les pasa lo que
-hizo el anterior y sube el resultado. Si los agentes no aparecen como tipos de
-agente, lanzá agentes generales y pasales el contenido de su archivo como
-instrucciones.
+hizo el anterior (resumido, con las rutas a capturas y archivos) y sube el
+resultado. Si los agentes no aparecen como tipos de agente, lanzá agentes
+generales y pasales el contenido de su archivo como instrucciones. Los
+subagentes no lanzan otros subagentes: eso lo hacés vos.
 
 ## La noche, paso a paso
 
-0. **Preparar.** `git fetch origin`. Fecha de hoy en Montevideo:
-   `TZ=America/Montevideo date +%F`. Instalá las dependencias (ver *Cómo
-   probar*) y levantá la plataforma con sus tres cuentas (ver *La
-   plataforma andando*), en segundo plano, antes de lanzar a Sofía.
-1. **Sofía** recorre la plataforma con las tres cuentas (como el equipo, como
-   la agencia y como un local de Redexpres) y propone una mejora (con dos de
-   reserva). Pasale la dirección y las tres contraseñas.
-2. **Tomás** la revisa. Si la frena, pasale la siguiente de reserva o pedile a
-   Sofía otra. Máximo 3 propuestas; si ninguna pasa, es una noche sin cambios
-   (paso 7b).
-3. **Rama nueva** desde `origin/main`: `nocturno/AAAA-MM-DD-tema-corto`. Si el
+Hay unas **3 horas**. Tiempos de referencia entre paréntesis: si una etapa se
+pasa, cerrala con lo que haya y seguí.
+
+0. **Preparar** (15 min). `git fetch origin`. Fecha y día en Montevideo:
+   `TZ=America/Montevideo date +"%F %A"`. Instalá las dependencias (*Cómo
+   probar*), levantá la plataforma con sus tres cuentas (*La plataforma
+   andando*) y el navegador (skill `recorrido-humano`, *Preparar*). Traé el
+   cuaderno (skill `cuaderno-de-hallazgos`, *Traerlo al empezar la noche*).
+1. **Recorrido — Sofía** (45 min). Le pasás la dirección, el archivo de
+   cuentas (`$S/cuentas.env`), el día de la semana, `$S` y dónde está el
+   cuaderno. Hace las tareas reales (el ciclo completo con la agencia y la
+   zona del día), el barrido automático con datos, mira todas las hojas de
+   contacto y anota en el cuaderno. Devuelve dos consignas para Martina.
+2. **A la vez** (25 min):
+   - **Martina** hace las dos consignas a ciegas (le pasás las cuentas, la
+     dirección y las consignas; nada más).
+   - **Lucía** hace la revisión visual del barrido (`$S/recorrido`).
+3. **Consolidar y proponer — Sofía** (15 min). Le pasás lo de Martina y
+   Lucía. Lo suma al cuaderno, ordena y propone el trabajo de la noche (un
+   arreglo o un paquete del mismo flujo) con dos reservas. **Subí el
+   cuaderno ya** (aunque después no haya código).
+4. **Tomás** lo revisa. Si la frena, pasale la reserva. Máximo 3 propuestas;
+   si ninguna pasa, es una noche sin cambios (paso 8b), pero con recorrido.
+5. **Rama nueva** desde `origin/main`: `nocturno/AAAA-MM-DD-tema-corto`. Si el
    entorno solo te deja subir ramas con otro nombre, usá el que te deje.
-4. **Bruno** programa siguiendo el plan de Tomás. Si hay pantalla de por medio,
-   **Lucía** hace o revisa la parte visual. Commits chicos, mensajes en
-   castellano.
-5. **Ramiro** prueba, también en el navegador con la cuenta que corresponda
-   (reiniciá el servidor y la web para que tomen la rama nueva). Si algo
-   falla, vuelve a Bruno o a Lucía con el detalle.
-   Máximo 3 vueltas. Si no queda verde, no se sube código: noche sin cambios
-   (7b) contando qué se intentó y qué falló.
-6. **Clara** escribe el informe (formato abajo).
-7. **Subir.**
+6. **Construir** (45 min). Si hay pantalla, primero **Lucía saca las capturas
+   de antes**. **Bruno** programa siguiendo el plan y lo mira andando.
+   **Lucía** hace o corrige lo visual y arma el antes/después. Commits chicos,
+   en castellano. En el cuaderno, lo elegido pasa a «En curso».
+7. **Ramiro** prueba las cinco capas (25 min). Si algo falla, vuelve a Bruno o
+   a Lucía con el detalle. Máximo 3 vueltas. Si no queda verde, no se sube
+   código: noche sin cambios (8b) contando qué se intentó y qué falló.
+8. **Informe y subida** (10 min).
+   - Subí al cuaderno las imágenes del antes/después y la evidencia de los 3
+     hallazgos principales, con el historial de la noche. **Push del cuaderno
+     antes del informe** (las imágenes del mail salen de ahí).
+   - **Clara** escribe el informe (formato abajo) con las direcciones de esas
+     imágenes.
    - **a) Con cambios.** Último commit, vacío, con el informe como mensaje:
      primera línea `[Nocturno] <título del informe>`, línea en blanco, y el
      informe. `git commit --allow-empty -F <archivo>`. Push de la rama. Abrí el
@@ -64,14 +88,19 @@ instrucciones.
      `origin/main`, un commit vacío con primera línea
      `[Nocturno] Sin cambios esta noche` y el informe abajo. Push. GitHub le
      manda el aviso a Ivan y borra esa rama sola.
-8. Terminá. No esperes nada más.
+9. Cerrá el navegador (`navegador.py cerrar`) y terminá. No esperes nada más.
+
+Si un push falla (por ejemplo, GitHub dice que la app de Claude no tiene
+acceso al repo), no te trabes: guardá el trabajo como parche en `$S`, escribí
+el informe contando qué pasó y avisale a Ivan con lo que tengas a mano.
 
 El aviso por mail lo manda `.github/workflows/informe-nocturno.yml`: cuando
 llega una rama cuyo último commit empieza con `[Nocturno]`, abre un issue
 que menciona a Ivan con el informe entero: le llega un solo mail. Ivan decide
 respondiendo ese mail con **ok** (se mergea si las pruebas están en verde) o
 **no** (se cierra): lo hace `.github/workflows/ok-por-mail.yml`. Cuando el PR
-se cierra, mergeado o no, se cierra el issue.
+se cierra, mergeado o no, se cierra el issue. La noche siguiente, Sofía pasa
+el hallazgo a Hechos o a Descartados según lo que decidió Ivan.
 
 ## Cómo probar
 
@@ -83,26 +112,33 @@ npm run lint
 npm run type-check
 npm run test:calendario
 npm run test:externos
-# si se tocó cenefas o el chat: npm run test:cenefas / npm run test:chat
+npm run test:redexpres
+# si se tocó cenefas, el chat o colocación: npm run test:cenefas / test:chat / test:colocacion
 # si se tocó una pantalla: NEXT_PUBLIC_API_URL=https://api.example.invalid/api/v1 npm run build
 ```
 
-Backend (desde `backend/`, con Python 3.11):
+(Mirá `frontend/package.json`: todas las `test:*` que existan.)
+
+Backend (desde `backend/`, con Python 3.11, en un venv para que no choque con
+el sistema):
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
+python3.11 -m venv $S/venv && . $S/venv/bin/activate
+pip install -q --prefer-binary -r requirements.txt -r requirements-dev.txt
 export APP_SECRET_KEY=ci-dummy-secret-not-used-in-prod
 export ENCRYPTION_KEY="Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="
 export REDIS_URL=redis://localhost:6379/0
+export DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/core_pruebas
 python -m compileall -q app migrations
 python -c "import app.main"
 python -m pytest tests/ -q
 ```
 
-Sin base, las pruebas que la necesitan se saltean. Con el Postgres de *La
-plataforma andando*, creá otra base vacía solo para las pruebas
-(`createdb core_tests`), corré `alembic upgrade head` con `DATABASE_URL`
-apuntando a ella y después todas las pruebas con
+Sin base, las pruebas que la necesitan se saltean (y `import app.main` pide
+`DATABASE_URL`, aunque sea de mentira). Con el Postgres de *La plataforma
+andando*, creá otra base vacía solo para las pruebas (`createdb
+core_tests`), corré `alembic upgrade head` con `DATABASE_URL` apuntando a ella
+y después todas las pruebas con
 `TEST_DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/core_tests`.
 Si no se pudo levantar Postgres, decilo en el informe: el CI de GitHub las
 corre con base cuando se abre el PR.
@@ -117,14 +153,15 @@ producción, y al terminar se borra sola.
 
 | Cuenta | Usuario | Qué ve |
 |---|---|---|
-| Equipo nocturno (superadmin) | `equipo-nocturno@example.com` | Todo, como el equipo de Tienda |
+| Equipo nocturno (superadmin) | `equipo-nocturno@example.com` | Todo, como el equipo de Tienda (5 mundos) |
 | Agencia de prueba (externa) | `agencia-de-prueba@example.com` | Solo su tablero y sus tareas, como Publicis |
-| Local de prueba (Redexpres) | `local-de-prueba@example.com` | Solo "Mi pedido" de su local |
+| Local de prueba (Redexpres) | `local-de-prueba@example.com` | Lo de su local («Mi pedido», fotos) |
 
 Las contraseñas se inventan cada noche (abajo); no van al repo ni al informe.
 Las cuentas las crea `backend/scripts/cuentas_de_prueba.py`
 (`app/services/cuentas_de_prueba.py`), que se niega a correr sin
-`ENTORNO_DE_PRUEBAS=true`.
+`ENTORNO_DE_PRUEBAS=true`. Para ver la plataforma como alguien del equipo sin
+superadmin, creá una cuenta desde `/admin` (ver el mapa).
 
 ```bash
 S=<tu scratchpad>
@@ -135,16 +172,16 @@ service postgresql start
 su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\""
 su postgres -c "createdb core_pruebas"
 
-# 2. Base y cuentas (desde backend/, con las dependencias ya instaladas)
+# 2. Base y cuentas (desde backend/, con el venv de *Cómo probar* activo)
 export APP_SECRET_KEY=solo-pruebas ENCRYPTION_KEY="Y2q_vIGd2FgQ4CqY3Fh3du3ZehOWmx4pVHPfpJC44bA="
 export REDIS_URL=redis://localhost:6379/0
 export DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/core_pruebas
 alembic upgrade head
 export ENTORNO_DE_PRUEBAS=true
 for v in CLAVE_EQUIPO_NOCTURNO CLAVE_AGENCIA_DE_PRUEBA CLAVE_LOCAL_DE_PRUEBA; do
-  echo "export $v=Np-$(python -c 'import secrets; print(secrets.token_urlsafe(12))')"
+  echo "$v=Np-$(python -c 'import secrets; print(secrets.token_urlsafe(12))')"
 done > $S/cuentas.env
-. $S/cuentas.env && python scripts/cuentas_de_prueba.py
+set -a; . $S/cuentas.env; set +a; python scripts/cuentas_de_prueba.py
 
 # 3. El servidor, con la IA simulada: Don Tino y la revisión de piezas
 #    contestan con reglas, sin clave y sin gastar (sirve para pantallas y
@@ -154,29 +191,24 @@ SYNC_INTERVAL_HOURS=0 WATCHLIST_CHECK_INTERVAL_HOURS=0 CAMPAIGN_ALERTS_CHECK_INT
 COTIZACION_AUTO_UPDATE=false CENEFAS_CURADURIA=false MANTENER_DESPIERTO_MIN=0 \
   nohup python scripts/servidor_ia_simulada.py --port 8000 > $S/backend.log 2>&1 &
 
-# 4. La web (desde frontend/, con npm ci ya hecho). El cartel amarillo de
+# 4. La web (desde frontend/, con npm ci ya hecho), armada como en producción
+#    para que cada pantalla abra rápido en el barrido. El cartel amarillo de
 #    abajo dice que es el entorno de pruebas.
-NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 NEXT_PUBLIC_ENTORNO=pruebas \
-  nohup npx next dev -p 3000 > $S/frontend.log 2>&1 &
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1 NEXT_PUBLIC_ENTORNO=pruebas npm run build > $S/build.log 2>&1
+nohup npx next start -p 3000 > $S/frontend.log 2>&1 &
 
-# 5. El navegador, en el scratchpad (no en el repo)
-pip install -q playwright && python -m playwright install --with-deps chromium
+# 5. El navegador (skill recorrido-humano)
+pip install -q playwright pillow && python -m playwright install --with-deps chromium
 ```
 
-Se entra por `http://localhost:3000/login`; el equipo elige el mundo (Tienda
-Inglesa o Redexpres) al entrar. La base arranca vacía: lo que se quiera ver
-hay que crearlo como lo haría la gente, por ejemplo:
+Después de cambiar código: frená la web (`pkill -f "next start"`), volvé a
+correr el paso 4; si cambió el servidor, frenalo y volvé a correr el paso 3.
 
-- **Como el equipo:** crear una acción en el calendario y, en su pestaña
-  Tareas, pedirle una pieza a "Agencia de prueba". Abrir el mes en la Planilla
-  de Redexpres.
-- **Como la agencia:** ver esa tarjeta en su tablero, leer el pedido y
-  entregar imágenes. Volver como el equipo a revisar y pedir cambios.
-- **Como el local:** cargar "Mi pedido" del mes abierto.
-
-Mirá también en el teléfono (ancho 390) y sacá capturas al scratchpad. Si el
-servidor o la web no levantan, mirá `backend.log` / `frontend.log`, y si no
-se arregla en unos minutos, seguí con el código y contalo en el informe.
+Se entra por `http://localhost:3000/login`. La base arranca vacía: lo que se
+quiera ver hay que crearlo como lo haría la gente (ver `tareas.md` del skill
+`recorrido-humano` y el mapa). Si el servidor o la web no levantan, mirá
+`backend.log` / `build.log` / `frontend.log`, y si no se arregla en unos
+minutos, seguí con el código y contalo en el informe.
 
 Si algún día hay un servidor de pruebas fijo (Render con su propia base, nunca
 la de producción): `ENTORNO_DE_PRUEBAS=true` y las tres `CLAVE_...` en sus
@@ -185,35 +217,45 @@ variables, y las cuentas se crean solas al arrancar; `/health` dice
 
 ## Límites
 
-- **Una mejora por noche.** Mejor chica y terminada que grande y a medias.
+- **Un PR por noche:** un arreglo o un paquete de arreglos del mismo flujo,
+  terminado. Mejor mediano y terminado que grande y a medias.
+- **El recorrido no se saltea**, aunque la noche termine sin código: es lo
+  que hace que el equipo conozca la plataforma.
 - **Sin repetir.** No trabajes sobre algo que ya tiene una rama o un PR abierto
   (`git branch -r`), ni sobre lo que ya se propuso otra noche (ramas
-  `origin/nocturno/*` y commits `[Nocturno]` en `git log origin/main`), ni
-  sobre lo descartado en [CONTEXTO.md](CONTEXTO.md).
+  `origin/nocturno/*`, commits `[Nocturno]` en `git log origin/main`, «En
+  curso» y «Descartados» del cuaderno), ni sobre lo descartado en
+  [CONTEXTO.md](CONTEXTO.md).
 - **Migraciones: evitarlas.** Si hace falta una, el número es el siguiente al
   más alto en `backend/migrations/versions` de `main` y además que no lo use
-  ninguna rama abierta (hoy `feat/una-tarea-un-pedido` tiene la 0090). Va en
-  el informe.
-- **Gastar poco.** Buscá con Grep en vez de leer el repo entero; pasale a cada
-  agente solo lo que necesita.
+  ninguna rama abierta. Va en el informe.
+- **Gastar con cabeza.** Buscá con Grep en vez de leer el repo entero; a cada
+  agente pasale solo lo que necesita (rutas a archivos y capturas, no su
+  contenido). Las capturas se miran: no las describas de memoria.
 
 ## Formato del informe (Clara)
 
-Castellano rioplatense simple, para leer en el celular. Sin jerga: si hace
-falta un término técnico, explicarlo entre paréntesis. Nombres de variables
-textuales cuando se mencionen.
+Castellano rioplatense simple, para leer en el celular en 2 minutos. Sin
+jerga: si hace falta un término técnico, explicarlo entre paréntesis. Nombres
+de variables textuales cuando se mencionen. Las imágenes, con la dirección de
+la rama del cuaderno (nunca rutas locales).
 
 ```markdown
 **En una línea:** qué cambia para la gente.
 
-**Por qué:** qué necesidad de Tienda resuelve y de dónde salió (reunión,
-pendiente, algo que se vio en el código).
+![Antes y después](https://raw.githubusercontent.com/.../equipo-nocturno/cuaderno/cuaderno/recorridos/AAAA-MM-DD/...jpg)
+
+**Por qué:** qué le pasaba a quién (hallazgos H-0xx del cuaderno, con de dónde salió).
+
+**Qué vio el recorrido esta noche:** N pantallas × cuentas × vistas; N hallazgos
+nuevos (🔴 n · 🟠 n · 🟡 n). Los 3 más importantes, una línea y una imagen
+cada uno. Cómo le fue a Martina a ciegas (logró / se trabó en...).
+[Cuaderno completo](https://github.com/.../blob/equipo-nocturno/cuaderno/cuaderno/CUADERNO.md)
 
 **Qué se hizo, paso a paso:**
-1. Sofía ... 2. Tomás ... 3. Bruno ... 4. Lucía ... 5. Ramiro ...
+1. Sofía ... 2. Martina ... 3. Lucía ... 4. Tomás ... 5. Bruno ... 6. Ramiro ...
 
-**Cómo se probó:** qué corrió Ramiro y con qué resultado (con números), qué
-intentó romper, y qué no se pudo probar y por qué.
+**Cómo se probó:** las cinco capas de Ramiro con números, y qué no se pudo probar y por qué.
 
 **Riesgos y qué mirar antes de dar el OK:**
 
@@ -223,5 +265,5 @@ intentó romper, y qué no se pudo probar y por qué.
 
 **Lo que se descartó esta noche:** una línea por propuesta que Tomás frenó, con el motivo.
 
-**Para decidir:** si te sirve, OK y se mergea. Si no, se cierra y Sofía no la vuelve a proponer.
+**Para decidir:** si te sirve, respondé **ok** y se mergea. Si no, **no**: se cierra y queda en Descartados.
 ```

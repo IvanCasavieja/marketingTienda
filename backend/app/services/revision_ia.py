@@ -695,6 +695,16 @@ def lineas_del_brief(tipo_pieza: str, brief: dict) -> list[str]:
     return lineas
 
 
+def _accion_para_la_ia(barra) -> dict:
+    """La acción del Contexto. Una tarjeta sin acción (app/services/sin_accion.py)
+    va sin nombre ni fechas: texto_del_pedido dice que es un pedido suelto."""
+    from app.services import sin_accion
+
+    if sin_accion.es_sin_accion(getattr(barra, "id", None)):
+        return {"accion": "", "accion_desde": None, "accion_hasta": None}
+    return {"accion": barra.nombre, "accion_desde": barra.desde, "accion_hasta": barra.hasta}
+
+
 def texto_del_pedido(c: Contexto) -> str:
     """Lo que va después de las imágenes: de qué es la pieza y qué se pidió.
     Todo entre etiquetas: es texto de personas (y de la agencia), no órdenes."""
@@ -703,10 +713,14 @@ def texto_del_pedido(c: Contexto) -> str:
     if c.accion_desde and c.accion_hasta:
         cuando = f" (del {c.accion_desde.strftime('%d/%m/%Y')} al {c.accion_hasta.strftime('%d/%m/%Y')})"
     brief = lineas_del_brief(c.tipo_pieza, c.brief)
+    # Una tarjeta sin acción (24/11/2026, app/services/sin_accion.py): es un
+    # pedido suelto, y la IA no tiene por qué marcar que no es de una acción.
+    accion = (f"{c.accion}{cuando}" if c.accion
+              else "ninguna: es un pedido suelto, fuera del calendario (no la compares con una acción)")
     partes = [
         "<pedido>",
-        f"Mundo de la acción: {mundo}",
-        f"Acción: {c.accion}{cuando}",
+        f"Mundo de la acción: {mundo}" if c.accion else f"Mundo: {mundo}",
+        f"Acción: {accion}",
         f"Tarea: {c.tarea}",
         f"Tipo de pieza: {NOMBRES_DE_PIEZA.get(c.tipo_pieza, c.tipo_pieza)}",
         f"Fase: {c.fase}, ronda {c.ronda}",
@@ -1397,7 +1411,7 @@ async def cargar_version(db, version_id: str) -> tuple[Contexto, list[tuple[str,
     )).all()
     contexto = Contexto(
         tipo_pieza=entrega.tipo_pieza, brief=dict(entrega.brief or {}), mundo=barra.mundo,
-        accion=barra.nombre, accion_desde=barra.desde, accion_hasta=barra.hasta, tarea=tarea.titulo,
+        **_accion_para_la_ia(barra), tarea=tarea.titulo,
         fase=fase.nombre, ronda=version.ronda, comentario=version.comentario, hoy=hoy_en_uruguay(),
         link=version.link,
         # En la primera ronda de la fase, el pedido inicial (21/11/2026): el
@@ -1978,7 +1992,7 @@ async def controlar_antes_de_entregar(
         modelo = settings.MODELO_IA_REVISION
         contexto = Contexto(
             tipo_pieza=entrega.tipo_pieza, brief=dict(entrega.brief or {}), mundo=barra.mundo,
-            accion=barra.nombre, accion_desde=barra.desde, accion_hasta=barra.hasta, tarea=tarea.titulo,
+            **_accion_para_la_ia(barra), tarea=tarea.titulo,
             fase=fase.nombre, ronda=ronda, comentario=(comentario or "").strip() or None, hoy=hoy_en_uruguay(),
             ronda_anterior=anterior,
         )

@@ -362,6 +362,14 @@ async def update_row(
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="Fila no encontrada")
+    # Un pedido confirmado ya no se toca, tampoco desde la API directa (la
+    # pantalla bloquea los campos, pero esconder no es seguridad). Vale para
+    # todos, gestor incluido: para corregirlo primero se desconfirma.
+    if row.confirmado:
+        raise HTTPException(
+            status_code=409,
+            detail="Este pedido ya está confirmado: no se puede cambiar. Para corregirlo, primero hay que desconfirmarlo en la Planilla de pedidos.",
+        )
 
     cambios = update.model_dump(exclude_unset=True)
     extras_nuevos = cambios.pop("extras", None) or {}

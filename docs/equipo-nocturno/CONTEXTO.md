@@ -29,6 +29,34 @@ Uruguay). La construyó Ivan, de marketing digital, trabajando con Claude.
 - Le importan: seguridad, diseño, que ande rápido y funcionalidades que la
   gente use de verdad.
 
+## Qué queremos que surja (la vara)
+
+Core Tienda tiene que sentirse como **un producto profesional**, no como una
+herramienta interna armada de a pedazos. Concretamente:
+
+- **Una persona nueva la entiende sola.** Alguien de una agencia entra por
+  primera vez y en un minuto sabe qué le pidieron, para cuándo y cómo
+  entregarlo, sin que nadie le explique. Lo mismo un encargado de local con
+  su pedido del mes.
+- **El equipo sabe en 10 segundos qué le toca hoy** y qué está atrasado, y
+  hace lo de todos los días (cargar una acción, pedir una pieza, revisar una
+  entrega) en pocos pasos y sin ir y volver entre pantallas.
+- **Nada queda en el aire.** Cada acción avisa qué pasó; cada error dice qué
+  hacer; cada pantalla vacía explica qué va ahí; lo que hace uno le llega al
+  otro (equipo ↔ agencia ↔ local).
+- **Pareja en todas partes.** El mismo botón, el mismo encabezado, el mismo
+  cartel para lo mismo en todas las pantallas; las pantallas viejas se van
+  pareciendo a las nuevas (las del calendario).
+- **Se lee bien:** contraste alto, letra que no obliga a acercarse, textos
+  completos, en notebook de oficina y en el celular, claro y oscuro.
+- **Rápida y confiable:** nada se pierde (lo escrito, las imágenes), nada
+  tarda sin avisar.
+
+El Equipo nocturno trabaja para acercar la plataforma a esto cada noche, con
+pruebas de que lo que cambia se nota para una persona. Las personas para
+quienes se mira (analista de promo y marca, agencia, local, jefatura) están
+en `.claude/skills/recorrido-humano/criterios.md`.
+
 ## Quién la usa
 
 - **El equipo de Tienda (promo y marca):** calendario por mundos, mis tareas,
@@ -76,15 +104,36 @@ Uruguay). La construyó Ivan, de marketing digital, trabajando con Claude.
   "de afuera". Desde el 24/11/2026 una tarea = un pedido, todas en un solo
   nivel (Ivan: "tener así dividido en tarea, pedido de piezas y luego
   subtareas me parece al pedo y confuso"; migración 0090).
+- Sacar Medios (`/dashboard`, `/analytics`, `/campaigns`, `/canales`) o
+  Finanzas (`/facturacion`) del menú: siguen por decisión de Ivan (20/11/2026).
+  Sí se puede mejorar cómo se ven.
 - Mejoras inventadas que no le sirven a nadie. Cada propuesta responde a una
   necesidad concreta de alguien que usa la plataforma.
 
+## Cambios recientes que hay que conocer (24/11/2026)
+
+- **Una tarea = un pedido** (migración 0090): todo en un solo nivel, con su
+  responsable de Tienda.
+- **Adjuntos en el pedido** de una tarea (migración 0089), por ejemplo el
+  Excel con lo que hay que hacer.
+- Los **cambios pedidos** a la agencia se ven **en rojo**, y el análisis de
+  las entregas (lo que ve la IA) es **solo para Tienda**.
+- La contraseña se cambia cada **60 días**; el botón Herramientas cierra
+  siempre.
+- **Redexpres guarda lo último** que escribe el local (antes podía perder la
+  última tecla).
+- Existe el **entorno de pruebas** con tres cuentas (README, *La plataforma
+  andando*) y el **cuaderno de hallazgos** (rama `equipo-nocturno/cuaderno`).
+
 ## De dónde sacar necesidades
 
+- **Usar la plataforma** como cada persona (skill `recorrido-humano`): es la
+  fuente principal.
+- **El cuaderno de hallazgos** (lo que ya se vio otras noches, ordenado por
+  prioridad).
 - Las reuniones a las que mandaron a Claude (conector Meetings), si hay.
 - Los issues abiertos del repo.
-- `PENDIENTES.md` (ojo: es del 01/09/2026 y una parte ya se hizo).
-- El código: cosas a medio hacer, textos confusos, pantallas que traban,
-  errores que no se avisan, pruebas que faltan en algo importante.
-- La visión de arriba: qué le falta a la plataforma para ser el hilo conductor
-  de promo y marca.
+- El mapa de la plataforma (`plataforma/`): sus «puntos a mirar» son
+  sospechas leyendo el código, para confirmar en la pantalla.
+- La vara de arriba: qué le falta a la plataforma para sentirse profesional.
+- `PENDIENTES.md` es del 01/09/2026 y está viejo: no lo uses.
