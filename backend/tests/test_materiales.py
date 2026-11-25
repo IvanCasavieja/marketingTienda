@@ -1164,7 +1164,7 @@ def test_el_tope_de_paginas_por_pdf_de_la_ia_cuenta_las_que_ya_estan_en_la_ronda
     # Sin lugar para la IA, el PDF no "quedó afuera": sus primeras páginas están en la ronda.
     j = m.Juntado()
     m.extraer_del_zip(_zip({"a.jpg": _jpeg(50, 50), "catalogo.pdf": _pdf(5)}), j, lugar=1, paginas_hechas={1: 4})
-    assert j.no_se_pudo_abrir == ["«catalogo.pdf»: se revisaron solo las páginas que van como imágenes de la ronda "
+    assert j.no_se_pudo_abrir == ["«catalogo.pdf»: se revisaron solo las páginas que van como imágenes de la versión "
                                   "(tope de imágenes por entrega)"]
 
 

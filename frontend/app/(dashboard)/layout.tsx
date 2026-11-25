@@ -15,6 +15,7 @@ import NavegacionInferior from "@/components/layout/NavegacionInferior";
 import { Campanita } from "@/components/layout/Campanita";
 import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
 import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "@/lib/externos";
+import { loginVolviendoA } from "@/lib/volver";
 import { useAvisos } from "@/store/avisos";
 import { useTranslation } from "react-i18next";
 import { muestraBurbuja } from "@/lib/chat/conversacion";
@@ -81,7 +82,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       })
       .catch((err) => {
         if (err?.response?.status === 401 || err?.response?.status === 403) {
-          router.replace("/login");
+          // Al entrar, vuelve acá: el link del mail abre la tarea (H-040).
+          router.replace(loginVolviendoA(window.location.pathname + window.location.search));
         } else {
           // Error de red/servidor: no dejamos al usuario trabado en la pantalla
           // de carga, cada fetch individual va a manejar su propio error.

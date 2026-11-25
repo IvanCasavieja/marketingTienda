@@ -8,6 +8,7 @@ import { Eye, EyeOff, Loader2, BarChart3, Brain, Tag, Presentation } from "lucid
 import { useTranslation } from "react-i18next";
 import { RobotMascot, RobotMini } from "@/components/RobotMascot";
 import { inicioDe } from "@/lib/mundos";
+import { volverDeLaBusqueda } from "@/lib/volver";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -42,12 +43,15 @@ export default function LoginPage() {
       // la plataforma, o a donde entraba antes si no lo puede ver (los logins
       // de sucursal, por ejemplo).
       // Una cuenta externa (la agencia) va directo a su trabajo: su tablero.
-      let destino = "/home";
+      // Si vino de un link (el del mail: «/entregas?tarea=…»), vuelve ahí
+      // (H-040 de la auditoría del 25/11/2026); quien elige mundo, después de elegirlo.
+      const volver = volverDeLaBusqueda(window.location.search);
+      let destino = volver ?? "/home";
       try {
         const { data } = await authApi.me();
         // Y quien no ve el calendario (su alcance es "No lo ve", 0070), a su tablero: ver inicioDe.
-        if ((data?.mundos ?? []).length > 1) destino = "/mundos";
-        else destino = inicioDe(data);
+        if ((data?.mundos ?? []).length > 1) destino = volver ? `/mundos?volver=${encodeURIComponent(volver)}` : "/mundos";
+        else destino = volver ?? inicioDe(data);
       } catch {
         // Si /me falla, el layout del dashboard decide qué hacer.
       }

@@ -1630,9 +1630,12 @@ async def ronda_anterior_de(db, version, *, si_es_la_primera: RondaAnterior | No
 
     from app.models.entregas import CalendarioDecision, CalendarioMarca, CalendarioVersion, CalendarioVersionImagen
 
+    # Las que la agencia reemplazó antes de que las revisaran (25/11/2026) no
+    # cuentan: nadie pidió nada sobre ellas. Se mira la anterior a esas.
     anterior = (await db.execute(
         select(CalendarioVersion)
-        .where(CalendarioVersion.fase_id == version.fase_id, CalendarioVersion.ronda < version.ronda)
+        .where(CalendarioVersion.fase_id == version.fase_id, CalendarioVersion.ronda < version.ronda,
+               CalendarioVersion.estado != "reemplazada")
         .order_by(CalendarioVersion.ronda.desc())
         .limit(1)
     )).scalar_one_or_none()

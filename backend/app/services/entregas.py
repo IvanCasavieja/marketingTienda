@@ -132,6 +132,12 @@ ORIGEN = "calendario_entrega"
 # La versión queda en estado 'avanzar' («OK para avanzar»).
 DECISIONES = ("aprobada", "cambios", "avanzar")
 AVANZAR = "avanzar"
+# Una versión que la agencia reemplazó por otra antes de que la decidieran
+# (25/11/2026, Ivan: "que la agencia pueda ir y venir... enviar entregas sin
+# esperar nuestra respuesta, mientras la tarjeta no esté aprobada"). Queda en
+# el historial (se puede comparar con ella), nadie la decide y no es
+# retrabajo: el aprobador ve siempre la última.
+REEMPLAZADA = "reemplazada"
 # La decisión vieja: no se acepta más, pero en la base hay decisiones de esta
 # semana guardadas así y se tienen que seguir leyendo como aprobadas (la
 # cadena, el retrabajo y la pantalla no se pueden romper por ellas).
@@ -993,25 +999,58 @@ def _corto(texto: str, tope: int = 700) -> str:
     return texto if len(texto) <= tope else texto[: tope - 1].rstrip() + "…"
 
 
+def _con_nota(texto: str, nota: str | None) -> str:
+    """El texto con la nota del envío al final, entre comillas (25/11/2026:
+    "cada envío lleva una nota corta... así los cambios acordados por fuera
+    quedan registrados")."""
+    nota = " ".join((nota or "").split())
+    if not nota:
+        return texto
+    corta = nota if len(nota) <= 160 else nota[:159].rstrip() + "…"
+    return f"{texto} Dice: «{corta}»"
+
+
 def mensaje_para_revisar(
     entrego: str, ronda: int, fase: str, tarea: str, accion: str, *, aprobo_antes: str | None = None,
+    nota: str | None = None, reemplaza: int | None = None,
 ) -> str:
     if aprobo_antes:
-        return (f"{aprobo_antes} aprobó la ronda {ronda} de {fase} en «{tarea}» ({accion}). "
+        return (f"{aprobo_antes} aprobó la versión {ronda} de {fase} en «{tarea}» ({accion}). "
                 "Ahora te toca revisarla a vos.")
-    return f"{entrego} entregó la ronda {ronda} de {fase} en «{tarea}» ({accion}). Te toca revisarla."
+    if reemplaza:
+        texto = (f"{entrego} mandó la versión {ronda} de {fase} en «{tarea}» ({accion}), "
+                 f"en lugar de la {reemplaza}. Te toca revisarla.")
+    else:
+        texto = f"{entrego} entregó la versión {ronda} de {fase} en «{tarea}» ({accion}). Te toca revisarla."
+    return _corto(_con_nota(texto, nota))
+
+
+def mensaje_de_archivos_sumados(quien: str, cantidad: int, ronda: int, tarea: str, nota: str | None = None) -> str:
+    """A quien revisa, cuando la agencia suma archivos a la versión que está
+    esperando (25/11/2026: "si solo les faltó algo, pueden sumarlo a la
+    versión actual sin generar una nueva")."""
+    cuantos = "1 archivo" if cantidad == 1 else f"{cantidad} archivos"
+    return _corto(_con_nota(f"{quien} sumó {cuantos} a la versión {ronda} de «{tarea}».", nota))
+
+
+def mensaje_de_reapertura(quien: str, tarea: str, accion: str, fase: str, motivo: str) -> str:
+    """A quien entrega, cuando reabren una pieza que ya estaba aprobada."""
+    motivo = " ".join((motivo or "").split())
+    if motivo and motivo[-1] not in ".!?…":
+        motivo += "."
+    return _corto(f"{quien} reabrió «{tarea}» ({accion}) para otro cambio: {motivo} Te toca entregar {fase}.")
 
 
 def mensaje_de_cambios(quien: str, ronda: int, fase: str, tarea: str, marcas: int) -> str:
     cuantas = "1 marca" if marcas == 1 else f"{marcas} marcas"
     detalle = f" ({cuantas})" if marcas else ""
-    return (f"{quien} pidió cambios en la ronda {ronda} de {fase} de «{tarea}»{detalle}. "
-            f"Te toca entregar la ronda {ronda + 1}.")
+    return (f"{quien} pidió cambios en la versión {ronda} de {fase} de «{tarea}»{detalle}. "
+            f"Te toca entregar la versión {ronda + 1}.")
 
 
 def mensaje_de_avanzar(quien: str, ronda: int, tarea: str, comentario: str | None = None) -> str:
     """A quien la hace, cuando le dieron el OK para avanzar (25/11/2026)."""
-    texto = f"{quien} dio el OK a la ronda {ronda} de «{tarea}»: avanzá con lo que falta."
+    texto = f"{quien} dio el OK a la versión {ronda} de «{tarea}»: avanzá con lo que falta."
     if comentario:
         texto += f" Dice: «{comentario}»"
     return _corto(texto)
@@ -1024,7 +1063,7 @@ def mensaje_de_aprobacion(
     """Al responsable, cuando se aprobó la fase (o cuando la aprobó el último
     y sigue otra persona): dice qué sigue. Uno solo por decisión. Hasta el
     19/11/2026 llevaba también los "ajustes" del aprobado con cambios."""
-    texto = f"{quien} aprobó la ronda {ronda} de {fase} de «{tarea}»."
+    texto = f"{quien} aprobó la versión {ronda} de {fase} de «{tarea}»."
     if sigue_revisando:
         texto += f" Ahora la revisa {sigue_revisando}."
     elif siguiente_fase:

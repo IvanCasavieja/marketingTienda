@@ -8,7 +8,8 @@ import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import { imagenParaComparar } from '@/lib/calendario/comparar'
 import {
-  botonGrandeAlRevisar, fechaYHora, textoDeAprobar, type DetalleEntregas, type Marca, type TipoDecision, type Version,
+  botonGrandeAlRevisar, fechaYHora, textoDeAprobar, versionConLoPedido, type DetalleEntregas, type Marca, type TipoDecision,
+  type Version,
 } from '@/lib/calendario/entregas'
 import {
   VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, puntosParaMostrar, textoConArchivo, tieneLugar,
@@ -256,8 +257,11 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // quien entrega no sabría qué cambiar).
   const hayParaQuienEntrega = hayMarcas || comentario.trim() !== ''
   const sinTexto = nuevas.findIndex(n => !n.texto.trim())
-  // Lo que se pidió en la ronda anterior y si la agencia dice que lo corrigió.
-  const pedidoAntes = anterior?.faseId === version.faseId ? anterior.marcas : []
+  // Lo que se pidió en la versión anterior y si la agencia dice que lo
+  // corrigió. Sin contar las que la agencia reemplazó antes de que las
+  // revisaran (25/11/2026): sobre esas nadie pidió nada.
+  const conLoPedido = versionConLoPedido(detalle.fases, version)
+  const pedidoAntes = conLoPedido?.marcas ?? []
   // Y lo que ve la IA de cada una (vacío si esta persona no ve la revisión:
   // entonces no se la pide).
   const iaDeCadaMarca = cambiosPorMarca(revisionIA)
@@ -271,7 +275,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // está mal, el bloque va con borde rojo.
   const faltanPiezas = (version.faltan?.length ?? 0) > 0
   // El botón grande (25/11/2026): Avanzar, salvo que ya estén todas las piezas.
-  const grande = botonGrandeAlRevisar(detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan)
+  const grande = botonGrandeAlRevisar(
+    detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan, detalle.limites.imagenes,
+  )
   const esUltimaFase = detalle.fases[detalle.fases.length - 1]?.id === version.faseId
   const turno = detalle.resumen.aprobadorDeTurno
   const lugarEnLaCadena = turno != null ? detalle.aprobadores.indexOf(turno) : -1
@@ -285,7 +291,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
 
   function hayLugarParaOtraMarca(): boolean {
     if (nuevas.length + version.marcas.length >= detalle.limites.marcas) {
-      toast.error(`Son demasiadas marcas en una ronda (hasta ${detalle.limites.marcas}).`)
+      toast.error(`Son demasiadas marcas en una versión (hasta ${detalle.limites.marcas}).`)
       return false
     }
     return true
@@ -416,7 +422,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       // entra todo sin desplazar (25/11/2026).
       claseImagen={comparar ? 'max-h-[30vh] lg:max-h-[calc(100dvh_-_30rem)]'
         : version.imagenes.length > 1 ? 'max-h-[34vh] lg:max-h-[calc(100%_-_7.5rem)]' : 'max-h-[34vh] lg:max-h-[calc(100%_-_3rem)]'}
-      etiqueta={`Ronda ${version.ronda}, imagen ${ordenActiva + 1}`}
+      etiqueta={`Versión ${version.ronda}, imagen ${ordenActiva + 1}`}
       ronda={ronda}
     />
   )
@@ -439,7 +445,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     partes.push({ clave: 'puntos', contenido: (
       <section aria-labelledby="lo-que-se-pidio">
         <h4 id="lo-que-se-pidio" className="text-sm font-bold text-slate-900 dark:text-slate-100">
-          {puntos.inicial || !anterior ? 'Lo que se pidió' : `Lo que se pidió en la ronda ${anterior.ronda}`}
+          {puntos.inicial || !conLoPedido ? 'Lo que se pidió' : `Lo que se pidió en la versión ${conLoPedido.ronda}`}
         </h4>
         {/* No se dice "lo que vio la agencia": si mandó sin esperar a la
             IA, o con un ZIP o un link, la revisión corrió después. */}
@@ -462,7 +468,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
     partes.push({ clave: 'pedido', contenido: (
       <section aria-labelledby="lo-que-se-pidio-antes">
         <h4 id="lo-que-se-pidio-antes" className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">
-          Lo que se pidió en la ronda {anterior?.ronda}
+          Lo que se pidió en la versión {conLoPedido?.ronda}
         </h4>
         <ul className="space-y-1.5">
           {pedidoAntes.map(m => {
@@ -482,7 +488,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                     </span>
                     {ia && (
                       <span
-                        title="Lo que ve la IA en esta ronda. Es una ayuda: se puede equivocar."
+                        title="Lo que ve la IA en esta versión. Es una ayuda: se puede equivocar."
                         className={`mt-0.5 shrink-0 whitespace-nowrap rounded-full px-1.5 py-px text-[11px] font-bold ${COLOR_DEL_VEREDICTO[ia.veredicto]}`}
                       >
                         {VEREDICTO_IA[ia.veredicto]}
@@ -532,7 +538,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       imagenId={imagenAnterior}
       pines={pinesDe(anterior.marcas, imagenAnterior)}
       claseImagen="max-h-[30vh] lg:max-h-[calc(100dvh_-_30rem)]"
-      etiqueta={`La versión anterior (ronda ${anterior.ronda}), imagen ${comparada.numero ?? 1}`}
+      etiqueta={`La versión anterior (v${anterior.ronda}), imagen ${comparada.numero ?? 1}`}
       ronda={ronda}
     />
   ) : null
@@ -541,7 +547,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // comparar va adentro de la columna «Ahora» (24/11/2026: abajo de las dos
   // parecía de la ronda anterior).
   const tiraNueva = version.imagenes.length > 1 ? (
-    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la ronda ${version.ronda}`}>
+    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la versión ${version.ronda}`}>
       {version.imagenes.map((im, i) => {
         const cuantas = nuevas.filter(n => n.imagenId === im.id).length
         return (
@@ -564,7 +570,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   ) : null
   // La de la ronda anterior, si tenía varias: cambia solo la de «Antes».
   const tiraAnterior = comparar && anterior && anterior.imagenes.length > 1 ? (
-    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la ronda ${anterior.ronda}`}>
+    <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={`Imágenes de la versión ${anterior.ronda}`}>
       {anterior.imagenes.map((im, i) => (
         <button
           key={im.id}
@@ -574,19 +580,19 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           onClick={() => setAnteriorElegida({ para: activa, id: im.id })}
           className={`relative shrink-0 rounded-xl p-0.5 transition ${im.id === imagenAnterior ? 'ring-2 ring-slate-500 dark:ring-slate-300' : 'opacity-70 hover:opacity-100'}`}
         >
-          <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1} de la ronda ${anterior.ronda}`} className="h-12 w-12" />
+          <Miniatura imagenId={im.id} etiqueta={`Imagen ${i + 1} de la versión ${anterior.ronda}`} className="h-12 w-12" />
         </button>
       ))}
     </div>
   ) : null
-  const nombreAnterior = anterior?.faseId === version.faseId ? `ronda ${anterior?.ronda}` : 'fase anterior'
+  const nombreAnterior = anterior?.faseId === version.faseId ? `versión ${anterior?.ronda}` : 'fase anterior'
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={contenedor} className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 lg:flex lg:flex-col lg:gap-4 lg:space-y-0 lg:overflow-hidden">
         <div className="flex flex-wrap items-start justify-between gap-2 lg:shrink-0">
           <div className="min-w-0">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Revisar la ronda {version.ronda} de {fase?.nombre}</h3>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">Revisar la versión {version.ronda} de {fase?.nombre}</h3>
             <p className="text-sm text-slate-600 dark:text-slate-400">
               La subió {nombre(version.subidaPor)} · {fechaYHora(version.fecha)}
             </p>
@@ -600,7 +606,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                 comparar ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la ronda ${anterior.ronda}` : 'la fase anterior'}`}
+              <Columns2 className="h-4 w-4" /> {comparar ? 'Dejar de comparar' : `Comparar con ${anterior.faseId === version.faseId ? `la versión ${anterior.ronda}` : 'la fase anterior'}`}
             </button>
           )}
         </div>
@@ -628,10 +634,10 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             {/* En el teléfono no entran dos lado a lado: pestañas. */}
             <div className="segmentado sm:hidden" role="tablist" aria-label="Qué versión ver">
               <button type="button" role="tab" aria-selected={ladoMovil === 'anterior'} onClick={() => setLadoMovil('anterior')} className="segmento">
-                Antes · ronda {anterior?.ronda}
+                Antes · versión {anterior?.ronda}
               </button>
               <button type="button" role="tab" aria-selected={ladoMovil === 'nueva'} onClick={() => setLadoMovil('nueva')} className="segmento">
-                Ahora · ronda {version.ronda}
+                Ahora · versión {version.ronda}
               </button>
             </div>
             {/* Cada columna con lo suyo (24/11/2026): la imagen, su número y
@@ -651,7 +657,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               </figure>
               <figure className={`space-y-2 ${ladoMovil === 'nueva' ? '' : 'hidden sm:block'}`}>
                 <figcaption className="text-xs font-bold uppercase tracking-wide text-brand-700 dark:text-brand-200">
-                  Ahora · ronda {version.ronda}{version.imagenes.length > 1 ? ` · imagen ${numeroActiva}` : ''}
+                  Ahora · versión {version.ronda}{version.imagenes.length > 1 ? ` · imagen ${numeroActiva}` : ''}
                 </figcaption>
                 {imagenNueva}
                 {tiraNueva}
@@ -691,7 +697,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             con cambios». Sin esta lista, sus pines quedaban sin texto. */}
         {version.marcas.length > 0 && (
           <section className="rounded-xl border border-slate-300 p-3 dark:border-slate-700">
-            <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Ya marcado en esta ronda</h4>
+            <h4 className="mb-1.5 text-sm font-bold text-slate-900 dark:text-slate-100">Ya marcado en esta versión</h4>
             <ul className="space-y-1">
               {version.marcas.map(m => (
                 <li key={m.id} className="flex items-start gap-2 text-sm">

@@ -343,7 +343,7 @@ def extraer_del_zip(
             hechas = hechas_por_pdf.get(e.indice, 0) if e.clase == "pdf" else 0
             if agregadas >= lugar:
                 juntado.no_se_pudo_abrir.append(
-                    f"«{e.nombre}»: se revisaron solo las páginas que van como imágenes de la ronda "
+                    f"«{e.nombre}»: se revisaron solo las páginas que van como imágenes de la versión "
                     "(tope de imágenes por entrega)" if hechas
                     else f"«{e.nombre}»: quedó afuera por el tope de imágenes por entrega"
                 )

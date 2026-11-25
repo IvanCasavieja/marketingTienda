@@ -10,7 +10,7 @@ import { Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
-  camposDe, etiquetaDecision, fechaDia, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
+  camposDe, etiquetaDecision, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -35,6 +35,7 @@ import {
 import { ImagenConMarcas, Miniatura, type Pin } from './ImagenConMarcas'
 import { LineaDeFases } from './LineaDeFases'
 import { LoQueFalta } from './LoQueFalta'
+import { SumarArchivos } from './SumarArchivos'
 import { Revisor } from './Revisor'
 import { urlDeImagen } from './useImagen'
 
@@ -351,6 +352,7 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   onRecargar: () => void
 }) {
   const setModo = useVistaEntregas(s => s.setModo)
+  const huboCambios = useVistaEntregas(s => s.huboCambios)
   const { resumen, tarea, puedo } = detalle
   const nombreDe = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'alguien'
   const enCurso = versionEnCurso(detalle)
@@ -383,9 +385,13 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   // rondas llevó la aprobada.
   const rondas = faseActual?.versiones.length ?? 0
   const cabecera = !unaFase ? null
-    : resumen.momento === 'aprobada' ? (rondas > 0 ? `${rondas} ${rondas === 1 ? 'ronda' : 'rondas'}` : null)
-      : resumen.momento === 'cambios' && resumen.ronda > 0 ? `Ronda ${resumen.ronda}` : null
-  const hayBoton = (paso.accion === 'entregar' && puedo.entregar) || (puedo.decidir && resumen.momento === 'revision')
+    : resumen.momento === 'aprobada' ? (rondas > 0 ? `${rondas} ${rondas === 1 ? 'versión' : 'versiones'}` : null)
+      : resumen.momento === 'cambios' && resumen.ronda > 0 ? `Versión ${resumen.ronda}` : null
+  // Ir y venir (25/11/2026): esperando feedback, quien la hace igual puede
+  // mandar una versión nueva (reemplaza a la que espera) o sumarle archivos.
+  const mandaOtra = puedo.entregar && resumen.momento === 'revision'
+  const [sumando, setSumando] = useState(false)
+  const hayBoton = (paso.accion === 'entregar' && puedo.entregar) || (puedo.decidir && resumen.momento === 'revision') || mandaOtra
 
   return (
     <div className="min-w-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-4 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6">
@@ -415,7 +421,17 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
             <div className="flex shrink-0 flex-wrap gap-2">
               {paso.accion === 'entregar' && puedo.entregar && (
                 <button type="button" onClick={() => setModo('entregar')} className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-700 active:scale-[.98] sm:min-h-[44px] sm:flex-none">
-                  <Send className="h-4 w-4" /> {resumen.momento === 'cambios' ? `Entregar ronda ${resumen.ronda + 1}` : 'Entregar'}
+                  <Send className="h-4 w-4" /> {resumen.momento === 'cambios' ? `Entregar versión ${resumen.ronda + 1}` : 'Entregar'}
+                </button>
+              )}
+              {mandaOtra && puedo.sumar && !sumando && (
+                <button type="button" onClick={() => setSumando(true)} className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:min-h-[44px] sm:flex-none">
+                  <Paperclip className="h-4 w-4" /> Sumar archivos
+                </button>
+              )}
+              {mandaOtra && (
+                <button type="button" onClick={() => setModo('entregar')} className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 sm:min-h-[44px] sm:flex-none">
+                  <Send className="h-4 w-4" /> Mandar versión nueva
                 </button>
               )}
               {puedo.decidir && resumen.momento === 'revision' && (
@@ -432,12 +448,20 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
         {resumen.momento === 'aprobada' && puedo.devolver && (
           <DevolverAprobada tareaId={tarea.id} siguiente={`Entrega ${detalle.fases.length + 1}`} onListo={onRecargar} />
         )}
+        {mandaOtra && sumando && enCurso && (
+          <SumarArchivos
+            detalle={detalle}
+            version={enCurso}
+            onListo={() => { setSumando(false); onRecargar(); huboCambios() }}
+            onCancelar={() => setSumando(false)}
+          />
+        )}
       </section>
 
       {faseDevuelta?.motivo && resumen.momento !== 'aprobada' && (
         <section aria-labelledby="motivo-devolucion">
           <h3 id="motivo-devolucion" className="flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-300">
-            <RotateCcw className="h-4 w-4" /> Volvió después de aprobada: {faseDevuelta.nombre}
+            <RotateCcw className="h-4 w-4" /> Reabierta después de aprobada: {faseDevuelta.nombre}
           </h3>
           <p className="mt-1.5 whitespace-pre-line text-sm text-slate-800 dark:text-slate-200">{faseDevuelta.motivo}</p>
           {faseDevuelta.abiertaPor != null && (
@@ -467,13 +491,15 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
           <ListaDeMarcas marcas={aCorregir} version={ultimaDeFase} />
         </section>
       ) : (
-        <section aria-label={`Ronda ${ultimaDeFase.ronda}`} className="space-y-3">
+        <section aria-label={`Versión ${ultimaDeFase.ronda}`} className="space-y-3">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Ronda {ultimaDeFase.ronda} · la subió {nombreDe(ultimaDeFase.subidaPor)} · {fechaYHora(ultimaDeFase.fecha)}
+            v{ultimaDeFase.ronda} · {fechaYHora(ultimaDeFase.fecha)} · la subió {nombreDe(ultimaDeFase.subidaPor)}
           </p>
           <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
           {ultimaDeFase.comentario && (
-            <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{ultimaDeFase.comentario}»</p>
+            <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-slate-100">Nota:</span> «{ultimaDeFase.comentario}»
+            </p>
           )}
           {/* Las piezas del pedido que no venían, y por qué (21/11/2026). */}
           <LoQueFalta detalle={detalle} version={ultimaDeFase} />
@@ -484,7 +510,7 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
       {/* 3. Antes de la primera entrega, lo que se pidió es lo que hay que leer: abierto. */}
       <Brief detalle={detalle} abiertoAlInicio={resumen.ronda === 0 && resumen.momento === 'produccion' && !detalle.fases.some(f => f.versiones.length > 0)} onRecargar={onRecargar} />
 
-      {/* 4. Todas las rondas, cerradas. */}
+      {/* 4. Todas las versiones, cerradas. */}
       <Rondas detalle={detalle} />
 
       {/* En pantalla chica, los comentarios van acá; en grande, al costado. */}
@@ -606,14 +632,14 @@ function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; si
     setEnviando(true)
     try {
       const { data } = await entregasApi.devolver(tareaId, comentario)
-      toast.success(`Devuelta: le toca entregar ${data.fase.nombre}.`)
+      toast.success(`Reabierta: le toca entregar ${data.fase.nombre}.`)
       setTexto('')
       setAbierto(false)
       onListo()
       huboCambios()
       if (useCalendario.getState().rev != null) void useCalendario.getState().sincronizar()
     } catch (e) {
-      toast.error(detalleDeError(e) ?? 'No se pudo devolver. Probá de nuevo.')
+      toast.error(detalleDeError(e) ?? 'No se pudo reabrir. Probá de nuevo.')
     } finally {
       setEnviando(false)
     }
@@ -627,7 +653,7 @@ function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; si
           onClick={() => setAbierto(true)}
           className="flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-rose-300 hover:text-rose-700 active:scale-[.98] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-rose-500/50 dark:hover:text-rose-200"
         >
-          <RotateCcw className="h-4 w-4" /> Devolver para corregir
+          <RotateCcw className="h-4 w-4" /> Reabrir para otro cambio
         </button>
       </div>
     )
@@ -657,7 +683,7 @@ function DevolverAprobada({ tareaId, siguiente, onListo }: { tareaId: string; si
           disabled={!texto.trim() || enviando}
           className="flex min-h-[44px] items-center gap-2 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-rose-700 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Devolver
+          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} Reabrir
         </button>
         <button
           type="button"
@@ -705,6 +731,8 @@ const ESTADO_VERSION = {
   cambios: { texto: 'Volvió con cambios', tono: 'text-rose-700 dark:text-rose-300' },
   // El OK para avanzar con lo que falta (25/11/2026): no es «Aprobada».
   avanzar: { texto: 'OK para avanzar', tono: 'text-emerald-700 dark:text-emerald-300' },
+  // La agencia mandó otra antes de que la revisaran (25/11/2026, ir y venir).
+  reemplazada: { texto: 'Reemplazada por una nueva', tono: 'text-slate-500 dark:text-slate-400' },
 } as const
 
 /**
@@ -768,7 +796,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
     setBajando(true)
     try {
       const fase = detalle.fases.find(f => f.id === version.faseId)?.nombre ?? 'Entrega'
-      const base = `${detalle.tarea.titulo} - ${fase} - ronda ${version.ronda} - vista previa`.replace(/[\\/:*?"<>|]+/g, '-')
+      const base = `${detalle.tarea.titulo} - ${fase} - v${version.ronda} - vista previa`.replace(/[\\/:*?"<>|]+/g, '-')
       for (const [i, im] of vivas.entries()) {
         const url = await urlDeImagen(im.id, 'grande')
         const a = document.createElement('a')
@@ -797,7 +825,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
           Las imágenes de esta ronda ya se borraron (se guardan hasta un tiempo después de terminada la acción). Quedan las marcas y las decisiones.
         </p>
       ) : activa ? (
-        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Ronda ${version.ronda}`} ronda={vivas.map(i => i.id)} />
+        <ImagenConMarcas imagenId={activa} pines={pines} claseImagen={claseImagen} etiqueta={`Versión ${version.ronda}`} ronda={vivas.map(i => i.id)} />
       ) : null}
 
       {!todasPurgadas && version.imagenes.length > 1 && (
@@ -832,7 +860,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
               onClick={() => void bajarZip()}
               disabled={bajandoZip !== null}
               className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-bold text-brand-700 transition hover:bg-brand-50 disabled:opacity-60 dark:text-brand-200 dark:hover:bg-brand-500/10 sm:min-h-[36px]"
-              title={`El original de esta ronda, tal cual lo mandaron: ${zip.nombre}`}
+              title={`El original de esta versión, tal cual lo mandaron: ${zip.nombre}`}
             >
               {bajandoZip !== null ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileArchive className="h-3.5 w-3.5" />}
               {bajandoZip !== null && bajandoZip > 0
@@ -860,7 +888,7 @@ function VersionGrande({ detalle, version, claseImagen = 'max-h-[64vh]' }: {
               onClick={() => void descargar()}
               disabled={bajando}
               className="flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-800 sm:min-h-[36px]"
-              title="Las imágenes de esta ronda, achicadas para revisar (1600 px, JPEG): no son el archivo final"
+              title="Las imágenes de esta versión, achicadas para revisar (1600 px, JPEG): no son el archivo final"
             >
               {bajando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Vista previa (1600 px)
             </button>
@@ -1073,7 +1101,7 @@ function Rondas({ detalle }: { detalle: DetalleEntregas }) {
   return (
     <section aria-labelledby="rondas">
       <h3 id="rondas" className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
-        <Layers className="h-4 w-4 text-brand-600 dark:text-brand-300" aria-hidden /> Rondas
+        <Layers className="h-4 w-4 text-brand-600 dark:text-brand-300" aria-hidden /> Versiones
         <span className="rounded-full bg-slate-100 px-1.5 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">{filas.length}</span>
       </h3>
       <ol className="space-y-1.5">
@@ -1089,7 +1117,7 @@ function Ronda({ detalle, fase, version, conFase }: {
   detalle: DetalleEntregas
   fase: FaseDetalle
   version: Version
-  /** Con varias fases, el renglón dice de cuál es ("Boceto · Ronda 2"). */
+  /** Con varias fases, el renglón dice de cuál es ("Boceto · v2"). */
   conFase: boolean
 }) {
   const [abierta, setAbierta] = useState(false)
@@ -1105,16 +1133,17 @@ function Ronda({ detalle, fase, version, conFase }: {
         type="button"
         onClick={() => setAbierta(v => !v)}
         aria-expanded={abierta}
-        title={abierta ? 'Cerrar' : 'Ver esta ronda'}
+        title={abierta ? 'Cerrar' : 'Ver esta versión'}
         className={`flex min-h-[48px] w-full items-center gap-2 rounded-2xl px-3.5 text-left text-sm transition sm:min-h-[44px] ${
           abierta ? '' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
         }`}
       >
         <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-          <span className="font-semibold text-slate-900 dark:text-slate-100">{conFase ? `${fase.nombre} · ` : ''}Ronda {version.ronda}</span>
+          <span className="font-semibold text-slate-900 dark:text-slate-100">{conFase ? `${fase.nombre} · ` : ''}v{version.ronda}</span>
+          <span className="text-slate-500 dark:text-slate-400">· {fechaYHora(version.fecha)}</span>
           <span className="text-slate-500 dark:text-slate-400" aria-hidden>·</span>
           <span className={`font-semibold ${estado.tono}`}>{estado.texto}</span>
-          <span className="text-slate-500 dark:text-slate-400">· {quien} · {fechaDia(version.fecha)}</span>
+          <span className="text-slate-500 dark:text-slate-400">· {quien}</span>
         </span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 dark:text-slate-400 ${abierta ? 'rotate-180' : ''}`} aria-hidden />
       </button>
@@ -1122,7 +1151,11 @@ function Ronda({ detalle, fase, version, conFase }: {
         <div className="space-y-3 border-t border-slate-300 px-3.5 py-3 dark:border-slate-700">
           <p className="text-xs text-slate-500 dark:text-slate-400">La subió {nombreDe(version.subidaPor)} · {fechaYHora(version.fecha)}</p>
           <VersionGrande detalle={detalle} version={version} claseImagen="max-h-[50vh]" />
-          {version.comentario && <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">«{version.comentario}»</p>}
+          {version.comentario && (
+            <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-slate-100">Nota:</span> «{version.comentario}»
+            </p>
+          )}
           <LoQueFalta detalle={detalle} version={version} />
           <ListaDeMarcas marcas={version.marcas} version={version} />
           <Decisiones detalle={detalle} version={version} />

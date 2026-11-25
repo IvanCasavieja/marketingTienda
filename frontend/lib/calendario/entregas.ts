@@ -24,7 +24,9 @@ export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
 /** Las columnas del tablero: le toca a la agencia, a un aprobador, volvió, terminó. */
 export type MomentoEntrega = 'produccion' | 'revision' | 'cambios' | 'aprobada'
 export type EstadoFase = 'pendiente' | 'en-curso' | 'aprobada'
-export type EstadoVersion = 'revision' | 'aprobada' | 'cambios' | 'avanzar'
+/** 'reemplazada' (25/11/2026): la agencia mandó otra antes de que la
+ *  revisaran ("ir y venir"); queda en el historial y nadie la decide. */
+export type EstadoVersion = 'revision' | 'aprobada' | 'cambios' | 'avanzar' | 'reemplazada'
 /** Se sacó «Aprobado con cambios» (19/11/2026), que confundía. Con marcas la
  *  pieza vuelve a la agencia; sin marcas, «Avanzar» (25/11/2026: el OK a esa
  *  ronda para que siga con lo que falta, sin cerrar nada) o «Aprobar y
@@ -161,7 +163,10 @@ export type DetalleEntregas = {
   personas: Record<string, string>
   columna?: Columna
   puedo: {
+    /** Entregar: también esperando feedback (la nueva reemplaza a la que espera, 25/11/2026). */
     entregar: boolean; decidir: boolean; comoRespaldo: boolean; configurar: boolean
+    /** Sumar archivos a la versión que espera, mientras nadie la decidió (25/11/2026). */
+    sumar?: boolean
     /** Devolver una pieza ya aprobada con un texto: abre la Entrega siguiente. */
     devolver?: boolean
     /** Si ve lo que encontró la IA (aprobadores y quien gestiona; nunca quien entrega). */
@@ -378,14 +383,20 @@ export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boole
 /**
  * El botón grande al revisar (Ivan, 25/11/2026): «Avanzar», salvo que ya
  * estén todas las piezas del pedido; ahí, «Aprobar y terminar». Se sabe que
- * están todas cuando el pedido tiene piezas, la ronda trae imágenes y no
- * faltó ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar:
- * no cierra nada. Pura.
+ * están todas cuando el pedido tiene piezas, la versión trae una imagen por
+ * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y no faltó
+ * ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar: no
+ * cierra nada. Pura.
+ *
+ * Una imagen por pieza (H-035 de la auditoría del 25/11/2026): si no se
+ * pudo medir (un ZIP sin medidas), la lista de lo que falta llega vacía y
+ * decía «Ya están todas las piezas» con una imagen para dos piezas.
  */
 export function botonGrandeAlRevisar(
-  piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined,
+  piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined, tope = Infinity,
 ): 'avanzar' | 'terminar' {
-  return piezasPedidas > 0 && imagenes > 0 && !(faltan?.length) ? 'terminar' : 'avanzar'
+  const alcanzan = imagenes > 0 && imagenes >= Math.min(piezasPedidas, tope)
+  return piezasPedidas > 0 && alcanzan && !(faltan?.length) ? 'terminar' : 'avanzar'
 }
 
 /** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase
@@ -399,13 +410,13 @@ export function estadoDeFase(
   fase: ResumenEntrega['fases'][number], resumen: ResumenEntrega,
 ): { texto: string; tono: 'hecha' | 'actual' | 'cambios' | 'pendiente' } {
   if (fase.estado === 'aprobada') {
-    return { texto: fase.rondas === 1 ? 'Aprobada a la primera' : `Aprobada en ${fase.rondas} rondas`, tono: 'hecha' }
+    return { texto: fase.rondas === 1 ? 'Aprobada a la primera' : `Aprobada en ${fase.rondas} versiones`, tono: 'hecha' }
   }
   if (fase.estado === 'pendiente') return { texto: 'Pendiente', tono: 'pendiente' }
-  if (resumen.momento === 'revision') return { texto: `En revisión · ronda ${resumen.ronda}`, tono: 'actual' }
-  if (resumen.momento === 'cambios') return { texto: `Con cambios · ronda ${resumen.ronda}`, tono: 'cambios' }
-  if (conOk(resumen)) return { texto: `OK a la ronda ${resumen.ronda} · falta lo demás`, tono: 'actual' }
-  return { texto: resumen.ronda === 0 ? 'En producción' : `En producción · ronda ${resumen.ronda + 1}`, tono: 'actual' }
+  if (resumen.momento === 'revision') return { texto: `En revisión · versión ${resumen.ronda}`, tono: 'actual' }
+  if (resumen.momento === 'cambios') return { texto: `Con cambios · versión ${resumen.ronda}`, tono: 'cambios' }
+  if (conOk(resumen)) return { texto: `OK a la versión ${resumen.ronda} · falta lo demás`, tono: 'actual' }
+  return { texto: resumen.ronda === 0 ? 'En producción' : `En producción · versión ${resumen.ronda + 1}`, tono: 'actual' }
 }
 
 /**
@@ -426,7 +437,7 @@ export function pasoEnLaVista(paso: ProximoPaso, puedeDecidir: boolean, laSubioY
 }
 
 export type ProximoPaso = {
-  /** "Te toca: revisar la ronda 2 de Arte final" */
+  /** "Te toca: revisar la versión 2 de Arte final" */
   texto: string
   /** Lo que hace el botón principal, si es la persona que mira la que tiene que hacer algo. */
   accion: 'entregar' | 'revisar' | null
@@ -460,7 +471,7 @@ export function proximoPaso(
   const unaSola = resumen.fases.length === 1
   const deFase = unaSola ? '' : ` de ${fase.nombre}`
   if (resumen.momento === 'revision') {
-    const que = `revisar la ronda ${resumen.ronda}${deFase}`
+    const que = `revisar la versión ${resumen.ronda}${deFase}`
     if (puedeDecidir || (usuarioId != null && resumen.aprobadorDeTurno === usuarioId)) {
       return { texto: `Te toca: ${que}`, accion: 'revisar', aQuien: 'vos' }
     }
@@ -472,12 +483,12 @@ export function proximoPaso(
   const ronda = resumen.ronda + 1
   const ok = conOk(resumen)
   const que = resumen.momento === 'cambios'
-    ? `corregir y entregar la ronda ${ronda}${deFase}`
-    : ok ? `entregar lo que falta (ronda ${ronda}${deFase})`
-      : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la ronda ${ronda}${deFase}`
+    ? `corregir y entregar la versión ${ronda}${deFase}`
+    : ok ? `entregar lo que falta (versión ${ronda}${deFase})`
+      : ronda === 1 ? (unaSola ? 'entregar' : `entregar ${fase.nombre}`) : `entregar la versión ${ronda}${deFase}`
   const soyYo = quien.entregoYo ?? (usuarioId != null && responsableId === usuarioId)
   // Con el OK para avanzar (25/11/2026), a quien entrega se le dice así.
-  if (soyYo && ok) return { texto: `Te dieron el OK: entregá lo que falta (ronda ${ronda}${deFase})`, accion: 'entregar', aQuien: 'vos' }
+  if (soyYo && ok) return { texto: `Te dieron el OK: entregá lo que falta (versión ${ronda}${deFase})`, accion: 'entregar', aQuien: 'vos' }
   if (soyYo) return { texto: `Te toca: ${que}`, accion: 'entregar', aQuien: 'vos' }
   // Una agencia (de la plataforma o de afuera) se nombra por la agencia.
   if (quien.hace && quien.hace.tipo !== 'tienda' && quien.hace.nombre) {
@@ -487,8 +498,21 @@ export function proximoPaso(
   return { texto: `Le toca a ${nombreDe(responsableId)}: ${que}`, accion: null, aQuien: 'otro' }
 }
 
-/** La versión con la que se compara una: la ronda anterior de la misma fase
- *  o, si es la primera, la aprobada de la fase anterior (Boceto → Arte final). */
+/** Lo que se le pidió a una versión: la anterior de la misma fase sin contar
+ *  las que la agencia reemplazó antes de que las revisaran (25/11/2026: sobre
+ *  esas nadie pidió nada). La de antes, si volvió con cambios, tiene las
+ *  marcas; si no hay, es la primera de la fase. Pura. */
+export function versionConLoPedido(fases: FaseDetalle[], version: Version): Version | null {
+  const fase = fases.find(f => f.id === version.faseId)
+  if (!fase) return null
+  return fase.versiones
+    .filter(v => v.ronda < version.ronda && v.estado !== 'reemplazada')
+    .sort((a, b) => b.ronda - a.ronda)[0] ?? null
+}
+
+/** La versión con la que se compara una: la anterior de la misma fase (aunque
+ *  la hayan reemplazado: "tenemos el historial a mano para comparar") o, si es
+ *  la primera, la aprobada de la fase anterior (Boceto → Arte final). */
 export function versionAnterior(fases: FaseDetalle[], version: Version): Version | null {
   const i = fases.findIndex(f => f.id === version.faseId)
   if (i === -1) return null

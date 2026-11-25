@@ -109,6 +109,19 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const ronda = resumen.ronda + 1
   // Es una ronda que volvió con cambios (cambia el ejemplo del comentario).
   const volvio = resumen.momento === 'cambios'
+  // Ir y venir (25/11/2026): la que espera revisión queda reemplazada por esta.
+  const reemplaza = resumen.momento === 'revision' ? resumen.ronda : null
+  // Lo que pidieron cambiar en la que volvió (H-037 de la auditoría del
+  // 25/11/2026: el formulario solo decía «Subí la pieza» y las marcas
+  // quedaban dos pantallas más abajo): a la vista mientras se entrega.
+  const faseDetalle = detalle.fases.find(f => f.id === resumen.faseActual)
+  const queVolvio = volvio ? faseDetalle?.versiones[faseDetalle.versiones.length - 1] ?? null : null
+  const pedidoDeCambios = queVolvio
+    ? [
+        ...queVolvio.decisiones.filter(d => d.decision === 'cambios' && d.comentario).map(d => d.comentario as string),
+        ...queVolvio.marcas.map(m => `${m.numero}. ${m.texto}`),
+      ]
+    : []
   // La primera entrega de la fase: la IA la mira contra el pedido inicial
   // (21/11/2026). Para el texto de mientras mira.
   const primera = ronda === 1
@@ -134,6 +147,51 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // Las imágenes que ya miró: si se vuelve a entregar sin cambiarlas, se manda.
   const yaControladas = useRef<Blob[] | null>(null)
   const ocupado = subiendo !== null || controlando !== null
+  // Si hay algo cargado: «atrás», recargar o cerrar la pestaña preguntan
+  // antes de perderlo (H-039 de la auditoría del 25/11/2026: lo cargado se
+  // perdía sin preguntar; con Escape ya estaba protegido).
+  const hayAlgo = imagenes.length > 0 || zip !== null || comentario.trim() !== '' || link.trim() !== ''
+  const hayAlgoRef = useRef(false)
+  const cancelarRef = useRef(onCancelar)
+  useEffect(() => {
+    hayAlgoRef.current = hayAlgo && subiendo === null
+    cancelarRef.current = onCancelar
+  }, [hayAlgo, subiendo, onCancelar])
+  useEffect(() => {
+    const alSalir = (e: BeforeUnloadEvent) => {
+      if (!hayAlgoRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    // «Atrás»: se deja un paso en la historia con la misma dirección; si se
+    // vuelve con algo cargado, se pregunta. Si se confirma, se sale.
+    // El paso lleva una marca: al cerrar el formulario de forma normal, si
+    // sigue arriba de todo, se saca (así «atrás» después no queda muerto).
+    const marcar = () => window.history.pushState({ ...(window.history.state ?? {}), formEntrega: true }, '', window.location.href)
+    marcar()
+    let saliendo = false
+    const alVolver = () => {
+      if (saliendo) return
+      if (hayAlgoRef.current && !window.confirm('¿Salir sin mandar? Se pierde lo que cargaste.')) {
+        marcar()
+        return
+      }
+      saliendo = true
+      cancelarRef.current()
+    }
+    window.addEventListener('beforeunload', alSalir)
+    window.addEventListener('popstate', alVolver)
+    return () => {
+      window.removeEventListener('beforeunload', alSalir)
+      window.removeEventListener('popstate', alVolver)
+      if (!saliendo && window.history.state?.formEntrega) window.history.back()
+    }
+  }, [])
+
+  function cancelar() {
+    if (hayAlgo && !window.confirm('¿Descartar lo que cargaste?')) return
+    onCancelar()
+  }
   const camaraRef = useRef<HTMLInputElement>(null)
   const galeriaRef = useRef<HTMLInputElement>(null)
   const zipRef = useRef<HTMLInputElement>(null)
@@ -169,7 +227,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     if (!archivos || archivos.length === 0) return
     const lista = Array.from(archivos)
     if (lista.length > lugar) {
-      toast.error(`Entran hasta ${limites.imagenes} imágenes por ronda: se tomaron las primeras ${Math.max(0, lugar)}.`)
+      toast.error(`Entran hasta ${limites.imagenes} imágenes por versión: se tomaron las primeras ${Math.max(0, lugar)}.`)
     }
     const tomadas = lista.slice(0, Math.max(0, lugar))
     setPreparando(n => n + tomadas.length)
@@ -352,11 +410,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       imagenes.forEach(im => URL.revokeObjectURL(im.vista))
       // Con una sola fase (la "Entrega" de las tarjetas) no se nombra la fase.
       const deFase = resumen.fases.length > 1 ? ` de ${fase?.nombre ?? 'la fase'}` : ''
+      hayAlgoRef.current = false
       if (data.zip && !data.zip.guardado) {
         // Entregada igual; el ZIP no entró en la base (no se borra nada para hacerle lugar).
-        toast.warning(`Entregaste la ronda ${ronda}${deFase}. ${avisoZipSinGuardar(link.trim() !== '', true)}`)
+        toast.warning(`Mandaste la versión ${ronda}${deFase}. ${avisoZipSinGuardar(link.trim() !== '', true)}`)
       } else {
-        toast.success(`Entregaste la ronda ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
+        toast.success(`Mandaste la versión ${ronda}${deFase}. Quedó en «Esperando feedback»: le avisamos a quien la revisa.`)
       }
       onListo()
     } catch (e) {
@@ -381,14 +440,35 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       <div className="mx-auto w-full max-w-3xl space-y-6">
         <div>
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            {resumen.fases.length === 1
-              ? (ronda === 1 ? 'Entregar los materiales' : `Entregar la ronda ${ronda}`)
-              : `Entregar ${ronda === 1 ? fase?.nombre : `la ronda ${ronda} de ${fase?.nombre}`}`}
+            {reemplaza != null
+              ? `Mandar la versión ${ronda}${resumen.fases.length > 1 ? ` de ${fase?.nombre}` : ''}`
+              : resumen.fases.length === 1
+                ? (ronda === 1 ? 'Entregar los materiales' : `Entregar la versión ${ronda}`)
+                : `Entregar ${ronda === 1 ? fase?.nombre : `la versión ${ronda} de ${fase?.nombre}`}`}
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-400">
             Subí la pieza (hasta {limites.imagenes} imágenes, o el ZIP con las piezas) y/o pegá el link al original. La van a revisar en el orden de la cadena.
           </p>
         </div>
+
+        {/* Ir y venir (25/11/2026): sin esperar respuesta. */}
+        {reemplaza != null && (
+          <p className="rounded-xl bg-slate-100 px-3 py-2.5 text-sm text-slate-800 dark:bg-slate-800 dark:text-slate-100">
+            La versión {reemplaza} todavía no la revisaron: esta la reemplaza y van a ver esta. La {reemplaza} queda en el historial.
+          </p>
+        )}
+
+        {/* Lo que pidieron cambiar en la que volvió, a la vista (H-037). */}
+        {pedidoDeCambios.length > 0 && (
+          <section aria-labelledby="que-hay-que-cambiar" className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-500/30 dark:bg-rose-500/10">
+            <h4 id="que-hay-que-cambiar" className="flex items-center gap-2 text-sm font-bold text-rose-800 dark:text-rose-200">
+              <RotateCcw className="h-4 w-4" /> Lo que te pidieron cambiar
+            </h4>
+            <ul className="mt-1.5 space-y-1 text-sm text-rose-950 dark:text-rose-50">
+              {pedidoDeCambios.map((p, i) => <li key={i} className="whitespace-pre-line">{p}</li>)}
+            </ul>
+          </section>
+        )}
 
         {/* Devuelta después de aprobada (17/11/2026): lo que pidieron cambiar,
             arriba de todo, para entregar sabiendo qué corregir. */}
@@ -513,13 +593,15 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
 
         <div className="grid gap-3">
           <label className="block">
-            <span className="etiqueta-campo">Comentario (opcional)</span>
+            <span className="etiqueta-campo">Nota de este envío (opcional)</span>
             <textarea
               value={comentario}
               onChange={e => setComentario(e.target.value)}
               rows={3}
               maxLength={5000}
-              placeholder={volvio ? 'Ej: Agrandé el precio y saqué el fondo azul.' : 'Algo que tengan que saber al revisarla'}
+              placeholder={volvio ? 'Ej: Agrandé el precio y saqué el fondo azul.'
+                : reemplaza != null ? 'Ej: faltaba el formato historia, o el ajuste pedido por WhatsApp'
+                  : 'Algo que tengan que saber al revisarla'}
               className="campo !h-auto py-2"
             />
           </label>
@@ -582,7 +664,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
         <button
           type="button"
-          onClick={onCancelar}
+          onClick={cancelar}
           disabled={ocupado}
           className="min-h-[48px] rounded-xl px-4 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 sm:min-h-[44px]"
         >
@@ -600,7 +682,8 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
             // Con varias fases, la primera ronda de cada una se nombra por la
             // fase ("Entregar Entrega 2"), igual que el título: "Entregar
             // ronda 1" debajo de "Entregar Entrega 2" confundía (17/11/2026).
-            <><Send className="h-4 w-4" /> {resumen.fases.length > 1 && ronda === 1 && fase ? `Entregar ${fase.nombre}` : `Entregar ronda ${ronda}`}</>
+            <><Send className="h-4 w-4" /> {reemplaza != null ? `Mandar versión ${ronda}`
+              : resumen.fases.length > 1 && ronda === 1 && fase ? `Entregar ${fase.nombre}` : `Entregar versión ${ronda}`}</>
           )}
         </button>
       </div>

@@ -521,5 +521,5 @@ def test_con_el_ok_le_toca_a_la_agencia_y_va_en_proceso():
 
 def test_el_aviso_del_ok():
     assert reglas.mensaje_de_avanzar("Ivan", 1, "TiendaChecks - Banners") == (
-        "Ivan dio el OK a la ronda 1 de «TiendaChecks - Banners»: avanzá con lo que falta.")
+        "Ivan dio el OK a la versión 1 de «TiendaChecks - Banners»: avanzá con lo que falta.")
     assert reglas.mensaje_de_avanzar("Ivan", 2, "X", "Seguí con el slider").endswith("Dice: «Seguí con el slider»")

@@ -487,10 +487,13 @@ export default function TableroPage() {
     ...c,
     lista: ordenar(tarjetas.filter(t => t.columna === c.clave), c.clave, meToca),
   }));
-  // En el teléfono se ve una columna: la que tiene algo mío, o la primera con algo.
+  // En el teléfono se ve una columna: la que tiene algo que me volvió con
+  // cambios (H-038 de la auditoría del 25/11/2026: la agencia abría en
+  // «Ingresado» y no veía lo devuelto), la que tiene algo mío, o la primera con algo.
+  const conCambiosParaMi = columnas.find(c => c.clave !== "archivado" && c.lista.some(t => t.volvioConCambios && meToca(t)))?.clave;
   const conMiTurno = columnas.find(c => c.clave !== "archivado" && c.lista.some(meToca))?.clave;
   const conAlgo = columnas.find(c => c.lista.length > 0)?.clave;
-  const activa: Columna = pestana ?? conMiTurno ?? conAlgo ?? "ingresado";
+  const activa: Columna = pestana ?? conCambiosParaMi ?? conMiTurno ?? conAlgo ?? "ingresado";
   const totalArchivadas = filtro ? columnas[4].lista.length : (delMundo?.archivadas.total ?? 0);
 
   return (
@@ -559,14 +562,17 @@ export default function TableroPage() {
 
           {/* En el teléfono no entran cinco columnas: se elige cuál ver. */}
           <div className="segmentado mb-3 md:hidden" role="tablist" aria-label="Columna del tablero">
-            {columnas.map(c => (
+            {columnas.map(c => {
+              // Y la pestaña lo dice, para verlo desde cualquier columna (H-038).
+              const volvieron = c.clave === "archivado" ? 0 : c.lista.filter(t => t.volvioConCambios).length;
+              return (
               <button
                 key={c.clave}
                 type="button"
                 role="tab"
                 aria-selected={activa === c.clave}
                 onClick={() => setPestana(c.clave)}
-                title={c.titulo}
+                title={volvieron > 0 ? `${c.titulo}: ${volvieron === 1 ? "1 volvió" : `${volvieron} volvieron`} con cambios` : c.titulo}
                 // En 12 px y sin cortar el nombre: si no entra (un teléfono
                 // angosto, la letra agrandada), pasa a dos renglones.
                 className="segmento !min-h-[48px] !flex-1 !px-0.5 flex-col !gap-0 text-xs leading-tight"
@@ -574,10 +580,17 @@ export default function TableroPage() {
                 <span className="flex items-center gap-1 font-bold tabular-nums">
                   <span className={`h-1.5 w-1.5 rounded-full ${c.punto}`} aria-hidden />
                   {c.clave === "archivado" ? totalArchivadas : c.lista.length}
+                  {volvieron > 0 && (
+                    <span className="flex items-center gap-0.5 rounded-full bg-rose-100 px-1 text-[11px] text-rose-800 dark:bg-rose-500/20 dark:text-rose-200">
+                      <RotateCcw className="h-2.5 w-2.5" aria-hidden />{volvieron}
+                      <span className="sr-only">{volvieron === 1 ? " volvió" : " volvieron"} con cambios</span>
+                    </span>
+                  )}
                 </span>
                 <span className="w-full break-words">{c.clave === "esperando" ? "Feedback" : c.titulo}</span>
               </button>
-            ))}
+              );
+            })}
           </div>
 
           <div className="flex gap-3 md:overflow-x-auto md:pb-2">
@@ -968,16 +981,16 @@ function AnalisisDeEntregas({ mundo }: { mundo: string }) {
         <>
           {m.tiempos && <TiemposYFechas tiempos={m.tiempos} porAgencia={m.porAgencia ?? []} />}
           <h3 className={`mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 ${m.tiempos ? "mt-5 border-t border-slate-200 pt-4 dark:border-slate-700" : ""}`}>
-            Rondas
+            Versiones
           </h3>
           {m.fases === 0 ? (
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas rondas llevaron.
+              Todavía no se aprobó ninguna fase en este período: cuando se aprueben, acá se ve cuántas versiones llevaron.
             </p>
               ) : (
             <>
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                <Dato etiqueta="Rondas hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
+                <Dato etiqueta="Versiones hasta aprobar" valor={numero(m.rondasPromedio)} bajada="promedio por fase" />
                 <Dato etiqueta="Aprobado a la primera" valor={m.aLaPrimera == null ? "—" : `${m.aLaPrimera}%`} bajada="de las fases" />
                 <Dato etiqueta="Fases aprobadas" valor={String(m.fases)} bajada={dias === 365 ? "en el último año" : `en ${dias} días`} />
               </div>
@@ -1118,7 +1131,7 @@ function TablaDeRondas({ titulo, filas }: { titulo: string; filas: Metricas["por
             <tr key={String(f.clave)} className="border-b border-slate-200 last:border-0 dark:border-slate-700">
               <td className="max-w-0 py-2 pr-2">
                 <span className="block truncate font-medium text-slate-800 dark:text-slate-200" title={f.nombre ?? String(f.clave)}>{f.nombre ?? String(f.clave)}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{f.fases === 1 ? "1 fase" : `${f.fases} fases`} · {numero(f.rondasPromedio)} rondas</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{f.fases === 1 ? "1 fase" : `${f.fases} fases`} · {numero(f.rondasPromedio)} versiones</span>
               </td>
               <td className="w-[45%] py-2">
                 <span className="flex items-center gap-2">

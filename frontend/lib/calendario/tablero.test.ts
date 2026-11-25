@@ -134,7 +134,7 @@ igual('sin filtro, sin filtro', filtroVigente(null, opciones), null)
 // Tocar una tarjeta abre la tarjeta, siempre (Ivan, 19/11/2026): entregar y
 // revisar salen de los botones de la ficha, no del toque.
 igual('nueva, sin nada entregado: se abre mirando', modoAlTocar('entregar', { ronda: 0, momento: 'produccion' }), 'ver')
-igual('volvió con cambios: también mirando (el botón "Entregar ronda 2" está en la ficha)', modoAlTocar('entregar', { ronda: 1, momento: 'cambios' }), 'ver')
+igual('volvió con cambios: también mirando (el botón "Entregar versión 2" está en la ficha)', modoAlTocar('entregar', { ronda: 1, momento: 'cambios' }), 'ver')
 igual('a revisar: también mirando (el botón "Revisar ahora" está en la ficha)', modoAlTocar('revisar', { ronda: 1, momento: 'revision' }), 'ver')
 igual('nada que hacer: mirando', modoAlTocar(null, { ronda: 2, momento: 'revision' }), 'ver')
 
@@ -262,16 +262,20 @@ const conElOk: ResumenEntrega = { ...enRevision, momento: 'produccion', ronda: 1
 igual('con el OK: le toca a la agencia y ya hubo una ronda', [conOk(conElOk), conOk(devuelta), conOk(enRevision)], [true, false, false])
 const aLaAgencia = proximoPaso(conElOk, null, 3, nombreDe, false, { entregoYo: true })
 igual('a la agencia se le dice que le dieron el OK', [aLaAgencia.texto, aLaAgencia.accion],
-  ['Te dieron el OK: entregá lo que falta (ronda 2)', 'entregar'])
+  ['Te dieron el OK: entregá lo que falta (versión 2)', 'entregar'])
 igual('al equipo, que le toca a la agencia lo que falta',
   proximoPaso(conElOk, null, 7, nombreDe, false, { hace: { tipo: 'agencia', nombre: 'Publicis' } }).texto,
-  'Le toca a Publicis: entregar lo que falta (ronda 2)')
-igual('la fase dice que tuvo el OK', estadoDeFase(conElOk.fases[0], conElOk).texto, 'OK a la ronda 1 · falta lo demás')
+  'Le toca a Publicis: entregar lo que falta (versión 2)')
+igual('la fase dice que tuvo el OK', estadoDeFase(conElOk.fases[0], conElOk).texto, 'OK a la versión 1 · falta lo demás')
 // El botón grande al revisar: Avanzar, salvo que ya estén todas las piezas.
 igual('faltan piezas: Avanzar', botonGrandeAlRevisar(4, 1, ['Header (mobile)']), 'avanzar')
 igual('no se sabe (el pedido no tiene piezas): Avanzar', botonGrandeAlRevisar(0, 2, undefined), 'avanzar')
 igual('solo un link: Avanzar', botonGrandeAlRevisar(4, 0, undefined), 'avanzar')
 igual('vino todo: Aprobar y terminar', botonGrandeAlRevisar(4, 4, []), 'terminar')
+// H-035 (25/11/2026): sin medir, la lista llega vacía; una imagen para dos piezas no es «todas».
+igual('una imagen para dos piezas, aunque no se haya medido: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
+igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP): Aprobar y terminar',
+  botonGrandeAlRevisar(10, 4, undefined, 4), 'terminar')
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
 // El día de cada ronda, en el renglón cerrado.

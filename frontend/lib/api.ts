@@ -7,6 +7,8 @@ import type { ObservacionIA, RevisionIA } from "@/lib/calendario/revision-ia";
 import type { MiAgenda } from "@/lib/calendario/mi-agenda";
 import type { ControlPrevio } from "@/lib/calendario/control-previo";
 import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
+// Al vencer la sesión, el login vuelve a donde se estaba (H-040, 25/11/2026).
+import { loginVolviendoA } from "@/lib/volver";
 import type { Adjunto } from "@/lib/calendario/adjuntos";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
@@ -170,7 +172,7 @@ api.interceptors.response.use(
         const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
         if (estado !== 401 && estado !== 403) return Promise.reject(errorAlRenovar);
         clearAccessToken();
-        if (typeof window !== "undefined") window.location.href = "/login";
+        if (typeof window !== "undefined") window.location.href = loginVolviendoA(window.location.pathname + window.location.search);
       }
     }
     return Promise.reject(error);
@@ -1832,7 +1834,7 @@ export const preciosApi = {
         const estado = (errorAlRenovar as { response?: { status?: number } })?.response?.status;
         if (estado === 401 || estado === 403) {
           clearAccessToken();
-          if (typeof window !== "undefined") window.location.href = "/login";
+          if (typeof window !== "undefined") window.location.href = loginVolviendoA(window.location.pathname + window.location.search);
         }
       }
     }
@@ -2355,6 +2357,8 @@ export const entregasApi = {
   entregar: (tareaId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
     api.post<CalendarioEscrito & {
       ronda: number; entrega: ResumenEntrega;
+      /** La versión que esta reemplazó, si esperaba revisión (25/11/2026, ir y venir). */
+      reemplazo?: number | null;
       zip?: { nombre: string; tamano: number; guardado: boolean; sumadas: number; archivos: string[]; ignorados: string[] } | null;
     }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/versiones`, form, {
@@ -2365,6 +2369,14 @@ export const entregasApi = {
   /** Antes de entregar (20/11/2026): la IA mira si con estas imágenes se ven
    *  hechos los cambios pedidos. Tarda hasta un minuto (el servidor corta a
    *  los 100 s y contesta "no-disponible"); `signal` es "Mandar sin esperar". */
+  /** Sumar imágenes a la versión que espera revisión, sin mandar otra (25/11/2026). */
+  sumarArchivos: (versionId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
+    api.post<CalendarioEscrito & { ronda: number; sumadas: number; entrega: ResumenEntrega; avisados: number; faltan: string[] }>(
+      `/calendario/versiones/${encodeURIComponent(versionId)}/archivos`, form, {
+        timeout: esperaDeEntrega(pesoDelFormulario(form)),
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
+      }),
   controlPrevio: (tareaId: string, form: FormData, signal?: AbortSignal) =>
     api.post<ControlPrevio>(`/calendario/tareas/${encodeURIComponent(tareaId)}/control-previo`, form, {
       timeout: 130_000 + Math.round(pesoDelFormulario(form) / 100_000) * 1_000,

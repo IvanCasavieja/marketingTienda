@@ -476,16 +476,16 @@ def test_la_referencia_lleva_a_la_tarea():
 
 def test_los_textos_de_los_avisos():
     assert mensaje_para_revisar("Agencia Sur", 2, "Arte final", "Cenefa Navidad", "Navidad") == (
-        "Agencia Sur entregó la ronda 2 de Arte final en «Cenefa Navidad» (Navidad). Te toca revisarla."
+        "Agencia Sur entregó la versión 2 de Arte final en «Cenefa Navidad» (Navidad). Te toca revisarla."
     )
     assert "Ahora te toca revisarla a vos" in mensaje_para_revisar(
         "", 1, "Boceto", "X", "Y", aprobo_antes="Marca",
     )
-    assert mensaje_de_cambios("Promo", 1, "Boceto", "X", 2).endswith("(2 marcas). Te toca entregar la ronda 2.")
+    assert mensaje_de_cambios("Promo", 1, "Boceto", "X", 2).endswith("(2 marcas). Te toca entregar la versión 2.")
     aprobada = mensaje_de_aprobacion(
         "Comercial", 2, "Boceto", "X", siguiente_fase="Arte final", sigue_revisando=None, terminada=False,
     )
-    assert aprobada == "Comercial aprobó la ronda 2 de Boceto de «X». Te toca entregar Arte final."
+    assert aprobada == "Comercial aprobó la versión 2 de Boceto de «X». Te toca entregar Arte final."
     assert "con cambios" not in aprobada and "justes" not in aprobada
     assert mensaje_de_aprobacion(
         "Marca", 1, "Arte final", "X", siguiente_fase=None, sigue_revisando=None, terminada=True,
