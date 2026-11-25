@@ -2365,6 +2365,14 @@ export const entregasApi = {
   /** Antes de entregar (20/11/2026): la IA mira si con estas imágenes se ven
    *  hechos los cambios pedidos. Tarda hasta un minuto (el servidor corta a
    *  los 100 s y contesta "no-disponible"); `signal` es "Mandar sin esperar". */
+  /** Sumar imágenes a la versión que espera revisión, sin mandar otra (25/11/2026). */
+  sumarArchivos: (versionId: string, form: FormData, onProgreso?: (fraccion: number) => void) =>
+    api.post<CalendarioEscrito & { ronda: number; sumadas: number; entrega: ResumenEntrega; avisados: number }>(
+      `/calendario/versiones/${encodeURIComponent(versionId)}/archivos`, form, {
+        timeout: esperaDeEntrega(pesoDelFormulario(form)),
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (e) => { if (onProgreso && e.total) onProgreso(e.loaded / e.total); },
+      }),
   controlPrevio: (tareaId: string, form: FormData, signal?: AbortSignal) =>
     api.post<ControlPrevio>(`/calendario/tareas/${encodeURIComponent(tareaId)}/control-previo`, form, {
       timeout: 130_000 + Math.round(pesoDelFormulario(form) / 100_000) * 1_000,
