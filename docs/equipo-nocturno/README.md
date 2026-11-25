@@ -1,4 +1,8 @@
-# Equipo nocturno de Core Tienda
+# 🦉 Escuadrón Lechuza: el equipo de agentes de Core Tienda
+
+Ivan (25/11/2026) les pidió "un nombre super cool": son el **Escuadrón
+Lechuza**, porque trabajan de noche, ven todo y no se les escapa nada. Así
+firman los mails ("Clara · Escuadrón Lechuza"). Cada uno conserva su nombre.
 
 Siete agentes que, de lunes a viernes a las 2 de la mañana (hora de
 Montevideo), **recorren Core Tienda entera como las personas que la usan**,
@@ -8,15 +12,21 @@ Corren en la nube de Anthropic (una rutina de Claude Code): no usan ninguna PC.
 
 Lo que tienen que saber de la plataforma: [CONTEXTO.md](CONTEXTO.md) (visión,
 personas, reglas) y [el mapa](plataforma/README.md) (pantalla por pantalla).
-Cómo hacen el trabajo: los skills `.claude/skills/recorrido-humano/` y
-`.claude/skills/cuaderno-de-hallazgos/`.
+Cómo hacen el trabajo: los skills `.claude/skills/recorrido-humano/`,
+`.claude/skills/cuaderno-de-hallazgos/` y `.claude/skills/correo-del-equipo/`
+(hablan por mail, sin GitHub).
 
 ## La regla de oro
 
 - **Nada entra a `main` sin que Ivan lo revise y diga OK.** El equipo trabaja en
-  una rama nueva y abre un PR. Nunca: push a `main`, merge, aprobar, cerrar PRs,
-  force-push, ni borrar ramas que no sean las de esta noche. La única rama
-  que se escribe directo es la del cuaderno (`equipo-nocturno/cuaderno`).
+  una rama nueva y abre un PR. De noche nunca: push a `main`, merge, aprobar,
+  cerrar PRs, force-push, ni borrar ramas que no sean las de esta noche. La
+  única rama que se escribe directo es la del cuaderno
+  (`equipo-nocturno/cuaderno`). El único que mergea o cierra es el equipo de
+  día, y solo cuando Ivan responde **ok** o **no** al mail del informe (ver
+  *Hablar con el equipo*).
+- **Las direcciones de mail no van al repo** (es público, el cuaderno
+  también): están en las instrucciones de las rutinas.
 - **No se toca producción.** Ni la base, ni Render, ni Vercel, ni claves. En la
   nube no hay claves: no las busques ni las pidas.
 
@@ -78,31 +88,39 @@ pasa, cerrala con lo que haya y seguí.
      antes del informe** (las imágenes del mail salen de ahí).
    - **Clara** escribe dos cosas (formato abajo), con las direcciones de esas
      imágenes: **el mail** (corto, para Ivan) y **el detalle** (para el PR).
-   - **a) Con cambios.** Último commit, vacío, con **el mail** como mensaje:
-     primera línea `[Nocturno] <título corto>`, línea en blanco, y el mail.
-     `git commit --allow-empty -F <archivo>`. Push de la rama. Abrí el PR
-     contra `main` con ese mismo título y **el detalle** como descripción. Si
-     no podés abrir el PR, no pasa nada: el aviso le llega igual a Ivan con el
-     link para abrirlo.
-   - **b) Sin cambios.** Rama `nocturno/AAAA-MM-DD-sin-cambios` desde
-     `origin/main`, un commit vacío con primera línea
-     `[Nocturno] Sin cambios esta noche` y el mail abajo. Push. GitHub le
-     manda el aviso a Ivan y borra esa rama sola.
+   - **a) Con cambios.** Push de la rama y PR contra `main` con el título
+     del mail y **el detalle** como descripción. Ningún commit empieza con
+     `[Nocturno]` (era el aviso viejo por GitHub). Después, el mail de
+     Clara con el pie del PR (skill `correo-del-equipo`, *El informe de cada
+     noche*) a las direcciones de la rutina, firmado `--nombre Clara`. Si no
+     pudiste abrir el PR, el pie lleva el link a la rama y lo decís.
+   - **b) Sin cambios.** Solo el mail de Clara, con el pie de las noches sin
+     cambios. No hace falta rama.
+   - Anotá el informe en `informes.tsv` y subí el cuaderno.
 9. Cerrá el navegador (`navegador.py cerrar`) y terminá. No esperes nada más.
 
 Si un push falla (por ejemplo, GitHub dice que la app de Claude no tiene
 acceso al repo), no te trabes: guardá el trabajo como parche en `$S`, escribí
-el informe contando qué pasó y avisale a Ivan con lo que tengas a mano.
+el informe contando qué pasó y mandalo igual por mail.
 
-El aviso por mail lo manda `.github/workflows/informe-nocturno.yml`: cuando
-llega una rama cuyo último commit empieza con `[Nocturno]`, abre un issue
-que menciona a Ivan con el mail de Clara: le llega un solo mail (para eso, en
-GitHub el repo tiene que estar en «Watch → Participating and @mentions»; si
-lo sigue entero, le llega también el aviso del PR). Ivan decide
-respondiendo ese mail con **ok** (se mergea si las pruebas están en verde) o
-**no** (se cierra): lo hace `.github/workflows/ok-por-mail.yml`. Cuando el PR
-se cierra, mergeado o no, se cierra el issue. La noche siguiente, Sofía pasa
-el hallazgo a Hechos o a Descartados según lo que decidió Ivan.
+## Hablar con el equipo
+
+Por mail, como con cualquier compañero (Ivan, 25/11/2026: «la idea es que
+empiecen a formar parte de nuestro equipo»). El informe sale de
+`agentes.tienda@tenovastudio.com` con el nombre de quien escribe, y quien
+quiera le responde **a todos**, sumando en copia a quien haga falta. De lunes
+a viernes, de 9 a 19 (hora de Montevideo), una rutina de día lee el correo
+cada hora y contesta en el mismo hilo, a todos los que estén en copia:
+
+- **Ivan responde ok o no** a un informe: si es ok y las pruebas están en
+  verde, se mergea y se publica solo; si es no, se cierra el PR. Solo cuenta
+  lo de Ivan, verificado (que el mail venga de verdad de su casilla).
+- **Preguntas**: se contestan.
+- **Pedidos y correcciones** de alguien de Tienda Inglesa: se anotan en el
+  cuaderno (los de Ivan van primero) y se contesta cuándo se hacen.
+
+La noche siguiente, Sofía pasa lo publicado a Hechos y lo descartado a
+Descartados. Cómo se lee y se contesta: skill `correo-del-equipo`.
 
 ## Cómo probar
 
@@ -225,7 +243,8 @@ variables, y las cuentas se crean solas al arrancar; `/health` dice
   que hace que el equipo conozca la plataforma.
 - **Sin repetir.** No trabajes sobre algo que ya tiene una rama o un PR abierto
   (`git branch -r`), ni sobre lo que ya se propuso otra noche (ramas
-  `origin/nocturno/*`, commits `[Nocturno]` en `git log origin/main`, «En
+  `origin/nocturno/*`, `cuaderno/correo/informes.tsv`, commits `[Nocturno]`
+  de antes en `git log origin/main`, «En
   curso» y «Descartados» del cuaderno), ni sobre lo descartado en
   [CONTEXTO.md](CONTEXTO.md).
 - **Migraciones: evitarlas.** Si hace falta una, el número es el siguiente al
@@ -244,13 +263,12 @@ celular, y **el detalle**, para el PR, con todo lo técnico.
 
 ### El título (el asunto del mail)
 
-`[Nocturno] 🌙 <de 2 a 5 palabras>`, **45 caracteres como máximo** en total.
-Sin dos puntos ni explicaciones: lo que cambia y dónde. GitHub le agrega la
-fecha sola. El `[Nocturno]` del principio es obligatorio (sin eso no sale el
-mail).
+`🌙 <de 2 a 5 palabras> · DD/MM`, **45 caracteres como máximo** en total.
+Sin dos puntos ni explicaciones: lo que cambia y dónde, y la fecha de la
+mañana en que llega. El PR lleva el mismo título.
 
-- Bien: `[Nocturno] 🌙 Redexpres sin trabas`, `[Nocturno] 🌙 Fotos panorámicas`
-- Mal: `[Nocturno] Redexpres sin trabas: el local sabe qué pasa con su pedido y la Planilla queda a mano`
+- Bien: `🌙 Redexpres sin trabas · 26/11`, `🌙 Fotos panorámicas · 26/11`
+- Mal: `🌙 Redexpres sin trabas: el local sabe qué pasa con su pedido y la Planilla queda a mano`
 
 ### El mail
 
@@ -304,8 +322,8 @@ con la agencia de punta a punta: anduvo bien.»
 Una noche sin cambios: `### 🌙 Esta noche no hubo cambios` y por qué en una
 frase, y después **En qué anduvo el equipo** y **Además encontramos**.
 
-Al pie el aviso agrega solo el link al PR y cómo decidir (ok / no): no lo
-repitas.
+Al pie va el pie fijo con el link al PR y cómo decidir (ok / no), tal cual
+el skill `correo-del-equipo`: Clara no lo escribe, lo agrega el coordinador.
 
 ### El detalle (descripción del PR)
 

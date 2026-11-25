@@ -71,8 +71,8 @@ git commit -qm "Cuaderno: noche AAAA-MM-DD (N nuevos, M hechos)"
 git push -q origin equipo-nocturno/cuaderno
 ```
 
-El mensaje **nunca** empieza con `[Nocturno]` (eso dispara el mail del
-informe). Si el push falla, contalo en el informe y seguí: el cuaderno es
+El mensaje **nunca** empieza con `[Nocturno]` (eso disparaba el aviso viejo
+por GitHub). Si el push falla, contalo en el informe y seguí: el cuaderno es
 importante pero no frena la noche.
 
 ## El formato de cada hallazgo

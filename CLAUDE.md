@@ -39,21 +39,22 @@ desde el celular: lo concreto que pide suele estar al final del mensaje.
 - Migraciones: el número siguiente al más alto en `backend/migrations/versions`
   de `main`, que no use ninguna rama abierta.
 
-## El Equipo nocturno
+## El Escuadrón Lechuza (el Equipo nocturno)
 
 Siete agentes (Sofía, Martina, Lucía, Tomás, Bruno, Ramiro y Clara) que de
 lunes a viernes a las 2 AM recorren la plataforma entera como las personas
 que la usan (en un entorno de pruebas con cuentas propias), anotan lo que
 encuentran en un cuaderno, construyen y prueban la mejora que más vale la
-pena y abren un PR `[Nocturno] ...`. El informe le llega a Ivan por mail (un
-issue que lo menciona), con el antes y después en imágenes. Él responde
-**ok** o **no** al mail y `ok-por-mail.yml` mergea o cierra. Todo está
+pena y abren un PR `🌙 ...`. El informe le llega a Ivan por mail (Resend,
+sin GitHub), con el antes y después en imágenes. Quien quiera responde a
+todos y el equipo contesta en el hilo; si Ivan responde **ok** o **no**, la
+rutina de día mergea o cierra (skill `correo-del-equipo`). Todo está
 explicado en `docs/equipo-nocturno/README.md`; el mapa de la plataforma en
 `docs/equipo-nocturno/plataforma/`; cómo recorren y anotan en
 `.claude/skills/`.
 
 Si Ivan pregunta "¿en qué andan los agentes?" o "¿qué hicieron anoche?":
-mirá los PR e issues abiertos que empiezan con `[Nocturno]`, las ramas
+mirá los PR abiertos que empiezan con `🌙` (o `[Nocturno]`, los de antes), las ramas
 `origin/nocturno/*` y el cuaderno (`origin/equipo-nocturno/cuaderno`,
 `cuaderno/CUADERNO.md`), y contestale corto: qué propusieron, si las pruebas
 están en verde, qué encontró el recorrido y qué tiene que decidir.
