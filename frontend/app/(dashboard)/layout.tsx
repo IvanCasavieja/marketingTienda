@@ -17,6 +17,7 @@ import AvisoDeVentana from "@/components/layout/AvisoDeVentana";
 import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "@/lib/externos";
 import { useAvisos } from "@/store/avisos";
 import { useTranslation } from "react-i18next";
+import { muestraBurbuja } from "@/lib/chat/conversacion";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
 // Dashboard pages use useTranslation() which produces server/client HTML mismatches.
@@ -26,6 +27,8 @@ const ClientOnly = dynamic(() => import("@/components/ClientOnly"), { ssr: false
 // Las entregas de una tarea, encima de todo. Una sola para toda la plataforma:
 // la abren la ficha de la acción, el tablero, "Mis tareas" y los avisos.
 const VistaEntregas = dynamic(() => import("@/components/calendario/entregas/VistaEntregas"), { ssr: false });
+// Don Tino, siempre abajo a la derecha (25/11/2026): ver components/layout/BurbujaDonTino.
+const BurbujaDonTino = dynamic(() => import("@/components/layout/BurbujaDonTino"), { ssr: false });
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -213,6 +216,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         onAvisos={() => useAvisos.getState().pedirAbrir()}
       />
       <VistaEntregas />
+      {muestraBurbuja(pathname, user) && <BurbujaDonTino />}
     </div>
   );
 }

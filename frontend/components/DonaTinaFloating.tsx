@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { preciosApi, type AiTaskUsage } from "@/lib/api";
 import { RobotMascot } from "@/components/RobotMascot";
+import { LUGAR_DEL_AYUDANTE } from "@/lib/chat/conversacion";
 import { X, Send, BarChart3, Sparkles } from "lucide-react";
 
 // ── Doña Tina flotante — misma cara en todos lados, pero lo que contesta viene
@@ -131,10 +132,11 @@ export default function DonaTinaFloating({
       ? 'Preguntame algo (ej. "¿cuál es el más barato?") o pedime que filtre la lista.'
       : "Buscá algún producto para que te pueda ayudar.";
 
+  // Arriba de la burbuja de Don Tino y, en el teléfono, de la barra de abajo (25/11/2026).
   return (
-    <div className="fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3">
+    <div className={`fixed z-[60] flex flex-col items-end gap-3 ${LUGAR_DEL_AYUDANTE}`}>
       {open && (
-        <div className="w-80 max-h-[70vh] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-fade-in">
+        <div className="w-80 max-w-[calc(100vw-2rem)] max-h-[min(70vh,calc(100dvh-17rem))] flex flex-col bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-fade-in">
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 bg-brand-600 shrink-0">
             <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm overflow-visible">
