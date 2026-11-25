@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { AlertTriangle, FileArchive, Link2, Loader2, MapPin, MessageSquarePlus, RotateCcw, Sparkles, Stamp, X } from 'lucide-react'
 import {
-  TIPO_OBSERVACION, archivoDe, cambiosPorMarca, ordenarObservaciones, puntosParaMostrar, textoRevisados, tieneLugar,
-  tituloRevisionIA, type ObservacionIA, type RevisionIA,
+  TIPO_OBSERVACION, agruparIguales, archivoDe, cambiosPorMarca, ordenarObservaciones, puntosParaMostrar, textoDeImagenes,
+  textoRevisados, tieneLugar, tituloRevisionIA, type ObservacionIA, type RevisionIA,
 } from '@/lib/calendario/revision-ia'
 
 /**
@@ -91,6 +91,13 @@ export function PanelRevisionIA({
     try { await onDescartar(o, descartada) } finally { setOcupada(null) }
   }
 
+  // Las que dicen lo mismo en varias imágenes van juntas mientras siguen
+  // abiertas (25/11/2026: "¿se repiten?"). Marcarlas pone una marca en cada
+  // imagen; descartarlas, las descarta todas.
+  const abierta = (o: ObservacionIA) =>
+    o.estado === 'nueva' && convertidas[o.id] == null && !pasadas.includes(o.id) && !archivoDe(o)
+  const grupos = agruparIguales(ordenadas, abierta)
+
   return (
     <section id="revision-ia" aria-labelledby="revision-ia-titulo">
       <div className="flex items-start gap-2">
@@ -113,7 +120,72 @@ export function PanelRevisionIA({
 
       {obs.length > 0 && (
         <ul id="revision-ia-lista" className="mt-2.5 space-y-1.5">
-          {ordenadas.map(o => {
+          {grupos.map(g => {
+            if (g.length > 1) {
+              const o = g[0]
+              const ids = g.map(x => x.id)
+              const algunaElegida = g.some(x => x.id === elegida)
+              const ocupado = ocupada != null && ids.includes(ocupada)
+              const numeros = g.map(x => numeroDeImagen(x.imagenId)).filter((n): n is number => n != null)
+              return (
+                <li
+                  key={ids.join('+')}
+                  className={`rounded-xl border p-2.5 transition ${
+                    o.gravedad === 'importante'
+                      ? 'border-rose-300 bg-rose-50 dark:border-rose-500/40 dark:bg-rose-500/10'
+                      : 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
+                  } ${algunaElegida ? 'ring-2 ring-rose-400 dark:ring-rose-400/70' : ''}`}
+                >
+                  <p className="text-sm leading-snug text-slate-900 dark:text-slate-100">
+                    <span className={`mr-1.5 inline-block rounded-full px-1.5 py-px align-[1px] text-[11px] font-bold ${
+                      o.gravedad === 'importante'
+                        ? 'bg-rose-600 text-white'
+                        : 'bg-amber-200 text-amber-950 dark:bg-amber-400/25 dark:text-amber-100'
+                    }`}>
+                      {o.gravedad === 'importante' ? 'Importante' : 'A revisar'}
+                    </span>
+                    <span className="font-semibold">{TIPO_OBSERVACION[o.tipo] ?? 'Otro'}</span>
+                    {' · '}{o.texto}
+                  </p>
+                  <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs font-semibold text-rose-800 dark:text-rose-200">
+                    <MapPin className="h-3.5 w-3.5" aria-hidden />
+                    {numeros.length > 0 ? `Está en ${textoDeImagenes(numeros)}. Ver dónde:` : `Está en ${g.length} lugares. Ver dónde:`}
+                    {g.map((x, i) => (
+                      <button
+                        key={x.id}
+                        type="button"
+                        onClick={() => onElegir(x)}
+                        aria-pressed={elegida === x.id}
+                        className={`min-h-[32px] rounded-md px-1.5 underline underline-offset-2 hover:bg-white/70 dark:hover:bg-slate-800 ${elegida === x.id ? 'bg-white/80 dark:bg-slate-800' : ''}`}
+                      >
+                        {numeroDeImagen(x.imagenId) != null ? `imagen ${numeroDeImagen(x.imagenId)}` : `lugar ${i + 1}`}
+                      </button>
+                    ))}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => g.forEach(x => onConvertir(x))}
+                      disabled={deshabilitado}
+                      className="flex min-h-[36px] items-center gap-1.5 rounded-lg bg-rose-700 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-rose-800 active:scale-[.98] disabled:opacity-50"
+                    >
+                      {sinImagenes
+                        ? <><MessageSquarePlus className="h-3.5 w-3.5" aria-hidden /> Pasar al comentario</>
+                        : <><Stamp className="h-3.5 w-3.5" aria-hidden /> Hacer una marca en cada una</>}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void (async () => { for (const x of g) await descartar(x, true) })()}
+                      disabled={deshabilitado || ocupado}
+                      className="flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-slate-700 transition hover:bg-white/70 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {ocupado ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" aria-hidden />} Descartar
+                    </button>
+                  </div>
+                </li>
+              )
+            }
+            const o = g[0]
             const esElegida = elegida === o.id
             const local = convertidas[o.id]
             const conLugar = tieneLugar(o, imagenes)

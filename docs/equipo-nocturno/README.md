@@ -244,18 +244,23 @@ celular, y **el detalle**, para el PR, con todo lo técnico.
 
 ### El título (el asunto del mail)
 
-`[Nocturno] <de 2 a 5 palabras>`, **40 caracteres como máximo** contando
-`[Nocturno] `. Sin dos puntos ni explicaciones: lo que cambia y dónde.
-GitHub le agrega la fecha sola.
+`[Nocturno] 🌙 <de 2 a 5 palabras>`, **45 caracteres como máximo** en total.
+Sin dos puntos ni explicaciones: lo que cambia y dónde. GitHub le agrega la
+fecha sola. El `[Nocturno]` del principio es obligatorio (sin eso no sale el
+mail).
 
-- Bien: `[Nocturno] Redexpres sin trabas`, `[Nocturno] Fotos panorámicas de góndola`
+- Bien: `[Nocturno] 🌙 Redexpres sin trabas`, `[Nocturno] 🌙 Fotos panorámicas`
 - Mal: `[Nocturno] Redexpres sin trabas: el local sabe qué pasa con su pedido y la Planilla queda a mano`
 
 ### El mail
 
-Hasta ~1500 caracteres sin contar las imágenes. Frases cortas, como se lo
-contarías a Ivan en persona. Cada cosa explicada: qué pantalla, quién la usa,
-qué pasaba y qué pasa ahora.
+Ivan lo lee en el celular (25/11/2026: "hacelo bonito… que de celular se vean
+bien"). Hasta ~1500 caracteres sin contar las imágenes. Frases cortas, como
+se lo contarías en persona. Cada cosa explicada: qué pantalla, quién la usa,
+qué pasaba y qué pasa ahora. Los títulos de cada parte van con `###` y su
+emoji, tal cual el molde: en el mail se ven como títulos grandes y separan
+bien en una pantalla chica. Párrafos de 3 líneas como mucho; nada de tablas
+(en el celular se cortan).
 
 **Prohibido en el mail** (va en el detalle): códigos de hallazgo (H-0xx),
 emojis o colores de gravedad (🔴🟠🟡), nombres de los agentes, palabras del
@@ -264,31 +269,40 @@ pantallas o capturas se miraron, nombres de archivos, de variables o de
 ramas, y links que no sean las imágenes.
 
 ```markdown
-**Qué cambia:** 2 o 3 frases. Quién lo va a notar, en qué pantalla y qué ve
-ahora. Ej.: «En "Mi pedido", el encargado del local ahora ve un cartel verde
-cuando su pedido ya está confirmado, y a quién pedirle si necesita cambiar algo.»
+### ✨ Qué cambia
+2 o 3 frases: quién lo va a notar, en qué pantalla y qué ve ahora. Ej.: «En
+"Mi pedido", el encargado del local ahora ve un cartel verde cuando su pedido
+ya está confirmado, y a quién pedirle si necesita cambiar algo.»
 
 ![Antes y ahora: el pedido confirmado en el celular del local](https://raw.githubusercontent.com/.../equipo-nocturno/cuaderno/cuaderno/recorridos/AAAA-MM-DD/...-antes-despues.jpg)
 
-**Por qué:** la situación real, contada como un caso. Ej.: «Probando como un
-encargado de local, quisimos corregir 300 a 30 cenefas y no se podía: el
-pedido ya estaba confirmado, pero la pantalla no lo decía ni decía a quién
-pedirle. Un local de verdad terminaría mandando un WhatsApp.»
+### 🤔 Por qué
+La situación real, contada como un caso. Ej.: «Probando como un encargado de
+local, quisimos corregir 300 a 30 cenefas y no se podía: el pedido ya estaba
+confirmado, pero la pantalla no lo decía ni a quién pedirle.»
 
-**Cómo verlo cuando esté publicado:** pantalla → qué tocar → qué vas a ver.
+### 👀 Cómo verlo
+Cuando esté publicado: pantalla → qué tocar → qué vas a ver.
 
-**Probado:** una línea. Ej.: «Todo en verde, también en el celular.» Si algo
-no se pudo probar, decilo acá.
+### ✅ Probado
+Una línea. Ej.: «Todo en verde, también en el celular.» Si algo no se pudo
+probar, va acá.
 
-**Riesgos:** una línea, o «Ninguno que veamos».
+### ⚠️ Ojo
+Un riesgo en una línea, o «Nada que veamos».
 
-**Además encontramos** (no se tocó esta noche):
+### 🛠️ En qué anduvo el equipo
+Una o dos frases: qué parte de la plataforma usaron esta noche y como quién.
+Ej.: «Usamos Redexpres como un local y como el equipo, y armamos una pieza
+con la agencia de punta a punta: anduvo bien.»
+
+### 🔎 Además encontramos
 - Hasta 3, una línea cada uno, con a quién le pasa y qué le pasa. Ej.: «El
   local no puede mandar una foto panorámica de la góndola: la rechaza.»
 ```
 
-Una noche sin cambios: «**Esta noche no hubo cambios.**» y por qué en una
-frase, y después **Además encontramos**.
+Una noche sin cambios: `### 🌙 Esta noche no hubo cambios` y por qué en una
+frase, y después **En qué anduvo el equipo** y **Además encontramos**.
 
 Al pie el aviso agrega solo el link al PR y cómo decidir (ok / no): no lo
 repitas.

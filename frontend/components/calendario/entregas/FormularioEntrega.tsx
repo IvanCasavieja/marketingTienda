@@ -8,7 +8,7 @@ import {
   conLugar, hayQueControlar, mismasImagenes, observacionesParaAvisar, paraAvisar, textosDelControl,
   type CambioControlado, type ControlPrevio, type ObservacionDelControl,
 } from '@/lib/calendario/control-previo'
-import { TIPO_OBSERVACION } from '@/lib/calendario/revision-ia'
+import { TIPO_OBSERVACION, agruparIguales, textoDeImagenes } from '@/lib/calendario/revision-ia'
 import {
   nuevoIdDeVersion, prepararImagen, type DetalleEntregas, type ImagenLista,
 } from '@/lib/calendario/entregas'
@@ -708,11 +708,17 @@ function AvisoAntesDeMandar({ faltan, lista, observaciones, fotos, inicial, porQ
         <section aria-labelledby="lo-que-encontro-la-ia">
           <h4 id="lo-que-encontro-la-ia" className="text-sm font-bold text-slate-900 dark:text-slate-100">
             Lo que encontró la IA en la pieza{' '}
-            <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({observaciones.length})</span>
+            <span className="font-normal tabular-nums text-slate-600 dark:text-slate-400">({agruparIguales(observaciones).length})</span>
           </h4>
           <ul className="mt-2.5 space-y-2">
-            {observaciones.map((o, i) => (
-              <ObservacionAntesDeMandar key={o.id ?? i} observacion={o} fotos={fotos} />
+            {/* Lo mismo en varias imágenes, una sola vez (25/11/2026: "¿se repiten?"). */}
+            {agruparIguales(observaciones).map((g, i) => (
+              <ObservacionAntesDeMandar
+                key={g[0].id ?? i}
+                observacion={g[0]}
+                enImagenes={g.map(x => x.imagen).filter((n): n is number => n != null)}
+                fotos={fotos}
+              />
             ))}
           </ul>
         </section>
@@ -751,7 +757,12 @@ const TIPOS = TIPO_OBSERVACION as Record<string, string>
  * gravedad («Importante» en rojo, «A revisar» en ámbar), qué es y lo que dice
  * la IA. Lo mismo que ve quien aprueba (PanelRevisionIA).
  */
-function ObservacionAntesDeMandar({ observacion: o, fotos }: { observacion: ObservacionDelControl; fotos: string[] }) {
+function ObservacionAntesDeMandar({ observacion: o, enImagenes, fotos }: {
+  observacion: ObservacionDelControl
+  /** Si lo mismo está en varias imágenes: todas (la miniatura es la de la primera). */
+  enImagenes: number[]
+  fotos: string[]
+}) {
   const importante = o.gravedad === 'importante'
   const vista = o.imagen != null ? fotos[o.imagen - 1] : undefined
   const punto = conLugar(o, fotos.length)
@@ -790,7 +801,9 @@ function ObservacionAntesDeMandar({ observacion: o, fotos }: { observacion: Obse
           {' · '}{o.texto}
         </p>
         <p className="mt-0.5 text-xs text-slate-700 dark:text-slate-300">
-          {o.imagen != null && vista ? `En la imagen ${o.imagen}${punto ? ' (el punto rojo)' : ''}` : 'En la pieza en general'}
+          {new Set(enImagenes).size > 1
+            ? `Está en ${textoDeImagenes(enImagenes)}${punto ? ' (el punto rojo, en la primera)' : ''}`
+            : o.imagen != null && vista ? `En la imagen ${o.imagen}${punto ? ' (el punto rojo)' : ''}` : 'En la pieza en general'}
         </p>
       </div>
     </li>
