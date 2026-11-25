@@ -27,7 +27,12 @@ const equipo = { is_superuser: false, permissions: ['calendario.view', 'ai.don_t
 igual('en el calendario, sí', muestraBurbuja('/calendario', equipo), true)
 igual('en Inicio no (ahí el chat está grande)', muestraBurbuja('/home', equipo), false)
 igual('sin el permiso, no', muestraBurbuja('/calendario', { is_superuser: false, permissions: ['calendario.view'] }), false)
-igual('superadmin, sí', muestraBurbuja('/precios', { is_superuser: true, permissions: [] }), true)
+igual('superadmin, sí', muestraBurbuja('/calendario', { is_superuser: true, permissions: [] }), true)
+// Una sola burbuja por pantalla (25/11/2026): donde hay ayudante propio, va ese.
+for (const p of ['/precios', '/materiales/cenefas', '/materiales/convertidor', '/facturacion', '/analytics']) {
+  igual(`en ${p} va su ayudante, no Don Tino`, muestraBurbuja(p, equipo), false)
+}
+igual('en una subpantalla sin ayudante, Don Tino sí', muestraBurbuja('/materiales/cenefas/v2/generar', equipo), true)
 igual('la agencia, no', muestraBurbuja('/entregas', { ...equipo, es_externo: true }), false)
 igual('sin usuario, no', muestraBurbuja('/calendario', null), false)
 
