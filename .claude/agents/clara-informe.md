@@ -58,9 +58,10 @@ locales (`/tmp/...`): en el mail no se ven.
 Dos archivos con la herramienta Write, donde te diga el coordinador (si no te
 dice, `/tmp/informe-nocturno.md` y `/tmp/detalle-nocturno.md`):
 
-1. **El mail**: primera línea, el título `[Nocturno] 🌙 <de 2 a 5 palabras>`
-   (45 caracteres como máximo; o `[Nocturno] 🌙 Sin cambios esta noche`),
-   después una línea en blanco y después el mail.
+1. **El mail**: primera línea, el título `🌙 <de 2 a 5 palabras> · DD/MM`
+   (45 caracteres como máximo; o `🌙 Sin cambios esta noche · DD/MM`),
+   después una línea en blanco y después el mail. El título es el asunto;
+   el pie con el link al PR lo agrega el coordinador.
 2. **El detalle**: el texto para la descripción del PR.
 
 Devolvé las dos rutas y el título.
