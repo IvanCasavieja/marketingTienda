@@ -173,6 +173,44 @@ def test_sin_clave_de_ia_el_informe_sale_igual_con_los_numeros():
     assert "noviembre 2026" in texto
 
 
+class _ClienteFalso:
+    """Lo que devuelve messages.create: un bloque de razonamiento y el texto."""
+
+    def __init__(self, texto: str, stop_reason: str):
+        from types import SimpleNamespace as N
+        self.pedidos = []
+        respuesta = N(stop_reason=stop_reason, usage=N(input_tokens=10, output_tokens=20),
+                      content=[N(type="thinking", thinking=""), N(type="text", text=texto)])
+
+        async def crear(**kw):
+            self.pedidos.append(kw)
+            return respuesta
+        self.messages = N(create=crear)
+
+
+def _con_ia(monkeypatch, cliente):
+    from app.services import ia_cliente
+    monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "clave-de-prueba")
+    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: cliente)
+
+
+def test_el_informe_con_ia_completo_se_queda_con_el_texto_y_tiene_lugar(monkeypatch):
+    cliente = _ClienteFalso("### 📊 Cómo cerró octubre 2026\n- Todo bien.", "end_turn")
+    _con_ia(monkeypatch, cliente)
+    texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))
+    assert con_ia and texto == "### 📊 Cómo cerró octubre 2026\n- Todo bien." and usage.output_tokens == 20
+    # El razonamiento cuenta dentro de max_tokens: con 2.000 se cortó (25/11/2026).
+    assert cliente.pedidos[0]["max_tokens"] >= 16_000
+    assert cliente.pedidos[0]["output_config"] == {"effort": "medium"}
+
+
+def test_el_informe_cortado_no_se_guarda_va_el_de_reglas(monkeypatch):
+    _con_ia(monkeypatch, _ClienteFalso("### 📊 Cómo cerró\n- Vendimos $ 285 millones, entre $ 277 y", "max_tokens"))
+    texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))
+    assert not con_ia and usage is None
+    assert "### ✅ Qué haríamos" in texto  # el de reglas, entero
+
+
 def test_escribir_analisis_sin_clave_no_llama_a_la_ia(monkeypatch):
     monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "")
     texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))

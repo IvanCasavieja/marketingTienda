@@ -4,6 +4,7 @@
   GET  /clientes-vip/clientes              — la lista (segmento, búsqueda, orden, página)
   GET  /clientes-vip/clientes/{id}         — un cliente, mes a mes
   GET  /clientes-vip/informes              — los informes de Sofía y Valentina
+  POST /clientes-vip/informes              — rehacer el del último mes (si salió mal); `mandar` lo manda por mail
   POST /clientes-vip/cargas                — empezar una carga (los meses que trae el archivo)
   POST /clientes-vip/cargas/{id}/filas     — una tanda del resumen (hasta 5.000 filas)
   POST /clientes-vip/cargas/{id}/terminar  — los totales del mes; rehace la foto y dispara el informe
@@ -126,6 +127,20 @@ async def cliente(id_cliente: int, db: AsyncSession = Depends(get_db),
 async def informes(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission(vip.PERMISO_VER))):
     filas = await db.execute(select(VipInforme).order_by(VipInforme.id.desc()).limit(24))
     return [vip.fila_informe(i) for i in filas.scalars()]
+
+
+class Rehacer(BaseModel):
+    mandar: bool = False
+
+
+@router.post("/informes")
+async def rehacer_informe(body: Rehacer, db: AsyncSession = Depends(get_db), user: User = Depends(puede_cargar)):
+    """Vuelve a escribir el informe del último mes (por ejemplo, si la IA falló
+    o salió cortado). Por defecto no manda mail; con `mandar`, como al cargar."""
+    informe = await vip.armar_informe(db, None, user.id, mandar=body.mandar)
+    if not informe:
+        raise HTTPException(404, "Todavía no hay datos cargados")
+    return vip.fila_informe(informe)
 
 
 # ---------------------------------------------------------------------------

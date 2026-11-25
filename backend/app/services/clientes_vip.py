@@ -527,6 +527,9 @@ def informe_con_reglas(n: dict) -> str:
     return "\n".join(lineas)
 
 
+MAX_TOKENS_INFORME = 16_000
+
+
 async def escribir_analisis(numeros: dict) -> tuple[str, bool, object | None]:
     """El texto de Sofía y Valentina: (markdown, con_ia, usage)."""
     if not settings.ANTHROPIC_API_KEY:
@@ -539,15 +542,21 @@ async def escribir_analisis(numeros: dict) -> tuple[str, bool, object | None]:
         respuesta = await llm_call_with_retry(
             lambda: cliente.messages.create(
                 model=settings.MODELO_IA,
-                max_tokens=2000,
+                # Los modelos 5 piensan antes de escribir y ese razonamiento
+                # cuenta dentro de max_tokens: con 2.000 el informe de octubre
+                # 2026 salió cortado a la mitad (25/11/2026). Lugar de sobra y
+                # esfuerzo medio: es redactar con números ya hechos.
+                max_tokens=MAX_TOKENS_INFORME,
+                output_config={"effort": "medium"},
                 system=SISTEMA,
                 messages=[{"role": "user", "content": json.dumps(numeros, ensure_ascii=False, default=str)}],
             ),
             label="clientes_vip_informe",
         )
-        texto = "".join(getattr(b, "text", "") for b in respuesta.content).strip()
-        if respuesta.stop_reason == "refusal" or not texto:
-            raise ValueError(f"respuesta vacía ({respuesta.stop_reason})")
+        texto = "".join(b.text for b in respuesta.content if getattr(b, "type", "") == "text").strip()
+        # Cortado o rechazado no se guarda ni se manda: va el de reglas, entero.
+        if respuesta.stop_reason != "end_turn" or not texto:
+            raise ValueError(f"la respuesta no terminó bien ({respuesta.stop_reason})")
         return texto, True, respuesta.usage
     except Exception as exc:  # la IA no frena el informe
         logger.warning("clientes_vip: el informe va sin IA (%s)", exc)
