@@ -258,7 +258,7 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Fuente:** `plataforma/entrada-admin-diseno.md`, sistema visual.
 - **Confirmado (Lucía, 25/11):** cuatro estilos de encabezado (con ícono de color variable / sin ícono / centrado / con flecha atrás) y botón en degradé en Conexiones. Las nuevas (calendario, mis tareas, tablero, colocación, fotos, mi pedido) son una familia prolija; medios, finanzas y cenefas v2 parecen otra aplicación. Hojas equipo-notebook-claro-1 a 4.
 - **Auditoría 25/11:** ver la dirección de diseño y el pantalla por pantalla en `auditoria-2026-11-25/INFORME.md` (sección 3).
-- **Ivan (25/11):** «Hoy se ve muy \"hecho con IA\". Hay que trabajarlo para que tenga una identidad más propia.» Sigue la dirección del informe, con un cambio: Don Tino y el resto de los asistentes **mantienen su nombre y su identidad** aunque dejen de verse como robots (no se fusionan en «un solo asistente»). Pendiente que conteste: color de las acciones del calendario y azul de una vez.
+- **Ivan (25/11):** «Hoy se ve muy "hecho con IA". Hay que trabajarlo para que tenga una identidad más propia.» Sigue la dirección del informe, con un cambio: Don Tino y el resto de los asistentes **mantienen su nombre y su identidad** aunque dejen de verse como robots (no se fusionan en «un solo asistente»). Pendiente que conteste: color de las acciones del calendario y azul de una vez.
 - **Visto:** 24/11 (código) · 25/11 (Lucía) · 25/11 (auditoría)
 
 ### H-029 · En el calendario compiten dos botones principales iguales
