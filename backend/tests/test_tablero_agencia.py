@@ -484,3 +484,42 @@ def test_el_aviso_dice_quien_pidio_que():
         ("Ciberlunes - Cenefas", ["A4"], date(2026, 11, 25)),
     ])
     assert varias == "Lucía te pidió 2 tarjetas: Ciberlunes - Banners y Ciberlunes - Cenefas. La primera es para el 25/11."
+
+
+# ---------------------------------------------------------------------------
+# «Avanzar» (25/11/2026): el OK a una ronda que no aprueba la fase
+# ---------------------------------------------------------------------------
+
+def test_avanzar_es_una_decision_que_vuelve_a_la_agencia():
+    assert reglas.validar_decision("avanzar") == "avanzar"
+    # Con cadena, el primero que da el OK manda la ronda de vuelta: la
+    # cadena no sigue, porque todavía no hay nada que aprobar.
+    assert reglas.resultado_de_version([1, 2], [(1, "avanzar")]) == "avanzar"
+    assert reglas.a_quien_le_toca([1, 2], [(1, "avanzar")]) is None
+    # Sin cadena (decide el respaldo), igual.
+    assert reglas.resultado_de_version([], [(None, "avanzar")]) == "avanzar"
+    # Pedir cambios sigue ganando.
+    assert reglas.resultado_de_version([1, 2], [(1, "avanzar"), (2, "cambios")]) == "cambios"
+    # Y aprobar sigue siendo aprobar.
+    assert reglas.resultado_de_version([1], [(1, "aprobada")]) == "aprobada"
+
+
+def test_una_ronda_con_ok_ya_no_se_decide_de_nuevo():
+    with pytest.raises(reglas.NoPuedeDecidir) as e:
+        reglas.lugar_para_decidir(2, False, [1, 2], [(1, "avanzar")], subida_por_id=9)
+    assert e.value.codigo == 409
+
+
+def test_con_el_ok_le_toca_a_la_agencia_y_va_en_proceso():
+    assert reglas.momento_de(True, "avanzar") == "produccion"
+    assert reglas.columna_de("produccion", iniciada=True, hoy=HOY, dias_para_archivar=10) == "en-proceso"
+    assert reglas.con_ok("produccion", 1)
+    assert not reglas.con_ok("produccion", 0)     # la primera entrega todavía no
+    assert not reglas.con_ok("cambios", 1)        # con cambios es otra cosa
+    assert reglas.estado_de_tarea("produccion", True, "en-proceso") == "en-proceso"
+
+
+def test_el_aviso_del_ok():
+    assert reglas.mensaje_de_avanzar("Ivan", 1, "TiendaChecks - Banners") == (
+        "Ivan dio el OK a la ronda 1 de «TiendaChecks - Banners»: avanzá con lo que falta.")
+    assert reglas.mensaje_de_avanzar("Ivan", 2, "X", "Seguí con el slider").endswith("Dice: «Seguí con el slider»")

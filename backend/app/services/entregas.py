@@ -122,7 +122,16 @@ MAX_MARCAS = 40
 ORIGEN = "calendario_entrega"
 # Lo que se puede decidir sobre una versión. «Aprobado con cambios» se sacó
 # el 19/11/2026 (Ivan: "Sacá la funcionalidad 'aprobado con cambios'").
-DECISIONES = ("aprobada", "cambios")
+#
+# 'avanzar' es del 25/11/2026 (Ivan: "lo que me pasaron está ok, pero no
+# significa que haya terminado la tarea... yo acá le mando que la pieza está
+# ok, que pueden avanzar con el resto de los pedidos"): la agencia manda
+# primero una pieza para ver si va bien encaminada y después el resto. Es un
+# OK a esa ronda que NO aprueba la fase: la ronda vuelve a la agencia, que
+# entrega lo que falta en la siguiente, y la fase y la tarea siguen abiertas.
+# La versión queda en estado 'avanzar' («OK para avanzar»).
+DECISIONES = ("aprobada", "cambios", "avanzar")
+AVANZAR = "avanzar"
 # La decisión vieja: no se acepta más, pero en la base hay decisiones de esta
 # semana guardadas así y se tienen que seguir leyendo como aprobadas (la
 # cadena, el retrabajo y la pantalla no se pueden romper por ellas).
@@ -352,7 +361,7 @@ def validar_imagen(datos: bytes, *, maximo: int = MAX_BYTES_IMAGEN, que: str = "
 
 
 def validar_decision(decision: str) -> str:
-    """La decisión sobre una versión: 'aprobada' o 'cambios'; si no, ValueError
+    """La decisión sobre una versión: 'aprobada', 'cambios' o 'avanzar'; si no, ValueError
     con el mensaje para la persona. Una pantalla vieja (o una pestaña abierta
     desde antes) que todavía mande «aprobado con cambios» recibe el porqué y
     qué elegir en su lugar, no un 422 mudo (19/11/2026)."""
@@ -363,7 +372,7 @@ def validar_decision(decision: str) -> str:
             "si está bien así, «Aprobar». Recargá la página."
         )
     if d not in DECISIONES:
-        raise ValueError("Esa decisión no existe: elegí «Aprobar» o «Pedir cambios»")
+        raise ValueError("Esa decisión no existe: elegí «Avanzar», «Aprobar y terminar» o «Pedir cambios»")
     return d
 
 
@@ -379,14 +388,18 @@ def _aprobaron(decisiones: Decisiones) -> set[int | None]:
 
 
 def resultado_de_version(aprobadores: list[int], decisiones: Decisiones) -> str:
-    """'cambios' si alguien los pidió; 'aprobada' si aprobaron todos los de la
-    cadena; si no, sigue en 'revision'.
+    """'cambios' si alguien los pidió; 'avanzar' si alguien le dio el OK para
+    avanzar (25/11/2026: la ronda vuelve a la agencia y la cadena no sigue,
+    porque no hay nada que aprobar todavía); 'aprobada' si aprobaron todos los
+    de la cadena; si no, sigue en 'revision'.
 
     Sin cadena (le sacaron todos los aprobadores a mitad de camino) decide el
     respaldo, y con una aprobación alcanza: si no, la versión quedaría
     trabada para siempre."""
     if any(d == "cambios" for _, d in decisiones):
         return "cambios"
+    if any(d == AVANZAR for _, d in decisiones):
+        return AVANZAR
     ya = _aprobaron(decisiones)
     if aprobadores:
         return "aprobada" if all(a in ya for a in aprobadores) else "revision"
@@ -459,7 +472,11 @@ def estados_de_fases(estados: list[str]) -> list[str]:
 def momento_de(hay_fase_actual: bool, estado_ultima_version: str | None) -> str:
     """En qué está la tarea: 'produccion' (le toca a la agencia), 'revision'
     (le toca a un aprobador), 'cambios' (volvió: le toca a la agencia) o
-    'aprobada' (todas las fases). Son las columnas del tablero."""
+    'aprobada' (todas las fases). Son las columnas del tablero.
+
+    Una ronda con el OK para avanzar (25/11/2026) deja la tarea en
+    'produccion': le toca a la agencia entregar lo que falta. Se distingue de
+    la primera entrega porque la fase ya tiene rondas (ver `con_ok`)."""
     if not hay_fase_actual:
         return "aprobada"
     if estado_ultima_version == "revision":
@@ -467,6 +484,14 @@ def momento_de(hay_fase_actual: bool, estado_ultima_version: str | None) -> str:
     if estado_ultima_version == "cambios":
         return "cambios"
     return "produccion"
+
+
+def con_ok(momento: str, ronda: int) -> bool:
+    """Si a la agencia le dieron el OK para avanzar con lo que falta: le toca
+    entregar y la fase en curso ya tiene rondas. Solo pasa después de un
+    'avanzar': con cambios el momento es 'cambios', y una fase nueva arranca
+    sin rondas. Pura."""
+    return momento == "produccion" and (ronda or 0) > 0
 
 
 def nombre_de_fase_nueva(nombres: list[str]) -> str:
@@ -982,6 +1007,14 @@ def mensaje_de_cambios(quien: str, ronda: int, fase: str, tarea: str, marcas: in
     detalle = f" ({cuantas})" if marcas else ""
     return (f"{quien} pidió cambios en la ronda {ronda} de {fase} de «{tarea}»{detalle}. "
             f"Te toca entregar la ronda {ronda + 1}.")
+
+
+def mensaje_de_avanzar(quien: str, ronda: int, tarea: str, comentario: str | None = None) -> str:
+    """A quien la hace, cuando le dieron el OK para avanzar (25/11/2026)."""
+    texto = f"{quien} dio el OK a la ronda {ronda} de «{tarea}»: avanzá con lo que falta."
+    if comentario:
+        texto += f" Dice: «{comentario}»"
+    return _corto(texto)
 
 
 def mensaje_de_aprobacion(

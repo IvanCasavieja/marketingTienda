@@ -1638,6 +1638,11 @@ async def ronda_anterior_de(db, version, *, si_es_la_primera: RondaAnterior | No
     )).scalar_one_or_none()
     if anterior is None:
         return si_es_la_primera
+    if anterior.estado == "avanzar":
+        # La ronda anterior tuvo el OK para avanzar (25/11/2026): no se pidió
+        # corregir nada, la agencia entrega lo que faltaba. Se controla contra
+        # el pedido inicial, como en la primera (ahí está qué falta).
+        return si_es_la_primera
     if anterior.estado != "cambios":
         return None
     marcas = (await db.execute(
