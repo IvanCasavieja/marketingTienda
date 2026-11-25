@@ -700,7 +700,7 @@ def _accion_para_la_ia(barra) -> dict:
     va sin nombre ni fechas: texto_del_pedido dice que es un pedido suelto."""
     from app.services import sin_accion
 
-    if sin_accion.es_sin_accion(barra.id):
+    if sin_accion.es_sin_accion(getattr(barra, "id", None)):
         return {"accion": "", "accion_desde": None, "accion_hasta": None}
     return {"accion": barra.nombre, "accion_desde": barra.desde, "accion_hasta": barra.hasta}
 
