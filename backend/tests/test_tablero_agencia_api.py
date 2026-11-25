@@ -1414,7 +1414,7 @@ def test_la_analista_crea_la_tarea_pide_su_material_y_lo_devuelve_hasta_aprobarl
         assert det["fases"][1]["abiertaPor"] == d.lucia.id
         assert det["personas"][str(d.lucia.id)]
         avisos = await _avisos(d, nath, pieza)
-        assert avisos[-1].mensaje.startswith("Lucia Equipo devolvió")
+        assert avisos[-1].mensaje.startswith("Lucia Equipo reabrió")
         assert "Cambió el precio: ahora es 2x1." in avisos[-1].mensaje and "Entrega 2" in avisos[-1].mensaje
         assert (await _tarjeta(lucia, pieza))["columna"] == "en-proceso"
 
