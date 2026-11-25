@@ -67,6 +67,56 @@ def color(celda) -> str | None:
     return None
 
 
+def pintada(celda) -> bool:
+    """Si la celda se ve pintada en el Excel. Blanca (también el blanco del
+    tema, theme 0 sin matiz) o sin relleno es que no. A diferencia de
+    `color`, cuenta también los colores del tema: esos se ven aunque no se
+    sepa su código."""
+    try:
+        relleno = celda.fill
+        if relleno is None or relleno.patternType is None:
+            return False
+        fg = relleno.fgColor
+        if fg.type == "rgb":
+            return isinstance(fg.rgb, str) and fg.rgb[2:] not in ("000000", "FFFFFF")
+        if fg.type == "theme":
+            return not (fg.theme == 0 and not fg.tint)
+        return True
+    except Exception:
+        return True
+
+
+def sin_rotulos(carril: list[dict]) -> list[dict]:
+    """Saca de un renglón los rótulos: una celda de un solo día, sin pintar,
+    pegada a una barra pintada con el mismo nombre.
+
+    Ivan (25/11/2026): "TiendaChecks tiene mal las fechas, en mi calendario
+    dice que empieza el 1 y en el calendario descargado empieza el 2". En
+    «Diciembre 2026» el día 1 tiene escrito «TiendaChecks Emisión» en blanco y
+    la barra verde «TiendaChecks emisión» va del 2 al 4: el rótulo se leía como
+    otra acción, de un día, y la plataforma la mostraba arrancando el 1.
+
+    Una celda sin pintar con otro nombre, o de varios días, se sigue leyendo:
+    hay acciones de verdad sin color («SBU DAY», «MEGA LIQ NF»)."""
+    def clave(nombre: str) -> str:
+        return re.sub(r"\s+", " ", nombre).strip().casefold()
+
+    quedan = []
+    for x in carril:
+        rotulo = (
+            not x.get("pintada", True)
+            and x["desde"] == x["hasta"]
+            and any(
+                y is not x and y.get("pintada", True) and clave(y["nombre"]) == clave(x["nombre"])
+                and (y["desde"] == x["hasta"] + 1 or y["hasta"] == x["desde"] - 1)
+                for y in carril
+            )
+        )
+        if not rotulo:
+            quedan.append(x)
+    return quedan
+
+
 def fila_de_dias(ws) -> int:
     """La fila con los números 1..31. Las hojas no la tienen siempre igual."""
     for r in range(1, 12):
@@ -128,8 +178,9 @@ def leer_bandas(ws, fila_dias, col_etiqueta, fila_corte, col_ini, col_fin, col2d
                 "desde": desde,
                 "hasta": col2dia.get(min(col_max, col_fin), desde),
                 "color": color(ws.cell(r, c)),
+                "pintada": pintada(ws.cell(r, c)),
             })
-        actual["filas"].append(carril)
+        actual["filas"].append(sin_rotulos(carril))
 
     for b in bandas:
         while len(b["filas"]) > 1 and not b["filas"][-1]:

@@ -348,3 +348,56 @@ def test_al_aplicar_lee_y_escribe_en_tienda_inglesa_y_no_manda_la_banda_de_una_r
     assert [(a["mundo"], a["banda"], a["nombre"]) for a in altas] == [
         ("tienda_inglesa", "MEGA EVENTO", "Liquidación de invierno"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Los rótulos (25/11/2026: TiendaChecks arrancaba el 1 en vez del 2)
+
+_imp = _mod.imp
+
+
+def _celda(**relleno):
+    import openpyxl
+    from openpyxl.styles import PatternFill
+    from openpyxl.styles.colors import Color
+
+    c = openpyxl.Workbook().active["B3"]
+    if relleno:
+        c.fill = PatternFill(patternType="solid", fgColor=Color(**relleno))
+    return c
+
+
+def test_que_celda_se_ve_pintada():
+    assert not _imp.pintada(_celda())                       # sin relleno
+    assert not _imp.pintada(_celda(theme=0))                # el blanco del tema (el rótulo de diciembre)
+    assert not _imp.pintada(_celda(rgb="FFFFFFFF"))         # blanco
+    assert _imp.pintada(_celda(rgb="FF92D050"))             # el verde de TiendaChecks
+    assert _imp.pintada(_celda(theme=0, tint=-0.15))        # blanco oscurecido: se ve gris
+    assert _imp.pintada(_celda(theme=5))                    # un color del tema
+
+
+def _x(nombre, desde, hasta, pintada=True):
+    return {"nombre": nombre, "desde": desde, "hasta": hasta, "color": None, "pintada": pintada}
+
+
+def test_el_rotulo_pegado_a_su_barra_no_es_otra_accion():
+    # «Diciembre 2026», renglón MEGA EVENTO: B3 en blanco, C3:E3 verde.
+    carril = [_x("TiendaChecks Emisión", 1, 1, pintada=False), _x("TiendaChecks emisión", 2, 4),
+              _x("REDENCIÓN checks", 5, 7)]
+    assert [(x["nombre"], x["desde"]) for x in _imp.sin_rotulos(carril)] == [
+        ("TiendaChecks emisión", 2), ("REDENCIÓN checks", 5)]
+
+
+def test_una_accion_sin_color_de_verdad_se_sigue_leyendo():
+    # «SBU DAY» es de un día y no tiene color; «MEGA LIQ NF» dura varios días.
+    assert len(_imp.sin_rotulos([_x("SBU DAY", 20, 20, pintada=False)])) == 1
+    assert len(_imp.sin_rotulos([_x("MEGA LIQ NF", 21, 26, pintada=False), _x("Otra", 27, 30)])) == 2
+
+
+def test_sin_pintar_con_otro_nombre_o_lejos_de_su_barra_no_se_saca():
+    assert len(_imp.sin_rotulos([_x("Expectativa", 1, 1, pintada=False), _x("CIBER LUNES", 2, 4)])) == 2
+    assert len(_imp.sin_rotulos([_x("Ciber", 1, 1, pintada=False), _x("Ciber", 5, 8)])) == 2
+
+
+def test_dos_pintadas_con_el_mismo_nombre_son_dos_acciones():
+    assert len(_imp.sin_rotulos([_x("20% OFF SUSHI", 7, 7), _x("20% OFF SUSHI", 8, 8)])) == 2
