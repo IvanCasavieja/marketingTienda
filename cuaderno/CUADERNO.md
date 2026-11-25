@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 76 abiertos (71 confirmados, 5 para confirmar) · 0 en curso · 5 hechos · 0 descartados. Última noche: 25/11/2026, auditoría completa sin cambios de código: 46 nuevos (🟠 12 · 🟡 24 · ⚪ 10), 22 siguen pasando, 4 ya no pasan. Informe: [`auditoria-2026-11-25/INFORME.md`](auditoria-2026-11-25/INFORME.md).
+**Resumen:** 77 abiertos (70 confirmados, 2 pedidos de Ivan, 5 para confirmar) · 0 en curso · 5 hechos · 1 descartado. Respuesta de Ivan al informe de la auditoría (25/11, ver `DECISIONES.md`): H-041 descartado, entran H-081 y H-082. Última noche: 25/11/2026, auditoría completa sin cambios de código: 46 nuevos (🟠 12 · 🟡 24 · ⚪ 10), 22 siguen pasando, 4 ya no pasan. Informe: [`auditoria-2026-11-25/INFORME.md`](auditoria-2026-11-25/INFORME.md).
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -18,6 +18,8 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 
 ## Abiertos (de más a menos importante)
 
+> Ivan (25/11): «esta plataforma la van a usar varias agencias a la vez, así que tiene que adaptarse a su forma de trabajar, no al revés». Con eso, después de H-018 va H-081 (entregas de ida y vuelta, que absorbe H-042) y H-082 (sugerencias) entra después del flujo de la agencia.
+>
 > Orden del 25/11 (auditoría): primero lo que bloquea; después el flujo equipo ↔ agencia (pedir, revisar, entregar, que se usa todos los días), las trabas de cuentas y herramientas, lo visual de base (ver la dirección de diseño en el informe) y al final los detalles y los «para confirmar».
 
 ### H-018 · Al crear una tarea, la agencia con usuarios no aparece en «¿Quién la hace?»
@@ -28,6 +30,18 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Evidencia:** ![H-018](recorridos/2026-11-25/H-018.jpg)
 - **Prueba a ciegas (Martina, auditoría 25/11):** abandonó: «¿Cómo le pido algo a la agencia con la que trabajo todos los días?». Pasa también en Tablero → Nueva tarjeta. ![H-018](auditoria-2026-11-25/img/H-018.jpg)
 - **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) · 25/11 (auditoría: sube a 🔴)
+
+### H-081 · Pedido de Ivan: que la agencia pueda ir y venir con la entrega hasta que se apruebe
+- **Gravedad:** 🟠 Traba (pedido de Ivan, 25/11) · **Quién:** agencia y equipo · **Dónde:** ficha de la tarjeta y tablero `/entregas`
+- **Qué pasa hoy:** una vez que la agencia envía, la tarjeta queda bloqueada hasta que el equipo la devuelve. Si se olvidaron un archivo o les pidieron un cambio por WhatsApp, no tienen cómo actualizarla (es H-042 visto por Martina).
+- **Lo que pide Ivan** ([comentario](https://github.com/IvanCasaviejaTI/marketingTienda/issues/82#issuecomment-7169163795)): mientras la tarjeta no esté aprobada, la agencia puede enviar sin esperar respuesta:
+  - **Versiones:** cada envío nuevo sobre la misma tarjeta es v2, v3… con fecha y hora; el equipo ve siempre la última y tiene el historial para comparar.
+  - **Agregar archivos:** si solo faltaba algo, se suma a la versión actual sin crear otra.
+  - **Comentario por envío:** una nota corta («faltaba el formato historia», «ajuste pedido por WhatsApp») para que lo acordado por fuera quede registrado.
+  - **Aviso automático:** cada envío nuevo le avisa al equipo.
+  - **Bloqueo solo al aprobar:** la tarjeta se cierra únicamente al aprobarla, y el equipo la puede reabrir si hace falta otro cambio.
+- **Cuidado al construirlo:** las imágenes de versiones anteriores no se borran nunca (son el histórico) y la base es de 500 MB: comprimir en el navegador como hoy. Relacionado: H-035, H-036, H-037 (las rondas actuales).
+- **Visto:** 25/11 (pedido de Ivan)
 
 ### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
 - **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
@@ -70,6 +84,7 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Por qué importa:** queda esperando que revisen algo incompleto (y por H-035 el equipo ve «ya están todas»). Martina abandonó.
 - **Cómo repetirlo:** entregar una sola pieza de un pedido de dos → buscar cómo agregar la segunda.
 - **Evidencia:** ![H-042](auditoria-2026-11-25/img/H-042.jpg)
+- **Ivan (25/11):** queda dentro de H-081 (la agencia va y viene hasta que se aprueba).
 - **Visto:** 25/11 (Martina a ciegas)
 
 ### H-037 · Al entregar la corrección, el formulario no recuerda qué había que cambiar
@@ -115,13 +130,10 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Auditoría 25/11:** Martina: «yo vengo a pedir cenefas»; si el local le pregunta a Don Tino «¿qué tengo que hacer hoy?», le dice que pida permiso del calendario. ![H-010](auditoria-2026-11-25/img/H-010.jpg)
 - **Visto:** 24/11 (barrido) · 25/11 (confirmado en pantalla) · 25/11 (auditoría)
 
-### H-041 · A una persona nueva del equipo con rol «Usuario» no le aparece el calendario
-- **Gravedad:** 🟠 Traba · **Quién:** jefatura y la persona nueva · **Dónde:** `/admin` → Nuevo usuario, notebook
-- **Qué ve una persona:** el rol «Usuario» trae cenefas, analytics, precios y asistentes, pero no «Ver el calendario»; la tarjeta dice «Arranca sin permisos» y «15 permiso» a la vez.
-- **Por qué importa:** la persona entra sin Calendario, Mis tareas ni Tablero.
-- **Cómo repetirlo:** /admin → Nuevo usuario → Del equipo → Crear → rol Usuario → lápiz → Calendario.
-- **Evidencia:** ![H-041](auditoria-2026-11-25/img/H-041.jpg)
-- **Visto:** 25/11
+### H-082 · Pedido de Ivan: un lugar de Sugerencias para las agencias, con estado visible
+- **Gravedad:** 🟡 (pedido nuevo de Ivan, 25/11) · **Quién:** agencias (y el equipo, que las prioriza) · **Dónde:** nuevo: sección o botón «Sugerencias»
+- **Lo que pide Ivan** ([comentario](https://github.com/IvanCasaviejaTI/marketingTienda/issues/82#issuecomment-7169163795)): «una sección o botón de Sugerencias donde puedan dejar comentarios. Cada sugerencia tendría un estado visible (Recibida, En evaluación, Implementada), así ven que su aporte se tiene en cuenta». Sirve para priorizar con información real de quienes la usan.
+- **Visto:** 25/11 (pedido de Ivan)
 
 ### H-025 · El muñequito de Don Tino tapa botones: «Más» en el celular y «Enviar» en La Triada
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** `/materiales/convertidor`, `/precios`, `/analytics`, `/facturacion`, `/materiales/cenefas`, celular
@@ -129,7 +141,7 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Por qué importa:** «Más» es la puerta al resto del menú en el celular; tocarlo abre el chat en vez del menú.
 - **Cómo repetirlo:** equipo en el celular → Convertidor de Excel → mirar la barra de abajo.
 - **Evidencia:** ![H-025](recorridos/2026-11-25/H-025.jpg)
-- **Idea de arreglo:** subir el botón flotante por encima de la barra de abajo en el celular.
+- **Idea de arreglo:** subir el botón flotante por encima de la barra de abajo en el celular. Ivan (25/11): los asistentes conservan nombre e identidad aunque se vaya el dibujo de robot.
 - **Auditoría 25/11:** en la notebook tapa el botón de enviar del chat de La Triada (`/analytics`). ![H-025](auditoria-2026-11-25/img/H-025.jpg)
 - **Visto:** 25/11 (Lucía) · 25/11 (auditoría)
 
@@ -246,6 +258,7 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 - **Fuente:** `plataforma/entrada-admin-diseno.md`, sistema visual.
 - **Confirmado (Lucía, 25/11):** cuatro estilos de encabezado (con ícono de color variable / sin ícono / centrado / con flecha atrás) y botón en degradé en Conexiones. Las nuevas (calendario, mis tareas, tablero, colocación, fotos, mi pedido) son una familia prolija; medios, finanzas y cenefas v2 parecen otra aplicación. Hojas equipo-notebook-claro-1 a 4.
 - **Auditoría 25/11:** ver la dirección de diseño y el pantalla por pantalla en `auditoria-2026-11-25/INFORME.md` (sección 3).
+- **Ivan (25/11):** «Hoy se ve muy \"hecho con IA\". Hay que trabajarlo para que tenga una identidad más propia.» Sigue la dirección del informe, con un cambio: Don Tino y el resto de los asistentes **mantienen su nombre y su identidad** aunque dejen de verse como robots (no se fusionan en «un solo asistente»). Pendiente que conteste: color de las acciones del calendario y azul de una vez.
 - **Visto:** 24/11 (código) · 25/11 (Lucía) · 25/11 (auditoría)
 
 ### H-029 · En el calendario compiten dos botones principales iguales
@@ -684,4 +697,12 @@ _Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68.
 
 ## Descartados (no volver a proponer)
 
-_Nada todavía._
+### H-041 · Descartado: a una persona nueva del equipo con rol «Usuario» no le aparece el calendario
+- **Gravedad:** 🟠 Traba · **Quién:** jefatura y la persona nueva · **Dónde:** `/admin` → Nuevo usuario, notebook
+- **Qué ve una persona:** el rol «Usuario» trae cenefas, analytics, precios y asistentes, pero no «Ver el calendario»; la tarjeta dice «Arranca sin permisos» y «15 permiso» a la vez.
+- **Por qué importa:** la persona entra sin Calendario, Mis tareas ni Tablero.
+- **Cómo repetirlo:** /admin → Nuevo usuario → Del equipo → Crear → rol Usuario → lápiz → Calendario.
+- **Evidencia:** ![H-041](auditoria-2026-11-25/img/H-041.jpg)
+- **Visto:** 25/11
+- **Descartado (25/11, Ivan, [comentario](https://github.com/IvanCasaviejaTI/marketingTienda/issues/82#issuecomment-7169163795)):** no es un problema, es lo esperado: «No todos los usuarios deben tener acceso al calendario: hay gente que no lo va a usar y además es información confidencial. El acceso tiene que asignarse de forma explícita y solo a quien corresponda.» No volver a proponer que el rol «Usuario» traiga el calendario.
+
