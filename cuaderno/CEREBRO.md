@@ -8,3 +8,5 @@
 - 26/11/2026 · A Ivan se le explica sin jerga: qué hizo la persona, qué vio y por qué la traba, con la captura. Los puntos cortos del informe no le alcanzaron.
 - 26/11/2026 · Ivan: las imágenes de los mails le llegan sin cargar. Bruno: van como links a GitHub y Outlook bloquea las imágenes externas de un remitente nuevo (o el firewall de la oficina bloquea GitHub). Propuesta: mandarlas dentro del mail con `cid` y un link de respaldo. Mientras tanto, debajo de cada imagen va su link.
 - 26/11/2026 · Ivan: en Cenefas la vigencia no es obligatoria, muchas cenefas la traen en el diseño.
+- 26/11/2026 · Ivan confirmó que las imágenes de los mails le aparecen con «Mostrar contenido» (Outlook bloquea las externas). Mandarlas dentro del mail queda como mejora, no como urgencia.
+- 26/11/2026 · Ivan presentó por mail a tres compañeros de Tienda Inglesa (copiados en el hilo de la presentación). Sofía les pidió su nombre, su área, qué usan más de Core Tienda y qué les traba. Lo que contesten sirve para los recorridos.
