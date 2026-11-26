@@ -1541,7 +1541,11 @@ async def sumar_archivos(
         background_tasks.add_task(revision_ia.revisar_version, version.id)
     return {
         "id": version.id, "ronda": version.ronda, "sumadas": len(leidas), "rev": _rev_para(current_user, rev),
-        "entrega": resumen, "avisados": avisados, "faltan": list(version.faltan or []),
+        "entrega": resumen, "avisados": avisados,
+        # Como en el detalle: la lista vacía es «se midió y no falta nada»;
+        # null, que no se pudo medir (H-035). Con `or []` una versión sin
+        # medir volvía como si estuviera todo.
+        "faltan": list(version.faltan) if version.faltan is not None else None,
     }
 
 
