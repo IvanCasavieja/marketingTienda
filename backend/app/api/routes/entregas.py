@@ -4,6 +4,7 @@ tablero de tarjetas estilo Trello (0070).
   PUT    /calendario/tareas/{id}/entregas     — que la tarea lleve entregas: tipo, brief, fases, aprobadores
   DELETE /calendario/tareas/{id}/entregas     — que deje de llevarlas (solo si no se entregó nada)
   GET    /calendario/tareas/{id}/entregas     — todo: fases, rondas, imágenes (los ids), marcas, decisiones
+  POST   /calendario/tareas/{id}/avisos-leidos — al abrir la tarjeta: mis avisos de la campanita de ella, leídos
   POST   /calendario/tareas/{id}/control-previo — antes de entregar: ¿se ve hecho lo pedido? (la IA; los cambios
                                                   o, en la primera ronda, el pedido inicial) y lo que
                                                   encontró en la pieza, como lo vería quien aprueba
@@ -84,6 +85,7 @@ from app.api.routes.calendario import (
     _rev_para, _ve_una_parte, ids_de_aprobadores_de, nombre_sin_mail, nombres_para_externo, vence_al_reabrir,
 )
 from app.api.routes.calendario import puede_pedir_piezas
+from app.api.routes.watchlist import no_leidas_de
 from app.models.adjuntos import CalendarioAdjunto
 from app.services import adjuntos as reglas_adjuntos
 from app.core.config import settings
@@ -469,6 +471,29 @@ def _puede_decidir(usuario: User, tarea: CalendarioTarea, entrega: CalendarioEnt
         return True, respaldo
     except NoPuedeDecidir:
         return False, False
+
+
+@router.post("/tareas/{tarea_id}/avisos-leidos")
+async def avisos_leidos(
+    tarea_id: str,
+    current_user: User = Depends(require_permission("calendario.view")),
+    db: AsyncSession = Depends(get_db),
+):
+    """La persona abrió la tarjeta: SUS avisos de la campanita de esta tarjeta
+    quedan leídos (H-111, 26/11/2026). Devuelve el número de la campanita al
+    día para que la pantalla lo cambie en el acto, sin esperar su próxima
+    pregunta. Es un POST aparte, no algo que haga el GET de la tarjeta: ese
+    se pregunta cada tanto con la tarjeta abierta y no tiene que escribir.
+
+    Mismos controles que `ver_entregas`: de una tarjeta ajena (una cuenta
+    externa, otra agencia), el mismo 404 que si no existiera."""
+    tarea, barra = await _tarea_y_barra(db, tarea_id, current_user)
+    if not _puede_ver(current_user, barra.mundo, tarea):
+        raise HTTPException(status_code=403, detail="No podés ver esta tarea")
+    marcados = await reglas.dar_por_leidos(db, current_user.id, barra.id, tarea.id)
+    if marcados:
+        await db.commit()
+    return {"marcados": marcados, "noLeidos": await no_leidas_de(db, current_user)}
 
 
 @router.get("/tareas/{tarea_id}/entregas")
@@ -1334,6 +1359,9 @@ async def entregar(
             reglas.referencia(barra.id, tarea.id, versionId, f"revisar-{uid}"),
         ):
             avisados += 1
+    # Quien entrega ya hizo lo que pedían sus avisos de esta tarjeta («pidió
+    # cambios», «te toca entregar»): quedan leídos (H-111).
+    await reglas.dar_por_leidos(db, current_user.id, barra.id, tarea.id)
     resumen = await _resumen(db, tarea_id)
     # El ZIP original, al final y antes de la revisión del calendario (su
     # fila es una sola para todos: no se la tiene tomada mientras se espera
@@ -1580,6 +1608,9 @@ async def decidir(
         db, current_user, tarea, barra, entrega, version, decision,
         comentario=payload.comentario, marcas=payload.marcas, nota_interna=payload.notaInterna,
     )
+    # Quien decide ya hizo lo que pedía su «Te toca revisarla»: sus avisos de
+    # esta tarjeta quedan leídos (H-111).
+    await reglas.dar_por_leidos(db, current_user.id, barra.id, tarea.id)
     resumen = await _resumen(db, tarea.id)
     rev = await _nueva_revision(db, barra.mundo)
     await db.commit()
@@ -1891,6 +1922,8 @@ async def mover(
             "aprobada" if accion == "aprobar" else "cambios",
             comentario=payload.comentario, marcas=[], nota_interna=None,
         )
+        # Arrastrar a Finalizado o devolverla es decidir: como en `decidir`.
+        await reglas.dar_por_leidos(db, current_user.id, barra.id, tarea.id)
     elif accion == "archivar":
         entrega.archivada_at = ahora
         entrega.archivada_por_id = current_user.id
