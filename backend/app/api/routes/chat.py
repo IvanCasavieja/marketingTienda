@@ -91,9 +91,9 @@ Antes había dos pipelines paralelos (plantillas clásicas para Redexpres y moto
 - Primero se crea la plantilla en el [Editor de plantillas]({_BASE_URL}/materiales/cenefas/v2), o se importa un PPTX existente y el sistema lo convierte en componentes.
 - El editor tiene un canvas donde se arrastran y configuran componentes: texto, imagen, forma.
 - Cada componente de texto se vincula a una variable (ej: `precioOferta`, `descripcion`).
-- Después se generan las cenefas desde [Cenefas]({_BASE_URL}/materiales/cenefas), eligiendo el mundo y la plantilla.
+- Después se generan las cenefas desde [Cenefas]({_BASE_URL}/materiales/cenefas), eligiendo el tipo de cenefa y la plantilla.
 
-**Mundos**: Redexpres, Rompe Precios, Parrilla y Vinos... Un mundo solo agrupa las plantillas de una campaña; no cambia el Excel ni el motor. Se pueden crear nuevos desde el propio selector, con el botón "Nuevo mundo" (hace falta el permiso `cenefas.edit`).
+**Tipos de cenefa** (antes se les decía "mundos"): cada mundo de la plataforma tiene los suyos; en Redexpres está "Redexpres" y se entra derecho. Los de Tienda Inglesa (Rompe Precios, Parrilla y Vinos, Mega Rompe Precios y los demás) se borraron el 26/11/2026 con sus plantillas, porque no se usaban: si alguien los busca, se le cuenta eso. Sus cenefas siguen contando en el informe. Un tipo solo agrupa las plantillas de una campaña; no cambia el Excel ni el motor. Se crean desde el propio selector, con "Nuevo tipo de cenefa" (hace falta el permiso `cenefas.edit`).
 
 **El motor respeta el PPTX tal cual se sube**: no agranda, no achica y no mueve nada por su cuenta. Si un texto no entra en su cuadro, hay que corregir el dato o el diseño.
 
