@@ -7,7 +7,7 @@ import { clientesVipApi } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { FilaDimension, Informe, KpiMes, NotaDeMemoria, Prediccion, SegmentoResumen, Segmento, Carga } from "@/lib/clientes-vip/tipos";
-import { QUE_ES, mesCorto, mesLargo, numero, plata, variacion } from "@/lib/clientes-vip/tipos";
+import { QUE_ES, ejeDePlata, mesCorto, mesLargo, numero, plata, variacion } from "@/lib/clientes-vip/tipos";
 
 export const CAJA = "rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900";
 export const TITULO = "text-sm font-semibold text-slate-900 dark:text-slate-100";
@@ -89,6 +89,7 @@ function Globo({ active, payload }: { active?: boolean; payload?: { payload: Pun
 export function GraficoVentas({ meses, prediccion }: { meses: KpiMes[]; prediccion: Prediccion | null }) {
   const datos: Punto[] = meses.slice(-24).map((m) => ({ mes: m.mes, venta: m.venta }));
   if (prediccion?.venta) datos.push({ mes: prediccion.mes, venta: prediccion.venta, esperada: true, desde: prediccion.desde, hasta: prediccion.hasta });
+  const eje = ejeDePlata(Math.max(0, ...datos.map((d) => d.venta)));
   return (
     <div className={`${CAJA} p-5`}>
       <div className="flex items-baseline justify-between gap-3">
@@ -100,7 +101,7 @@ export function GraficoVentas({ meses, prediccion }: { meses: KpiMes[]; predicci
           <BarChart data={datos} margin={{ top: 4, right: 4, bottom: 0, left: 4 }} barCategoryGap="22%">
             <XAxis dataKey="mes" tickFormatter={mesCorto} tickLine={false} axisLine={false}
                    tick={{ fontSize: 11 }} className="[&_text]:fill-slate-400" interval="preserveStartEnd" minTickGap={8} />
-            <YAxis tickFormatter={(v: number) => `${Math.round(v / 1_000_000)} M`} tickLine={false} axisLine={false}
+            <YAxis tickFormatter={eje} tickLine={false} axisLine={false}
                    width={56} tick={{ fontSize: 11 }} className="[&_text]:fill-slate-400" />
             <Tooltip content={<Globo />} cursor={{ className: "fill-slate-100 dark:fill-slate-800" }} />
             <Bar dataKey="venta" radius={[4, 4, 0, 0]} isAnimationActive={false}>

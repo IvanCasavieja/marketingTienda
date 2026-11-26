@@ -1017,9 +1017,18 @@
     "laPlanilla": "A planilha",
     "sinParejaNinguna": "Não encontrei esta peça {{fuente}}: nenhuma linha se parece o suficiente.",
     "sinParejaAmbiguo": "Há mais de uma linha {{fuente}} que se parece igual. Não escolho eu: confira você.",
-    "fuenteNombre": { "mailing": "o mailing", "planilla": "a planilha" },
-    "fuenteDe": { "mailing": "do mailing", "planilla": "da planilha" },
-    "fuenteEn": { "mailing": "no mailing", "planilla": "na planilha" },
+    "fuenteNombre": {
+      "mailing": "o mailing",
+      "planilla": "a planilha"
+    },
+    "fuenteDe": {
+      "mailing": "do mailing",
+      "planilla": "da planilha"
+    },
+    "fuenteEn": {
+      "mailing": "no mailing",
+      "planilla": "na planilha"
+    },
     "campoFecha": "Data da campanha",
     "planillaColumnasNombres": "A CatTi procura, com o nome que tiverem: {{columnas}}.",
     "planillaEntendio": "Assim a CatTi leu a planilha:",
@@ -1451,6 +1460,26 @@
       "seAproboSin_one": "Aprovado sem 1 peça do pedido",
       "seAproboSin_other": "Aprovado sem {{count}} peças do pedido",
       "avanzarConTodo": "Todas as peças do pedido já chegaram: se falta algo, escreva o quê no comentário, para a agência saber o que enviar. Se está tudo certo, aprove."
+    }
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} linha não vai ser carregada:",
+      "noEntran_other": "{{n}} linhas não vão ser carregadas:",
+      "fila": "Linha {{fila}}",
+      "filaDe": "Linha {{fila}} de {{archivo}}",
+      "motivo": {
+        "sinCliente": "não tem número de cliente.",
+        "sinFecha": "não tem data.",
+        "fechaIlegible": "não dá para entender a data “{{dato}}”.",
+        "mesInexistente": "a data “{{dato}}” tem um mês que não existe.",
+        "fechaVieja": "a data “{{dato}}” é anterior a 2000: confira o ano.",
+        "fechaFutura": "a data “{{dato}}” ainda não chegou."
+      },
+      "yMas_one": "E mais {{n}} linha.",
+      "yMas_other": "E mais {{n}} linhas.",
+      "queHacer": "Para incluí-las, corrija no arquivo e carregue de novo. Se não, carregue o resto.",
+      "ningunaSirve": "Não sobrou nenhuma linha para carregar: corrija o arquivo e carregue de novo."
     }
   }
 }

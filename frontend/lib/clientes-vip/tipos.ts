@@ -102,6 +102,17 @@ export function plata(n: number | null | undefined): string {
   return `$ ${Math.round(n).toLocaleString('es-UY')}`
 }
 
+/** Las rayas del eje de un gráfico de plata, todas en la misma unidad, como
+ *  `plata`: en millones si el valor más alto llega al millón y, si no, en pesos.
+ *  Con ventas de miles las cinco rayas decían «0 M» (H-087, 26/11/2026). Con
+ *  dos decimales, 0,65 M y 1,3 M ya no dicen las dos «1 M». */
+export function ejeDePlata(maximo: number): (v: number) => string {
+  if (Math.abs(maximo) >= 1_000_000) {
+    return (v) => `${(v / 1_000_000).toLocaleString('es-UY', { maximumFractionDigits: 2 })} M`
+  }
+  return (v) => v.toLocaleString('es-UY', { maximumFractionDigits: 2 })
+}
+
 export function numero(n: number | null | undefined, decimales = 0): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return '—'
   return n.toLocaleString('es-UY', { maximumFractionDigits: decimales, minimumFractionDigits: decimales })

@@ -1104,9 +1104,18 @@
     "laPlanilla": "La planilla",
     "sinParejaNinguna": "No encontré esta placa {{fuente}}: no hay ninguna fila que se le parezca lo suficiente.",
     "sinParejaAmbiguo": "Hay más de una fila {{fuente}} que se le parece igual. No elijo yo cuál es: miralo vos.",
-    "fuenteNombre": { "mailing": "el mailing", "planilla": "la planilla" },
-    "fuenteDe": { "mailing": "del mailing", "planilla": "de la planilla" },
-    "fuenteEn": { "mailing": "en el mailing", "planilla": "en la planilla" },
+    "fuenteNombre": {
+      "mailing": "el mailing",
+      "planilla": "la planilla"
+    },
+    "fuenteDe": {
+      "mailing": "del mailing",
+      "planilla": "de la planilla"
+    },
+    "fuenteEn": {
+      "mailing": "en el mailing",
+      "planilla": "en la planilla"
+    },
     "campoFecha": "Fecha de la campaña",
     "planillaColumnasNombres": "CatTi busca, con el nombre que tengan: {{columnas}}.",
     "planillaEntendio": "Así leyó CatTi la planilla:",
@@ -1538,6 +1547,26 @@
       "seAproboSin_one": "Se aprobó sin 1 pieza del pedido",
       "seAproboSin_other": "Se aprobó sin {{count}} piezas del pedido",
       "avanzarConTodo": "Ya están todas las piezas del pedido: si falta algo, escribí qué en el comentario, así la agencia sabe qué mandar. Si está todo, aprobala."
+    }
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} fila no se va a cargar:",
+      "noEntran_other": "{{n}} filas no se van a cargar:",
+      "fila": "Fila {{fila}}",
+      "filaDe": "Fila {{fila}} de {{archivo}}",
+      "motivo": {
+        "sinCliente": "no tiene número de cliente.",
+        "sinFecha": "no tiene fecha.",
+        "fechaIlegible": "la fecha «{{dato}}» no se entiende.",
+        "mesInexistente": "la fecha «{{dato}}» tiene un mes que no existe.",
+        "fechaVieja": "la fecha «{{dato}}» es de antes del 2000: revisá el año.",
+        "fechaFutura": "la fecha «{{dato}}» todavía no llegó."
+      },
+      "yMas_one": "Y {{n}} fila más.",
+      "yMas_other": "Y {{n}} filas más.",
+      "queHacer": "Si querés que entren, corregilas en el archivo y cargalo de nuevo. Si no, cargá el resto.",
+      "ningunaSirve": "No queda ninguna fila para cargar: corregí el archivo y cargalo de nuevo."
     }
   }
 }

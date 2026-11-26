@@ -82,6 +82,22 @@ def mes_de(texto: str) -> date:
     return date(a, m, 1)
 
 
+def meses_de_carga(textos: list[str], hoy: date) -> list[date]:
+    """Los meses que trae un archivo, ordenados. Pura.
+
+    Un mes que todavía no llegó es un error de tipeo en el archivo (un año
+    2062): si entrara, pasaría a ser «el último mes» y cambiaría el segmento
+    de todos los clientes (H-088, 26/11/2026). El navegador ya deja afuera
+    esas filas y dice cuáles son (`problemaDelMes` en
+    frontend/lib/clientes-vip/resumen.ts); esto frena lo que llegue igual.
+    """
+    meses = sorted({mes_de(t) for t in textos})
+    if meses and meses[-1] > hoy.replace(day=1):
+        raise ValueError(f"El archivo trae compras de {nombre_mes(meses[-1])}, un mes que todavía no llegó: "
+                         "revisá las fechas del archivo. No se cargó nada.")
+    return meses
+
+
 def nombre_mes(d: date, con_anio: bool = True) -> str:
     return f"{MESES_ES[d.month - 1]} {d.year}" if con_anio else MESES_ES[d.month - 1]
 
