@@ -46,6 +46,7 @@ export const REQUISITOS: Requisito[] = [
   { prefijo: '/facturacion', nombre: 'Finanzas', permisos: ['facturacion.view', 'facturacion.manage'] },
   { prefijo: '/precios', nombre: 'Los precios', permisos: ['precios.search'] },
   { prefijo: '/colocacion', nombre: 'La colocación', permisos: ['calendario.edit'] },
+  { prefijo: '/clientes-vip', nombre: 'Clientes VIP', permisos: ['clientes_vip.view'] },
   { prefijo: '/admin', nombre: 'El panel de administración', permisos: ['platform.admin'] },
 ]
 
