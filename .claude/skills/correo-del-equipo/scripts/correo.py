@@ -78,7 +78,7 @@ def pedir(metodo: str, ruta: str, cuerpo: dict | None = None) -> dict:
 def _en_linea(t: str) -> str:
     t = html.escape(t, quote=False)
     t = re.sub(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)",
-               r'<img src="\2" alt="\1" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:12px 0">', t)
+               r'<img src="\2" alt="\1" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:12px 0">', t)
     t = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2" style="color:#1d4ed8">\1</a>', t)
     t = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", t)
     t = re.sub(r"(?<![\w*])_([^_]+)_(?![\w*])", r"<em>\1</em>", t)
