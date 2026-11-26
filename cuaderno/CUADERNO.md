@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 100 abiertos (95 confirmados, 1 pedido de Ivan, 4 para confirmar) · 0 en curso · 10 hechos · 1 descartado. Última noche: 26/11/2026, corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 100 abiertos (95 confirmados, 1 pedido de Ivan, 4 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026, corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -14,7 +14,11 @@ en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detal
 
 ## En curso
 
-_Nada: el paquete Redexpres (H-020, H-021, H-009) entró a `main` por el PR #68._
+Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. Siguen descriptos abajo, en Abiertos, hasta que entren a `main`. **La noche no los toma:** elegí de lo que sigue en Abiertos.
+
+- **Arreglos** (rama `fix/hallazgos-del-escuadron`): H-018 y H-090 (pedirle trabajo a cualquier agencia), H-025 y H-010 (Don Tino), H-008 (cenefas v2), H-001 (borrar una acción), H-039 y H-040 (entregar y entrar por el link), H-023, H-035 y H-036 (revisar y aprobar).
+- **Clientes VIP** (PR #93): H-083 (CI en rojo, ya arreglado ahí), H-087 y H-088.
+- **Tarjetas por pieza** (rama `feat/tarjetas-por-pieza`): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
 
 ## Abiertos (de más a menos importante)
 
