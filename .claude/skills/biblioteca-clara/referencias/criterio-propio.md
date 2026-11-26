@@ -89,7 +89,7 @@ sumando párrafos.
 Cómo se aprende de una corrección:
 
 1. **Leé las palabras exactas y la fecha** antes de escribir: quien procesa
-   el mail las anota en el cuaderno (`DECISIONES.md` y `APRENDIDO.md`).
+   el mail las anota en el cuaderno (`DECISIONES.md` y el cerebro común, `CEREBRO.md`).
 2. **Buscá el principio, no solo la regla:** «el asunto está horrendamente
    largo» quiere decir que el asunto es un titular, no un resumen.
 3. **Aplicalo desde el mail siguiente,** también donde Ivan no lo dijo pero

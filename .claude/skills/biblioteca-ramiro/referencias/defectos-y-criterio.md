@@ -94,7 +94,7 @@ todo defecto arreglado deja su prueba de regresión, en el nivel más bajo que
 lo agarra. **Clasificar** con la Orthogonal Defect Classification de IBM
 (Ram Chillarege), por tipo (función, interfaz, chequeo, asignación, sincronización, algoritmo,
 armado, documentación) y por disparador, muestra dónde se amontonan. Y antes
-de cada noche, `cuaderno/APRENDIDO.md`.
+de cada noche, el cerebro común (`cuaderno/CEREBRO.md`).
 
 | Qué pasó (fecha, commit) | Por dónde se escapó | El hábito que lo agarra |
 |---|---|---|

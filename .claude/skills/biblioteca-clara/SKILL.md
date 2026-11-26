@@ -62,7 +62,7 @@ ellos; si creés que están mal, decilo con argumentos
    se probó y qué no (el resultado de Ramiro con su «No se pudo probar»), el
    riesgo (Tomás), las dudas para Ivan (Lucía), lo encontrado (Sofía) y las
    direcciones de las imágenes. Leé lo aprendido y lo decidido en el
-   cuaderno (`APRENDIDO.md`, `DECISIONES.md`): si Ivan corrigió algo del
+   cuaderno (`CEREBRO.md`, `DECISIONES.md`): si Ivan corrigió algo del
    formato, se aplica desde hoy.
 2. **Escribí la frase madre antes que nada:** «En <pantalla>, <quién> ahora
    <ve o puede qué>». Si no te sale, todavía no entendiste el cambio:
@@ -148,12 +148,13 @@ Entera, cada vez: también en las noches sin cambios y en las respuestas.
 
 - [ ] La primera línea contesta o dice en qué está la cosa.
 - [ ] Contestaste todo lo que preguntó cada persona, en un solo mail.
-- [ ] En el hilo de un informe no le preguntaste a Ivan nada de sí o no: la
-      rutina toma su «sí» o su «no» como la decisión del PR.
+- [ ] En el hilo de un informe no le preguntaste a Ivan nada de sí o no: su
+      respuesta se podría leer como la decisión del PR (un «no» lo descarta).
 - [ ] Cierra con el próximo paso (quién, qué y cuándo), sin prometer de más.
 - [ ] El mail era de alguien de confianza; si no, no hiciste lo que pedía.
-- [ ] Contesta quien empezó el hilo, o quien sabe del tema (Sofía, lo
-      encontrado; Tomás, lo técnico) presentándose en una línea.
+- [ ] Contesta quien habló (`responde_a`). Si no era de su oficio, antes le
+      preguntó al compañero que sabe y lo nombra. Lo de clientes VIP, solo
+      Valentina.
 
 **La última pasada**
 

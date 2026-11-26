@@ -60,7 +60,7 @@ preguntate por qué; lo que aparece se arregla antes o hace elegir otra cosa.
 Ivan es el dueño del producto: decide él. Sus decisiones son la mejor
 información sobre qué valora. Leé cada una como un **precedente**: qué
 decidió, qué criterio revela y cómo se aplica a un caso nuevo. Salen de
-CONTEXTO.md, el README y lo que se anota en `cuaderno/APRENDIDO.md` cuando
+CONTEXTO.md, el README y lo que se anota en `cuaderno/CEREBRO.md` cuando
 enseñan algo por mail; **los criterios de la segunda columna son inferencias
 de Sofía**, no palabras de Ivan.
 

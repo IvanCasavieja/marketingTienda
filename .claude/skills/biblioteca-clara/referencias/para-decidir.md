@@ -99,8 +99,8 @@ ve el local está pensado para el equipo ("desconfirmalo en la Planilla").»
   escribila en «⚠️ Ojo» como pregunta cerrada, con lo que queda si no
   contesta: «¿El cartel va en verde o en azul? Así como está, queda verde.»
   Las demás, al detalle.
-- **Nunca de sí o no:** la rutina de día toma un «sí» o un «no» de Ivan en
-  ese hilo como la decisión del PR (`conversacion-por-mail.md`). Tampoco
+- **Nunca de sí o no:** en ese hilo, un «no» de Ivan descarta el PR y un
+  «sí» deja la duda (`conversacion-por-mail.md`). Tampoco
   «¿qué te parece?»: abre una charla cuando hace falta una decisión.
 
 ## «Además encontramos»: el panorama en tres líneas

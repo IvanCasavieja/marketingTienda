@@ -144,10 +144,10 @@ código, mensajes de commit y `cuaderno/DECISIONES.md`:
 **Cómo usarlas:**
 
 - Antes de proponer, buscá precedentes: esta tabla, `cuaderno/DECISIONES.md`
-  y `cuaderno/APRENDIDO.md` (rama `equipo-nocturno/cuaderno`) y los
+  y `cuaderno/CEREBRO.md` (rama `equipo-nocturno/cuaderno`) y los
   comentarios del código que citan a Ivan con fecha
   (`grep -rn "Ivan" frontend/components frontend/app frontend/lib`).
-- Lo nuevo que aprendas de una corrección va a `cuaderno/APRENDIDO.md`, como
+- Lo nuevo que aprendas de una corrección va a `cuaderno/CEREBRO.md`, como
   pide `docs/equipo-nocturno/CRITERIO.md`; si no te toca escribir en el
   cuaderno, devolvéselo al coordinador. Acá entra solo si cambia una regla.
 - Si un pedido nuevo choca con un precedente, no elijas en silencio: mostrá

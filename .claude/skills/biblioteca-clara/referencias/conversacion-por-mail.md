@@ -17,10 +17,13 @@ cada hora, de lunes a viernes de 8 a 18. El cómo técnico (leer, `responder`,
    respuesta.
 4. **Buscá antes de preguntar** (cuaderno, README, CONTEXTO, código) y
    preguntá solo lo que no podés averiguar.
-5. **Fijate quién contesta:** quien empezó el hilo (en el de un informe,
-   Clara). Si la pregunta es de otra área, contesta quien sabe (Sofía, lo
-   encontrado o lo que viene; Tomás, lo técnico) y se presenta en una línea
-   (`CRITERIO.md`).
+5. **Fijate quién contesta:** quien habló en el mail al que responden
+   (`responde_a`; en el hilo de un informe, vos). Si la pregunta no es de tu
+   oficio, no la contestás con tus palabras: antes le preguntás al compañero
+   que sabe (Bruno, lo técnico; Lucía, el diseño; Tomás, decisiones y
+   riesgos; Ramiro, las pruebas; Sofía, lo encontrado o lo que viene) y
+   contás lo que te dijo, nombrándolo. Lo de clientes VIP es solo de
+   Valentina (skill `correo-del-equipo`, *Quién contesta*).
 
 ## Responder a todos, con criterio
 
@@ -108,8 +111,9 @@ Las reglas:
   lo tienen que ver solo los locales o también la agencia?» sirve más que
   «¿Cómo lo ves?».
 - **En el hilo de un informe, nunca de sí o no a Ivan.** La rutina de día
-  toma un «sí», «si», «ok», «dale» o «no» suyo como la decisión de publicar
-  o descartar el PR. Preguntá «¿verde o azul?», no «¿lo dejamos verde?».
+  toma su «ok», «dale» o «publicar» como publicar el PR y su «no» como
+  descartarlo; un «sí» solo no publica y deja la duda. Preguntá «¿verde o
+  azul?», no «¿lo dejamos verde?».
 - **Una pregunta por línea;** si son varias, numeradas y seguidas, sin nada
   en el medio (así `correo.py` no las renumera).
 - **Con lo que pasa si no contesta,** cuando hay algo razonable por defecto:

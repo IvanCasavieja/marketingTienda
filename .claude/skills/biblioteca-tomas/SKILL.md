@@ -161,7 +161,7 @@ cómo se aplica a lo técnico, en `referencias/decidir-y-revisar.md`.
 
 ## Cómo crece
 
-- Lo que Ivan y el equipo enseñan por mail va a `cuaderno/APRENDIDO.md` (rama
+- Lo que Ivan y el equipo enseñan por mail va a `cuaderno/CEREBRO.md` (rama
   del cuaderno, pública; ver `CRITERIO.md`); acá entra solo si cambia una regla.
 - Cada incidente deja una fila en los casos de la casa (`confiabilidad.md`) y
   su pregunta en el checklist que corresponda. Fuentes, solo públicas.
