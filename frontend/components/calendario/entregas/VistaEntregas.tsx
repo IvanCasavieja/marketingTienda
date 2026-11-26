@@ -21,6 +21,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { veCalendario } from '@/lib/alcance'
 import { esExterno } from '@/lib/externos'
 import { useVistaEntregas } from '@/store/entregas'
+import { useAvisos } from '@/store/avisos'
 import { useCatalogoDeTipos } from '@/store/tiposDeTarea'
 import { detalleSinPedido, pedidoEnLista } from '@/lib/calendario/tipos-de-tarea'
 import { defColumna, quienLaHaceTexto } from '@/lib/calendario/tablero'
@@ -136,6 +137,21 @@ function Contenido({ tareaId }: { tareaId: string }) {
       window.removeEventListener('focus', mirar)
     }
   }, [tareaId, huella, formulario])
+
+  // Abrir la tarjeta es leer sus avisos (H-111, 26/11/2026): los míos de esta
+  // tarjeta quedan leídos y el número de la campanita (y el de la barra de
+  // abajo del teléfono) se pone al día ya, sin esperar la vuelta del menú.
+  // Recién con la tarjeta cargada (la huella), y otra vez si cambia: un aviso
+  // que llega mientras se la está mirando también queda leído. El GET de la
+  // tarjeta no marca nada: se pregunta cada pocos segundos. Si falla, silencio.
+  useEffect(() => {
+    if (!huella) return
+    let vivo = true
+    entregasApi.avisosLeidos(tareaId)
+      .then(({ data }) => { if (vivo) useAvisos.getState().setNoLeidos(data.noLeidos) })
+      .catch(() => { /* la próxima vuelta del menú trae el número */ })
+    return () => { vivo = false }
+  }, [tareaId, huella])
 
   // Escape cierra (solo mirando: entregando o revisando, se sale con Cancelar,
   // que avisa si hay algo sin mandar). Va en la captura para que no cierre
