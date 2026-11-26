@@ -1493,6 +1493,11 @@
   },
   "calendario": {
     "accessDenied": "No tenés acceso al calendario",
-    "loading": "Cargando el calendario…"
+    "loading": "Cargando el calendario…",
+    "entrega": {
+      "recuperado": "Recuperamos lo que estabas cargando para entregar.",
+      "recuperadoSinZip": "Recuperamos lo que estabas cargando. El ZIP «{{zip}}» no queda guardado: volvé a elegirlo.",
+      "descartar": "Descartar"
+    }
   }
 }

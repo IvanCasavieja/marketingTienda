@@ -689,11 +689,14 @@ Acá se escriben sin el prefijo.
   máximo es 40 MB. Si es más grande, pegá el link de WeTransfer."; ZIP sin imágenes ni PDF; link sin http;
   error: "No se pudo entregar. Revisá la conexión y probá de nuevo: no se pierde nada."; ZIP no guardado
   por espacio: toast de advertencia (la entrega se hace igual).
-- **Código:** `entregas/FormularioEntrega.tsx`, `LoQueVioLaIA.tsx`, `lib/calendario/zip.ts`, `piezas.ts`,
-  `control-previo.ts`; servidor `entregas.py` (`entregar`, `control_previo`), `services/revision_ia.py`,
-  `services/espacio.py`.
-- **Puntos a mirar:** "Cancelar avisa si hay algo sin mandar" según el comentario; no lo verifiqué en
-  pantalla.
+- **Si se sale con algo cargado:** Cancelar («¿Descartar lo que cargaste?») y «atrás» («¿Salir sin
+  mandar?») preguntan y, si se dice que sí, se descarta; recargar o cerrar la pestaña preguntan con el
+  aviso del navegador (el iPhone no pregunta). Lo cargado (la nota, el link, el porqué y las imágenes sueltas; el ZIP no) queda guardado en
+  ese navegador un día y vuelve al entregar de nuevo esa tarjeta, con «Recuperamos lo que estabas
+  cargando» y «Descartar». Se borra al mandar, al descartar y al cerrar sesión (H-039, 26/11/2026).
+- **Código:** `entregas/FormularioEntrega.tsx`, `LoQueVioLaIA.tsx`, `borradores.ts`, `lib/calendario/zip.ts`,
+  `piezas.ts`, `control-previo.ts`, `borrador.ts`; servidor `entregas.py` (`entregar`, `control_previo`),
+  `services/revision_ia.py`, `services/espacio.py`.
 
 #### Revisar (modo «revisar»: aprobar o pedir cambios)
 - **Quién:** el aprobador de turno, o quien tiene `calendario.tareas` como respaldo. Nunca una cuenta

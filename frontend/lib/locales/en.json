@@ -1406,6 +1406,11 @@
   },
   "calendario": {
     "accessDenied": "You don't have access to the calendar",
-    "loading": "Loading the calendar…"
+    "loading": "Loading the calendar…",
+    "entrega": {
+      "recuperado": "We brought back what you were getting ready to deliver.",
+      "recuperadoSinZip": "We brought back what you were getting ready to deliver. The ZIP “{{zip}}” is not kept: choose it again.",
+      "descartar": "Discard"
+    }
   }
 }
