@@ -77,12 +77,28 @@ export default function ValidacionRrssPage() {
     let siguiente = 0;
     let hechas = total - ordenes.length;
     let caido = false;
+    // La validación ya no está: se borró sola (duran 24 horas, y «Reintentar»
+    // puede llegar al otro día) o la borró quien la creó desde otra pestaña.
+    // Ninguna placa más se puede guardar ni hay nada que cerrar: se dice una
+    // vez, en el idioma de la persona, y se vuelve a la carga con los mismos
+    // archivos para hacerla de nuevo. Antes cada placa quedaba marcada con el
+    // error del servidor (en castellano) y la pantalla terminaba en «El
+    // servidor dejó de responder… Lo que ya se revisó quedó guardado. Apretá
+    // Reintentar», todo falso (Ramiro, 26/11/2026).
+    let borrada = false;
+    const yaNoEstaMas = () => {
+      toast.error(t("rrss.yaNoEsta"));
+      setFase("cargar");
+      setValidacion(null);
+      setPendientes([]);
+      setProgreso(null);
+    };
     setProgreso({ fase: "validando", hechas, total });
 
     // Un pool de PARALELO trabajadores: cada placa se valida en su propia request,
     // y a medida que termina aparece en pantalla.
     const trabajador = async () => {
-      while (!caido && siguiente < ordenes.length) {
+      while (!caido && !borrada && siguiente < ordenes.length) {
         const i = ordenes[siguiente++];
         const placa = archivosRef.current[i];
         setPendientes((prev) => prev.map((p) => (p.orden === i ? { ...p, analizando: true } : p)));
@@ -96,6 +112,10 @@ export default function ValidacionRrssPage() {
             // "Reintentar" se retoma justo donde se cortó.
             caido = true;
             setPendientes((prev) => prev.map((p) => (p.orden === i ? { ...p, analizando: false } : p)));
+            return;
+          }
+          if (yaNoEsta(e)) {
+            borrada = true;
             return;
           }
           // Una placa que falla por su cuenta (no es una imagen, etc.) no frena a las demás.
@@ -112,6 +132,10 @@ export default function ValidacionRrssPage() {
     };
     await Promise.all(Array.from({ length: Math.min(PARALELO, ordenes.length) }, trabajador));
 
+    if (borrada) {
+      yaNoEstaMas();
+      return;
+    }
     if (caido) {
       setProgreso({ fase: "pausada", hechas, total });
       return;
@@ -122,6 +146,10 @@ export default function ValidacionRrssPage() {
       setValidacion((prev) => (prev ? { ...prev, resumen: data.resumen, estado: "completada" } : prev));
       setProgreso({ fase: "listo", hechas: total, total });
     } catch (e) {
+      if (yaNoEsta(e)) {
+        yaNoEstaMas();
+        return;
+      }
       // Sin cerrar no hay resumen del lote: queda pausada y "Reintentar" vuelve a cerrar.
       toast.error(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorCerrar")));
       setProgreso({ fase: "pausada", hechas: total, total });

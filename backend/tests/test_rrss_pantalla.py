@@ -364,3 +364,27 @@ def test_el_tacho_va_solo_donde_el_servidor_deja_borrar():
         rrss = _rrss(idioma)
         assert rrss["borrarSoloQuienLaCreo"] and rrss["errorBorrar"], idioma
     assert "puede_borrar?: boolean" in _texto(_FRONT / "lib" / "api.ts")
+
+
+def test_si_se_borra_mientras_se_valida_lo_dice_una_vez_y_no_promete_nada():
+    """Una validación se puede borrar mientras se valida: dura 24 horas y
+    «Reintentar» puede llegar al otro día, o quien la creó la borra desde otra
+    pestaña. Lo vio Ramiro en el navegador (26/11/2026): cada placa quedaba
+    marcada con el error del servidor, en castellano aunque la pantalla
+    estuviera en inglés, y al final decía «El servidor dejó de responder.
+    Faltan 0 placas. Lo que ya se revisó quedó guardado. Apretá Reintentar»,
+    con un Reintentar y un Excel que ya no podían andar. Ahora un 404 frena
+    todo, se dice una vez en el idioma de la persona y se vuelve a la carga
+    con los mismos archivos."""
+    pagina = _texto(_PAGINA)
+    ejecutar = pagina.split("const ejecutar = useCallback(")[1].split("}, [t]);")[0]
+    trabajador = ejecutar.split("const trabajador = async () => {")[1].split("await Promise.all(")[0]
+    assert "if (yaNoEsta(e))" in trabajador and "borrada = true" in trabajador
+    assert "!borrada" in trabajador, "con la validación borrada no se manda ninguna placa más"
+    despues = ejecutar.split("await Promise.all(")[1]
+    assert despues.index("if (borrada)") < despues.index("if (caido)"), "no hay nada que reintentar"
+    cierre = despues.split("rrssApi.cerrar(validacionId)")[1]
+    assert cierre.index("if (yaNoEsta(e))") < cierre.index('fase: "pausada"')
+    al_final = ejecutar.split("const yaNoEstaMas")[1].split("};")[0]
+    assert 'toast.error(t("rrss.yaNoEsta"))' in al_final
+    assert 'setFase("cargar")' in al_final and "setProgreso(null)" in al_final
