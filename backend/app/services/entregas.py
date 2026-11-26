@@ -506,6 +506,18 @@ def con_ok(momento: str, ronda: int) -> bool:
     return momento == "produccion" and (ronda or 0) > 0
 
 
+def vinieron_todas(piezas_pedidas: int, imagenes: int, faltan: list[str] | None, tope: int = MAX_IMAGENES) -> bool:
+    """Si en una versión ya vinieron todas las piezas del pedido: el pedido
+    tiene piezas, la versión trae una imagen por pieza (hasta el tope de
+    imágenes: lo demás viene en el ZIP) y la pantalla midió al entregar que
+    no falta ninguna (`faltan` vacía; None es que no se pudo medir). Ahí,
+    «Avanzar» (seguir con lo que falta) va solo diciendo qué falta (H-036).
+    Lo mismo que botonGrandeAlRevisar en frontend/lib/calendario/entregas.ts.
+    Pura."""
+    alcanzan = imagenes > 0 and imagenes >= min(piezas_pedidas, tope)
+    return piezas_pedidas > 0 and alcanzan and faltan is not None and not faltan
+
+
 def nombre_de_fase_nueva(nombres: list[str]) -> str:
     """El nombre de la fase que abre una devolución: "Entrega N", donde N es
     la cantidad de fases que va a haber. La que nace con la pieza se llama

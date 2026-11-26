@@ -110,6 +110,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario-entregas"])
 
 _NO_LLEVA = "Esta tarea no lleva entregas"
+# «Avanzar» es seguir con lo que falta: si la plataforma midió que ya vino
+# todo, la agencia tiene que saber qué mandar (H-036 de la auditoría del
+# 25/11/2026: le llegaba «entregá lo que falta» y no faltaba nada).
+_AVANZAR_CON_TODO = (
+    "Ya están todas las piezas del pedido: para «Avanzar», escribí en el comentario qué falta, "
+    "así la agencia sabe qué mandar. Si está todo, aprobala."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1713,6 +1720,12 @@ async def _aplicar_decision(
     }
     if any(m.imagenId not in ids_imagenes for m in marcas):
         raise HTTPException(status_code=422, detail="Una marca está sobre una imagen que no es de esta versión")
+    if decision == reglas.AVANZAR and not comentario and reglas.vinieron_todas(
+        len(tipos_de_tarea.piezas_del_pedido(tarea.tipo, list(tarea.opciones or []))), len(ids_imagenes),
+        version.faltan,
+    ):
+        # La nota interna no cuenta: la agencia no la ve (como al pedir cambios).
+        raise HTTPException(status_code=422, detail=_AVANZAR_CON_TODO)
 
     ahora = datetime.now(timezone.utc)
     db.add(CalendarioDecision(

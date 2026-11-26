@@ -9,8 +9,8 @@ import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import { imagenParaComparar } from '@/lib/calendario/comparar'
 import {
-  botonGrandeAlRevisar, faltanAlAprobar, fechaYHora, textoDeAprobar, versionConLoPedido, type DetalleEntregas, type Marca,
-  type TipoDecision, type Version,
+  avanzarSinDecirQueFalta, botonGrandeAlRevisar, faltanAlAprobar, fechaYHora, textoDeAprobar, versionConLoPedido,
+  type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
   VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, puntosParaMostrar, textoConArchivo, tieneLugar,
@@ -140,6 +140,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // Aprobar con piezas del pedido que faltan: primero se pregunta (H-023).
   const [confirmandoAprobar, setConfirmandoAprobar] = useState(false)
   const idPregunta = useId()
+  // El comentario para la agencia: «Avanzar» con todo entregado lleva acá (H-036).
+  const campoComentario = useRef<HTMLTextAreaElement>(null)
   // Lo que encontró la IA. Solo se pide si el servidor dice que esta persona
   // lo puede ver (aprobadores y quien gestiona; nunca quien entrega).
   const verIA = !!detalle.puedo.verRevisionIA
@@ -392,11 +394,18 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
 
   /** Los botones de decidir pasan por acá: aprobar con piezas del pedido que
    *  faltan primero pregunta (H-023 de la auditoría del 25/11/2026: aprobaba
-   *  sin preguntar y la pieza no llegaba nunca). */
+   *  sin preguntar y la pieza no llegaba nunca); avanzar con todas las
+   *  piezas pide decir qué falta (H-036: a la agencia le llegaba «entregá lo
+   *  que falta» y no faltaba nada). */
   function elegir(decision: TipoDecision) {
     if (enviando) return
     if (faltanAlAprobar(decision, version.faltan)) {
       setConfirmandoAprobar(true)
+      return
+    }
+    if (decision === 'avanzar' && avanzarSinDecirQueFalta(grande, comentario)) {
+      toast.error(t('calendario.revisar.avanzarConTodo'))
+      campoComentario.current?.focus()
       return
     }
     void decidir(decision)
@@ -786,6 +795,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         <label className="block">
           <span className="etiqueta-campo">Comentario para la agencia (opcional)</span>
           <textarea
+            ref={campoComentario}
             value={comentario}
             onChange={e => setComentario(e.target.value)}
             rows={2}

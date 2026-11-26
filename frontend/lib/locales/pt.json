@@ -1413,7 +1413,8 @@
       "aprobarIgual": "Aprovar mesmo assim",
       "seguirRevisando": "Continuar revisando",
       "seAproboSin_one": "Aprovado sem 1 peça do pedido",
-      "seAproboSin_other": "Aprovado sem {{count}} peças do pedido"
+      "seAproboSin_other": "Aprovado sem {{count}} peças do pedido",
+      "avanzarConTodo": "Todas as peças do pedido já chegaram: se falta algo, escreva o quê no comentário, para a agência saber o que enviar. Se está tudo certo, aprove."
     }
   }
 }

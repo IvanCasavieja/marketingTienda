@@ -15,8 +15,8 @@ import {
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import {
-  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, faltanAlAprobar, fechaDia, pasoEnLaVista, proximoPaso,
-  seAproboSinEllas, textoDeAprobar, type ResumenEntrega, type Tarjeta,
+  avanzarSinDecirQueFalta, botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, faltanAlAprobar, fechaDia,
+  pasoEnLaVista, proximoPaso, seAproboSinEllas, textoDeAprobar, type ResumenEntrega, type Tarjeta,
 } from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
@@ -280,6 +280,13 @@ igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP, medid
   botonGrandeAlRevisar(10, 4, [], 4), 'terminar')
 igual('un ZIP con el folleto en PDF (sin medir: el servidor llena la versión con sus páginas): Avanzar',
   [botonGrandeAlRevisar(3, 4, null, 4), botonGrandeAlRevisar(3, 4, undefined, 4)], ['avanzar', 'avanzar'])
+// H-036 (25/11/2026): con todas las piezas, «¿Falta algo? Avanzar» le decía
+// a la agencia «entregá lo que falta» y no faltaba nada. Ahí, hay que decir
+// qué falta (backend/tests/test_tablero_agencia.py, los mismos casos).
+igual('avanzar con todo y sin decir qué falta: se frena',
+  [avanzarSinDecirQueFalta('terminar', ''), avanzarSinDecirQueFalta('terminar', '  \n ')], [true, true])
+igual('diciendo qué falta, sí', avanzarSinDecirQueFalta('terminar', 'Falta el PDF con las medidas'), false)
+igual('si falta algo (o no se sabe), Avanzar anda sin escribir nada', avanzarSinDecirQueFalta('avanzar', ''), false)
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
 // H-023 (25/11/2026): «¿Ya está todo? Aprobar y terminar» aprobaba sin

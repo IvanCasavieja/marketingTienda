@@ -523,3 +523,17 @@ def test_el_aviso_del_ok():
     assert reglas.mensaje_de_avanzar("Ivan", 1, "TiendaChecks - Banners") == (
         "Ivan dio el OK a la versión 1 de «TiendaChecks - Banners»: avanzá con lo que falta.")
     assert reglas.mensaje_de_avanzar("Ivan", 2, "X", "Seguí con el slider").endswith("Dice: «Seguí con el slider»")
+
+
+def test_se_sabe_que_vinieron_todas_solo_si_se_midio():
+    """H-036 (auditoría del 25/11/2026): «Avanzar» con todas las piezas le
+    decía a la agencia «entregá lo que falta» y no faltaba nada. Cuándo se
+    sabe que vino todo: los mismos casos que botonGrandeAlRevisar en
+    frontend/lib/calendario/tablero.test.ts."""
+    assert reglas.vinieron_todas(4, 4, [])
+    assert reglas.vinieron_todas(10, 4, [], tope=4)              # lo demás en el ZIP, medido
+    assert not reglas.vinieron_todas(4, 1, ["Header (mobile)"])  # falta una
+    assert not reglas.vinieron_todas(0, 2, [])                   # el pedido no tiene piezas: no se sabe
+    assert not reglas.vinieron_todas(4, 0, [])                   # solo un link
+    assert not reglas.vinieron_todas(2, 1, [])                   # una imagen para dos piezas
+    assert not reglas.vinieron_todas(3, 4, None, tope=4)         # sin medir (un ZIP con el folleto en PDF)

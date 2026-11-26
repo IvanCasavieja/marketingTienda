@@ -1500,7 +1500,8 @@
       "aprobarIgual": "Aprobar igual",
       "seguirRevisando": "Seguir revisando",
       "seAproboSin_one": "Se aprobó sin 1 pieza del pedido",
-      "seAproboSin_other": "Se aprobó sin {{count}} piezas del pedido"
+      "seAproboSin_other": "Se aprobó sin {{count}} piezas del pedido",
+      "avanzarConTodo": "Ya están todas las piezas del pedido: si falta algo, escribí qué en el comentario, así la agencia sabe qué mandar. Si está todo, aprobala."
     }
   }
 }

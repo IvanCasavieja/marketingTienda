@@ -388,7 +388,7 @@ export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boole
  * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y la
  * plataforma midió al entregar que no falta ninguna (`faltan` vacía; null o
  * sin mandar es que no se pudo medir). Si no se sabe, Avanzar: no cierra
- * nada. Pura.
+ * nada. Lo mismo mira el servidor (reglas.vinieron_todas). Pura.
  *
  * H-035 de la auditoría del 25/11/2026: decía «Ya están todas las piezas del
  * pedido» con el carrito sin venir. «No falta nada» y «no se pudo medir» (un
@@ -404,6 +404,21 @@ export function botonGrandeAlRevisar(
   const alcanzan = imagenes > 0 && imagenes >= Math.min(piezasPedidas, tope)
   const seMidioYNoFalta = faltan != null && faltan.length === 0
   return piezasPedidas > 0 && alcanzan && seMidioYNoFalta ? 'terminar' : 'avanzar'
+}
+
+/**
+ * Si «Avanzar» se frena para pedir que se diga qué falta: ya vinieron todas
+ * las piezas del pedido (el botón grande es «Aprobar y terminar») y el
+ * comentario para la agencia está vacío. Avanzar es seguir con lo que
+ * falta: si la plataforma no ve nada que falte, lo tiene que decir quien
+ * revisa. Lo mismo controla el servidor (reglas.vinieron_todas). Pura.
+ *
+ * H-036 de la auditoría del 25/11/2026: con todas las piezas, «¿Falta algo?
+ * Avanzar» le decía a la agencia «Te dieron el OK: entregá lo que falta» y
+ * no faltaba nada: una ronda de más y una agencia que no sabe qué mandar.
+ */
+export function avanzarSinDecirQueFalta(grande: 'avanzar' | 'terminar', comentario: string): boolean {
+  return grande === 'terminar' && !comentario.trim()
 }
 
 /** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase
