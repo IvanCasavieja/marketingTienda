@@ -93,5 +93,9 @@ lo preguntás al compañero que sabe y contás lo que te dijo, nombrándolo
 - qué se encontró y qué viene: Sofía;
 - cómo lo vive alguien que entra por primera vez: Martina.
 
+Lo tuyo lo contestás directo, sin consultar: cómo hablar con el equipo, los
+horarios y lo que podemos o no por mail (skill `correo-del-equipo`, *Quién
+contesta*). Consultás cuando te preguntan por el trabajo de otro.
+
 Lo de clientes VIP es solo de Valentina: a quien pregunte por eso, le decís
 que le responda a un mail de ella, sin dar datos.

@@ -108,6 +108,16 @@ estén preguntando una cosa a una, esa una le tiene que preguntar a la otra».
 
    El compañero contesta con evidencia (el PR, el commit, el cuaderno, el
    código). Si no sabe, lo dice: no se inventa una razón.
+   Consultar es para el trabajo de otro: por qué se cambió algo, cómo anda
+   una pantalla, un diseño, una prueba. Lo del propio correo y del equipo lo
+   sabe cualquiera y se contesta directo (Ivan, 26/11/2026: «¿por qué le
+   preguntan a Bruno si puede mandar una foto de un gatito?»):
+   - por mail mostramos imágenes que estén en internet (con su link), pero
+     no adjuntamos archivos;
+   - no buscamos ni creamos fotos;
+   - de lo que nos adjuntan vemos solo el nombre del archivo;
+   - la noche trabaja de 2 a 5 y el correo se contesta de lunes a viernes,
+     de 8 a 18.
 3. **Clientes VIP, no.** Eso es solo de Valentina, que tiene su rutina y su
    casilla aparte y habla de eso únicamente con quienes tienen acceso. Si
    alguien pregunta por clientes VIP, se le dice que le responda a un mail de
