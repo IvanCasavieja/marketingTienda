@@ -13,7 +13,7 @@
   DELETE /calendario/avisos/{id}
   PUT    /calendario/posiciones-rm/{clave}    — mueve las posiciones de RM de un mes
   POST   /calendario/barras/{id}/tareas       — una tarea de una acción (un pedido, en el primer nivel)
-  PATCH  /calendario/tareas/{id}              — título, estado, a quién, cuándo vence
+  PATCH  /calendario/tareas/{id}              — título, estado, a quién (una persona o una agencia), cuándo vence
   DELETE /calendario/tareas/{id}
   GET    /calendario/mis-tareas               — lo que tengo asignado, de todos mis mundos
   GET    /calendario/ubicar/{id}              — en qué mundo está una acción
@@ -79,7 +79,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import client_ip as _client_ip, require_permission
 from app.core import alcance, externos
-from app.core.tableros import TABLEROS, tablero_de
+from app.core.tableros import tablero_de
 from app.core.mundos import MUNDO_POR_DEFECTO, MUNDOS, exigir_mundo, mundos_de, puede_abrir
 from app.models.adjuntos import CalendarioAdjunto
 from app.models.audit_log import AuditLog
@@ -1326,6 +1326,47 @@ async def _agencia_o_422(db: AsyncSession, empresa: str | None, mundo: str) -> s
     return await agencias.como_ya_esta(db, limpia) or limpia
 
 
+async def _agencias_para_pedir(db: AsyncSession, mundo: str) -> list[dict]:
+    """Las agencias a las que se les puede mandar una tarea en este mundo, con
+    cuántas cuentas tiene cada una: los tres tableros siempre (aunque todavía
+    no tengan cuentas) y cualquier otra que tenga alguna cuenta activa que
+    entre a este mundo. Es la regla de `_agencia_o_422`: lo que se ofrece, se
+    puede elegir. Primero los tres, en su orden, y después las demás por
+    nombre (como el análisis por agencia), escritas como ya están
+    (app/services/agencias.py). Dos consultas, sean cuantas sean las agencias."""
+    cuentas: dict[str | None, int] = {}
+    for u in (await db.execute(
+        select(User).where(User.es_externo.is_(True), User.is_active.is_(True), User.empresa.isnot(None))
+    )).scalars():
+        if _puede_ver_el_mundo(u, mundo):
+            clave = externos.clave_de_empresa(u.empresa)
+            cuentas[clave] = cuentas.get(clave, 0) + 1
+    tres, otras = [], []
+    for nombre in await agencias.existentes(db):
+        cuantas = cuentas.get(externos.clave_de_empresa(nombre), 0)
+        if tablero_de(nombre):
+            tres.append({"nombre": nombre, "cuentas": cuantas})
+        elif cuantas:
+            otras.append({"nombre": nombre, "cuentas": cuantas})
+    return tres + sorted(otras, key=lambda a: externos.clave_de_empresa(a["nombre"]))
+
+
+async def _pasar_a_la_agencia(
+    db: AsyncSession, usuario: User, barra: CalendarioBarra, tarea: CalendarioTarea, agencia: str | None,
+) -> int:
+    """Le pasa la tarea a una agencia entera, como si se hubiera pedido para
+    ella (26/11/2026, H-018 del cuaderno: una tarjeta pedida para Publicis no
+    se podía pasar a la agencia de verdad). Si la tenía una persona (de otra
+    agencia o del equipo), deja de tenerla, y su cuenta ya no la ve. Si cambia
+    de agencia, le nace la tarjeta si no la tenía y a la nueva le llega el
+    pedido (`_nacer_tarjetas`); el responsable de Tienda sigue. Devuelve a
+    cuántas personas se avisó."""
+    nueva = await _agencia_o_422(db, agencia, barra.mundo)
+    era_de_esa = tarea.para == "agencia" and externos.misma_empresa(tarea.agencia, nueva)
+    tarea.para, tarea.agencia, tarea.asignado_a_id = "agencia", nueva, None
+    return 0 if era_de_esa else await _nacer_tarjetas(db, usuario, barra, [tarea])
+
+
 async def _nacer_tarjetas(
     db: AsyncSession, usuario: User, barra: CalendarioBarra, tareas: list[CalendarioTarea],
 ) -> int:
@@ -1563,13 +1604,21 @@ class TareaNueva(BaseModel):
 class TareaCambios(BaseModel):
     """Solo viaja lo que cambió. `asignadoA`, `responsable`, `vence` y
     `descripcion` pueden venir en null a propósito: es sacarle la persona, el
-    responsable, la fecha o el detalle."""
+    responsable, la fecha o el detalle.
+
+    `agencia` (26/11/2026): pasársela a esa agencia entera (ver
+    `_pasar_a_la_agencia`). A una persona se le pasa con `asignadoA`; las dos
+    juntas no van."""
     titulo: str | None = Field(None, min_length=1, max_length=500)
     descripcion: str | None = Field(None, max_length=5000)
     estado: EstadoTarea | None = None
     asignadoA: int | None = None
     responsable: int | None = None
     vence: Fecha | None = None
+    agencia: str | None = Field(None, max_length=120)
+
+
+_A_UNA_AGENCIA_O_A_UNA_PERSONA = "Se le pasa a una agencia o a una persona, no a las dos a la vez"
 
 
 class OrdenDeTareas(BaseModel):
@@ -1593,16 +1642,22 @@ async def listar_tableros(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Los tres tableros a los que va una pieza (17/11/2026), con cuántas
-    cuentas tiene cada uno en este mundo (cero = todavía no entra nadie: la
-    pieza espera ahí igual). A una cuenta externa, solo el suyo."""
+    """Las agencias a las que se les puede pedir trabajo en este mundo, cada
+    una con su tablero, y cuántas cuentas tiene cada una (cero = todavía no
+    entra nadie: la tarjeta espera ahí igual). Es lo que ofrece «¿Quién la
+    hace?» al crear una tarea o una tarjeta, y las pestañas del equipo en
+    Tableros (ver `_agencias_para_pedir`).
+
+    Hasta el 26/11/2026 eran solo los tres tableros del 17/11 (Publicis,
+    Another Monday y Diseñadores): a cualquier otra agencia, aunque tuviera
+    cuentas o se acabara de dar de alta, no había cómo pedirle nada (H-018 y
+    H-090 del cuaderno; Ivan: «la van a usar varias agencias a la vez»). A una
+    cuenta externa, solo la suya."""
     await agencias.exigir_mundo_del_calendario(db, current_user, mundo)
-    out = []
-    for nombre in TABLEROS:
-        if externos.es_externo(current_user) and not externos.misma_empresa(nombre, current_user.empresa):
-            continue
-        out.append({"nombre": nombre, "cuentas": len(await _cuentas_de_la_agencia(db, nombre, mundo))})
-    return out
+    lista = await _agencias_para_pedir(db, mundo)
+    if externos.es_externo(current_user):
+        return [a for a in lista if externos.misma_empresa(a["nombre"], current_user.empresa)]
+    return lista
 
 
 @router.post("/barras/{barra_id}/tareas", status_code=201)
@@ -1903,6 +1958,10 @@ async def cambiar_tarea(
         tarea.descripcion = (payload.descripcion or "").strip() or None
     if "vence" in campos:
         poner_vence_a_mano(tarea, payload.vence)
+    if "agencia" in campos:
+        if "asignadoA" in campos:
+            raise HTTPException(status_code=422, detail=_A_UNA_AGENCIA_O_A_UNA_PERSONA)
+        avisados += await _pasar_a_la_agencia(db, current_user, barra, tarea, payload.agencia)
     if "asignadoA" in campos and payload.asignadoA != tarea.asignado_a_id:
         nuevo = await _asignable_o_422(db, payload.asignadoA, barra.mundo) if payload.asignadoA is not None else None
         era_de_la_agencia = tarea.para == "agencia"

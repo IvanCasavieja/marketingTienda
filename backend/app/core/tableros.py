@@ -18,6 +18,11 @@ estos tres aunque todavía no tenga cuentas: la tarjeta espera en su tablero
 en el panel. Desde el 19/11/2026 la empresa de esas cuentas se elige de una
 lista (app/services/agencias.py) y se compara sin tildes ni mayúsculas: antes
 se escribía a mano y una cuenta con «Disenadores» no veía las de «Diseñadores».
+
+Desde el 26/11/2026 no son los únicos: «¿Quién la hace?» y las pestañas de
+Tableros ofrecen también cualquier otra agencia que tenga cuentas (GET
+/calendario/tableros; Ivan: «la van a usar varias agencias a la vez»). Estos
+tres siguen siendo los únicos que valen sin cuentas.
 """
 from __future__ import annotations
 
