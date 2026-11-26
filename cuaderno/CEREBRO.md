@@ -10,3 +10,4 @@
 - 26/11/2026 · Ivan: en Cenefas la vigencia no es obligatoria, muchas cenefas la traen en el diseño.
 - 26/11/2026 · Ivan confirmó que las imágenes de los mails le aparecen con «Mostrar contenido» (Outlook bloquea las externas). Mandarlas dentro del mail queda como mejora, no como urgencia.
 - 26/11/2026 · Ivan presentó por mail a tres compañeros de Tienda Inglesa (copiados en el hilo de la presentación). Sofía les pidió su nombre, su área, qué usan más de Core Tienda y qué les traba. Lo que contesten sirve para los recorridos.
+- 26/11/2026 · Se presentó por mail una analista de Marketing del área de Marca (una de las compañeras que presentó Ivan). Sofía le pidió qué usa más de Core Tienda y qué le traba.
