@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 111 abiertos (101 confirmados, 1 pedido de Ivan, 9 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 96 abiertos (86 confirmados, 1 pedido de Ivan, 9 para confirmar) · 2 en curso (las tarjetas, las arregla Claude, pedido de Ivan del 26/11) · 25 hechos (15 entraron a `main` el 26/11 con los PR #93, #94 y #99) · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -16,20 +16,7 @@ en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detal
 
 Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. Siguen descriptos abajo, en Abiertos, hasta que entren a `main`. **La noche no los toma:** elegí de lo que sigue en Abiertos.
 
-- **Arreglos** (rama `fix/hallazgos-del-escuadron`): H-018 y H-090 (pedirle trabajo a cualquier agencia), H-025 y H-010 (Don Tino), H-008 (cenefas v2), H-001 (borrar una acción), H-039 y H-040 (entregar y entrar por el link), H-023, H-035 y H-036 (revisar y aprobar).
-- **Clientes VIP** (PR #93): H-083 (CI en rojo, ya arreglado ahí), H-087 y H-088.
-- **Tarjetas por pieza** (rama `feat/tarjetas-por-pieza`): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
-
-### H-111 · La campanita sigue diciendo «Te toca revisarla» de entregas que ya aprobaste
-- **Gravedad:** 🟠 Traba (sube con la prueba a ciegas) · **Quién:** equipo y agencia · **Dónde:** Notificaciones (campanita), notebook y celular
-- **Qué ve una persona:** después de revisar, pedir cambios y aprobar, la campanita del equipo sigue en rojo con «2»: «Agencia de prueba entregó la versión 2… Te toca revisarla» y «…versión 1… Te toca revisarla», como si fueran pendientes. A la agencia le pasa igual: «3» avisos, entre ellos «Te toca entregar la versión 2», cuando la tarjeta ya está Finalizada. Hay que marcarlos a mano uno por uno o con «Marcar todas como leídas».
-- **Por qué importa:** la campanita es lo primero que mira el equipo para saber qué le toca hoy (E4): con avisos viejos que dicen «te toca», el número en rojo deja de servir y se termina ignorando, también cuando llega algo nuevo de verdad.
-- **Cómo repetirlo:** hacer el ciclo completo (pedido → entrega v1 → pedir cambios → v2 → aprobar) abriendo la tarjeta desde Mis tareas, sin tocar la campanita; al final abrir Notificaciones en las dos cuentas.
-- **Evidencia:** ![H-111](recorridos/2026-11-26/H-111.jpg) (izquierda equipo, derecha agencia en el celular)
-- **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
-- **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
-- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
-- **Estado:** En curso desde 26/11 en `nocturno/2026-11-26-campanita-al-dia`, PR #94 (Ramiro VERDE). H-113 queda abierto (choca con «Tarjetas por pieza»).
+- **Tarjetas** (ramas `feat/tarjetas-p1-back` y `feat/tarjetas-p1-front`, parte 1; la parte 2, armar el pedido pieza por pieza, viene después): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
 
 ## Abiertos (de más a menos importante)
 
@@ -42,83 +29,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 > **Pedido de Ivan (26/11, por mail), primero en la lista (Ivan lo confirmó: «implementenlo cuando hagan las siguientes mejoras»):** H-113, que se vea quién de Tienda aprobó la entrega («súmenlo también, está bueno saber quién aprueba la tarea de la agencia»). Va la noche después de que entre «Tarjetas por pieza» a `main` (Tomás: rehace ese bloque; hoy no está subida). Y su aviso: «estamos trabajando en el repo en este momento»: la noche no toca archivos de nada «En curso», aunque no haya rama visible.
 >
 > Orden del 26/11 noche (lo que no está en curso ni en el PR #93): 1) la campanita y la ficha dicen lo mismo que pasó (H-111, H-113); 2) Cenefas sin dudas al cargar (H-115, H-112); 3) local y Redexpres (H-085, H-099, H-086, H-084); 4) palabras de las versiones (H-097) y miniaturas (H-114) después de «Tarjetas por pieza»; 5) lo visual (H-116, H-069, H-003…).
-
-### H-018 · La agencia con la que trabajás no aparece en «¿Quién la hace?», y una «Nueva tarjeta» no se le puede pasar
-- **Gravedad:** 🔴 Bloquea (una persona nueva no logra pedirle trabajo a su agencia) · **Quién:** equipo · **Dónde:** ficha de la acción → «Crear tarea» → «¿Quién la hace?», notebook
-- **Qué ve una persona:** la lista ofrece «Publicis (todavía sin usuarios)», «Another Monday (todavía sin usuarios)», «Diseñadores (todavía sin usuarios)» y «Equipo nocturno (vos)». «Agencia de prueba», que sí tiene cuenta, no está; recién aparece al desplegar la tarea ya creada, y cambiarla pide un aviso («Se la sacás a Publicis…»).
-- **Por qué importa:** cualquier agencia nueva (o una que no sea de las tres) obliga a crear la tarea para otra y después reasignarla: pasos de más y un aviso que no le corresponde a nadie.
-- **Cómo repetirlo:** equipo → acción → Crear tarea → Banners → abrir «¿Quién la hace?».
-- **Evidencia:** ![H-018](recorridos/2026-11-25/H-018.jpg)
-- **Prueba a ciegas (Martina, auditoría 25/11):** abandonó: «¿Cómo le pido algo a la agencia con la que trabajo todos los días?». Pasa también en Tablero → Nueva tarjeta. ![H-018](auditoria-2026-11-25/img/H-018.jpg)
-- **Procesos 26/11:** sigue en «Crear tarea» y en «Nueva tarjeta», en notebook y celular, y tampoco aparece una agencia recién dada de alta en /admin («Agencia Sofía»). **Se agrava:** una tarjeta creada con «Nueva tarjeta» (sin acción) no tiene en ningún lado cómo cambiarle la agencia (la ficha solo deja nombre, responsable y fecha; «Mover» solo cambia de columna): la agencia de verdad nunca recibe el pedido; hubo que pasarla por la API. En las tareas de una acción el atajo sigue siendo crear para Publicis y reasignar desde ⋯ (ventanita gris H-070, nombre cortado H-022). Ver también H-090 (en el tablero esas agencias caen en «Otras»). ![H-018](procesos-2026-11-26/img/H-018.jpg) · procesos P12, P13, P17, P51
-- **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) · 25/11 (auditoría: sube a 🔴) · 26/11 (procesos: sigue y se agrava) · 26/11 noche (Sofía: sigue en «Crear tarea»; reasignar desde ⋯ pide la ventanita gris)
-
-### H-090 · En el tablero del equipo, la agencia con la que trabajás no aparece por su nombre: está en «Otras»
-- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Tablero `/entregas`, pestañas de agencia, notebook y celular
-- **Qué ve una persona:** pestañas «Publicis 2 · Another Monday 0 · Diseñadores 0 · Otras 2». Las tarjetas de «Agencia de prueba» (la única con usuarios) caen en «Otras»; una pedida a Publicis y reasignada también terminó ahí. Cada vez que vuelve al tablero arranca en «Publicis», aunque todo lo suyo esté en «Otras».
-- **Por qué importa:** Ivan: «la van a usar varias agencias a la vez». Cada agencia nueva queda escondida bajo «Otras» y hay que acordarse de tocarla en cada visita. Es la misma raíz que H-018 (las tres agencias fijas).
-- **Cómo repetirlo:** equipo → Tablero → mirar las pestañas; ir a otra pantalla y volver.
-- **Evidencia:** ![H-090](procesos-2026-11-26/img/H-090.jpg)
-- **Idea de arreglo:** una pestaña por agencia que tenga tarjetas, y recordar la última elegida. Va en paquete con H-018.
-- **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P57 · 26/11 noche (Sofía: la tarjeta de Agencia de prueba aprobada sigue en «Otras»; el tablero vuelve a abrir en «Publicis 0») ![H-090](recorridos/2026-11-26/H-090.jpg)
-
-### H-083 · Las pruebas automáticas de `main` están en rojo desde el merge de #90 y #91
-- **Gravedad:** 🟠 Traba (no la ve nadie de promo y marca, pero todo PR nuevo nace en rojo) · **Quién:** el equipo que construye (Ivan y el Escuadrón) · **Dónde:** CI de GitHub, paso `npm run test:externos`
-- **Qué pasa:** la prueba «cada herramienta de un mundo tiene su permiso» falla para `/clientes-vip`: la ruta no está en la lista de requisitos de acceso del front (`frontend/lib/acceso.ts`). La API (403) y la pantalla («No tenés permiso para ver Clientes VIP») sí bloquean, así que no hay agujero. Como el script encadena con `&&`, tampoco corren test:usuarios, test:redexpres, test:adjuntos, test:guia ni test:clientes-vip (aparte, pasan todas).
-- **Por qué importa:** con `main` en rojo no se distingue un PR que rompe algo de uno sano; Ivan ve rojo en cada propuesta.
-- **Cómo repetirlo:** `cd frontend && npm run test:externos` → «FALLA … /clientes-vip · 1 prueba(s) fallaron». En GitHub, corrida del merge de #91.
-- **Evidencia:** salida del comando (Ramiro, 26/11) y el CI de `main` (dato del coordinador).
-- **Idea de arreglo:** sumar `/clientes-vip` con `clientes_vip.view` a los requisitos del front. Chico.
-- **Visto:** 26/11 (Ramiro y coordinador) · procesos P49, P55 · 26/11 noche (sigue: el CI del merge de #92 en `main` falla en `test:externos` por `/clientes-vip`; el arreglo está en PR #93, sin mergear)
-
-### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
-- **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
-- **Qué ve una persona:** el aviso de borrar una acción dice «N tareas»; el de una tarea dice «Borrar con sus entregas». Ninguno dice que se van también las imágenes y ZIP que mandó la agencia, que son el histórico.
-- **Por qué importa:** se pierde para siempre el histórico que tiene que ir a SharePoint, con un clic.
-- **Cómo repetirlo:** crear acción → tarea para la agencia → la agencia entrega imágenes → borrar la acción → las imágenes ya no existen en la base.
-- **Evidencia:** confirmado en el código: `ondelete="CASCADE"` en `backend/app/models/entregas.py` (entregas, versiones, imágenes y ZIP de la versión) y en `backend/app/models/calendario.py` (tareas de la acción).
-- **Idea de arreglo:** no dejar borrar una acción o tarea que ya tiene entregas (ofrecer cancelarla o archivarla), del lado del servidor y con su prueba. Sin migración.
-- **Auditoría 25/11:** el aviso dice «Se va con ella 1 tarea. No se puede deshacer.» ![H-001](auditoria-2026-11-25/img/H-001.jpg)
-- **Procesos 26/11:** borrar una acción sigue diciendo solo «Se va con ella 1 tarea. No se puede deshacer.» (captura 081 de Sofía). Sigue esperando respuesta de Ivan sobre cuándo hacerlo · proceso P09
-- **Visto:** 24/11 (código) · 25/11 (auditoría) · 26/11 (el aviso sigue igual)
-
-### H-008 · Generar cenefas (motor v2) termina en «Error desconocido» y la corrida queda colgada
-- **Gravedad:** 🔴 Bloquea · **Quién:** equipo · **Dónde:** `/materiales/cenefas/v2/generar`, notebook claro
-- **Qué ve una persona:** elige la plantilla del editor, sube el Excel («El CSV está listo para generar», aunque es un Excel), toca «Generar cenefas» y a los 10 s: «Error en la generación — Error desconocido» y solo «Volver al inicio». En el Historial queda «Esperando confirmación», sin descargar ni confirmar.
-- **Por qué importa:** no hay forma de terminar la corrida; la plantilla hecha en el editor solo se puede usar acá (H-043).
-- **Cómo repetirlo:** Generar cenefas → «Cenefa A4» → subir el Excel de «Descargar plantilla Excel» → Validar → Generar → esperar → `/materiales/cenefas/v2/jobs`.
-- **Evidencia:** ![H-008](auditoria-2026-11-25/img/H-008.jpg)
-- **Fuente:** `plataforma/materiales-precios-locales.md` (la pieza que confirmaba, `PreviewStep.tsx`, no se usa).
-- **Procesos 26/11:** editor → «Guardar y Generar» → Excel de ejemplo → Validar (bien) → Generar → «Error en la generación — Error desconocido». El camino normal de Cenefas sí genera (P33). Captura 032 de Sofía · proceso P34
-- **Visto:** 24/11 (código) · 25/11 (auditoría: confirmado en pantalla) · 26/11 (sigue)
-
-### H-023 · «Aprobar y terminar» aprueba con piezas faltantes sin preguntar, y la aprobada sigue diciendo en rojo «Falta 1 pieza»
-- **Gravedad:** 🟠 Traba (sube 26/11) · **Quién:** equipo, agencia · **Dónde:** ficha de la tarjeta `/entregas?tarea=…`, notebook claro
-- **Qué ve una persona:** arriba «Finalizada: se aprobó la entrega» con papel picado; abajo, el recuadro rojo «Falta 1 pieza del pedido». No se sabe si está terminada o no.
-- **Por qué importa:** mensajes que se contradicen hacen dudar de lo aprobado (y de si hay que pedir la pieza que falta).
-- **Cómo repetirlo:** ciclo completo entregando sin la pieza «Slider fila (mobile)» → Aprobar.
-- **Evidencia:** ![H-023](recorridos/2026-11-25/H-023.jpg)
-- **Idea de arreglo:** una vez aprobada, mostrarlo como dato gris («Se aprobó sin: …»), no como alerta roja.
-- **Procesos 26/11:** con «Falta 1 pieza del pedido: Cuenta regresiva» en rojo en la revisión, un toque en «¿Ya está todo? Aprobar y terminar» aprueba sin preguntar (también con doble clic: una sola decisión); en el celular, aprobada con 4 piezas faltantes sigue diciendo «Faltan 4 piezas del pedido». La pieza que falta no llega nunca. Capturas 039, 040 y 090 de Ramiro; 172 de Sofía · proceso P24
-- **Visto:** 25/11 · 26/11 (Sofía en el celular y Ramiro: sube a 🟠)
-
-### H-036 · «Avanzar» con todo entregado le pide a la agencia «lo que falta», y no falta nada
-- **Gravedad:** 🟠 Traba · **Quién:** equipo y agencia · **Dónde:** Revisar la ronda, notebook; agencia en el celular
-- **Qué ve una persona:** con todas las piezas en la ronda 2, el link «¿Falta algo? Avanzar» devuelve la tarjeta a la agencia con «Te dieron el OK: entregá lo que falta (ronda 3)». Además los botones cambian de lugar: en la ronda 1 y 3 el verde grande es «Avanzar», en la 2 «Aprobar y terminar».
-- **Por qué importa:** una ronda de más y una agencia que no sabe qué mandar.
-- **Cómo repetirlo:** la agencia entrega todo en la ronda 2 → equipo «Revisar ahora» → «Avanzar».
-- **Evidencia:** ![H-036](auditoria-2026-11-25/img/H-036.jpg)
-- **Procesos 26/11:** «Avanzar» sobre una v3 con las dos medidas le dice a la agencia «Te dieron el OK: entregá lo que falta (versión 4)» y la tarjeta vuelve a En proceso. ![H-036](procesos-2026-11-26/img/H-036.jpg) · proceso P21
-- **Visto:** 25/11 · 26/11 (sigue)
-
-### H-035 · Al revisar dice «Ya están todas las piezas del pedido» cuando falta el carrito
-- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Revisar la ronda (Mis tareas → Revisar ahora), notebook claro
-- **Qué ve una persona:** el pedido es «Header · Carrito» y la agencia mandó solo el header (lo dice en el comentario), pero abajo dice «Ya están todas las piezas del pedido» y el botón grande verde es «Aprobar y terminar».
-- **Por qué importa:** quien revisa apurado aprueba y el carrito no llega nunca.
-- **Cómo repetirlo:** tarea «Black Friday 2026 - Banners» (Header + Carrito) entregada con una sola imagen 1920×416 → Revisar ahora. Con una tarea creada desde la pantalla, el control previo de la agencia sí avisó lo que faltaba: ver de qué depende.
-- **Evidencia:** ![H-035](auditoria-2026-11-25/img/H-035.jpg)
-- **Procesos 26/11:** con medidas de la lista la revisión ya avisa «Falta 1 pieza del pedido» (Ramiro, captura 039); con medidas escritas a mano no avisa nada (Sofía: el control previo no dijo que faltaba el 1080×1080). Ver H-094 y H-023 · procesos P19, P21, P26
-- **Visto:** 25/11 (Martina a ciegas) · 26/11 (en parte)
 
 ### H-089 · «Comparar con la versión 1» pone lado a lado dos piezas distintas
 - **Gravedad:** 🟠 Traba · **Quién:** equipo (quien revisa) · **Dónde:** ficha de la tarjeta → Revisar ahora → «Comparar con la versión 1», notebook
@@ -137,22 +47,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** captura 055 de Ramiro.
 - **Idea de arreglo:** guardar el texto de la marca y ofrecer copiarlo a la versión nueva.
 - **Visto:** 26/11 (Ramiro) · procesos P22, P56
-
-### H-039 · «Atrás» o recargar en medio de una entrega borra todo lo cargado, sin preguntar
-- **Gravedad:** 🟠 Traba · **Quién:** agencia (y el equipo al entregar) · **Dónde:** ficha → Entregar, notebook y celular
-- **Qué ve una persona:** subió imágenes y escribió el comentario; atrás o F5 → tablero cerrado y todo perdido. Con Escape sí está protegido; al recargar no vuelve a la tarjeta.
-- **Por qué importa:** en el celular «atrás» es el gesto natural para cerrar.
-- **Cómo repetirlo:** agencia → tarjeta → Entregar → subir imagen y comentario → atrás o F5.
-- **Evidencia:** ![H-039](auditoria-2026-11-25/img/H-039.jpg)
-- **Visto:** 25/11 (Ramiro)
-
-### H-040 · El link del mail lleva al login y, después de entrar, no abre la tarea
-- **Gravedad:** 🟠 Traba · **Quién:** agencia y equipo · **Dónde:** `/login` desde `/entregas?tarea=…`
-- **Qué ve una persona:** toca el link del aviso, entra y cae en el tablero general, sin la tarjeta abierta. Igual cuando la sesión vence trabajando.
-- **Por qué importa:** cada aviso por mail termina en buscar la tarjeta a mano.
-- **Cómo repetirlo:** sin sesión, abrir `/entregas?tarea=s1304c6e7a0be` → entrar como agencia.
-- **Evidencia:** ![H-040](auditoria-2026-11-25/img/H-040.jpg)
-- **Visto:** 25/11 (Ramiro)
 
 ### H-097 · Las palabras de las versiones y las fases se enredan: «entregar Entrega 2», «Era la última fase»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** agencia y equipo · **Dónde:** tarjeta, ficha y avisos de la campanita
@@ -211,17 +105,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Lo que pide Ivan** ([comentario](https://github.com/IvanCasaviejaTI/marketingTienda/issues/82#issuecomment-7169163795)): «una sección o botón de Sugerencias donde puedan dejar comentarios. Cada sugerencia tendría un estado visible (Recibida, En evaluación, Implementada), así ven que su aporte se tiene en cuenta». Sirve para priorizar con información real de quienes la usan.
 - **Visto:** 25/11 (pedido de Ivan)
 
-### H-025 · La burbuja de Don Tino tapa botones: «Confirmar pedido» del local, «Validar placas», «Enviar» en La Triada
-- **Gravedad:** 🟠 Traba · **Quién:** local y equipo · **Dónde:** `/materiales/convertidor`, `/precios`, `/analytics`, `/facturacion`, `/materiales/cenefas`, celular
-- **Qué ve una persona:** el botón flotante de Don Tino queda encima de «Más», el último botón de la barra de abajo; en Finanzas el asistente es otro dibujo.
-- **Por qué importa:** «Más» es la puerta al resto del menú en el celular; tocarlo abre el chat en vez del menú.
-- **Cómo repetirlo:** equipo en el celular → Convertidor de Excel → mirar la barra de abajo.
-- **Evidencia:** ![H-025](recorridos/2026-11-25/H-025.jpg)
-- **Idea de arreglo:** subir el botón flotante por encima de la barra de abajo en el celular. Ivan (25/11): los asistentes conservan nombre e identidad aunque se vaya el dibujo de robot.
-- **Auditoría 25/11:** en la notebook tapa el botón de enviar del chat de La Triada (`/analytics`). ![H-025](auditoria-2026-11-25/img/H-025.jpg)
-- **Procesos 26/11:** **ya no tapa «Más»** de la barra del celular (arreglado por #87, una sola burbuja). **Sigue tapando:** «Confirmar pedido» y el sello «Confirmado» de **Mi pedido** del local (notebook: se lee «Confirm…»; celular igual), «Sacar foto» en Fotos (celular), «Validar placas (2)» en **Validación de RRSS** (notebook), «Enviar» en La Triada, el último «Confirmar pedido» visible en la **Planilla**, el final de «Pinchos Bombas», la columna «L» del calendario, el contador de columna del tablero, el texto del informe de Clientes VIP y chips de la Guía y Precios (celular). Al local le sugiere Google Ads / ROAS. ![H-025](procesos-2026-11-26/img/H-025.jpg) · procesos P31, P40, P41, P43, P44, P45, P57
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue: «Más» arreglado, tapa en lugares nuevos) · 26/11 noche (Lucía: sigue)
-
 ### H-085 · Mi pedido: una cantidad negativa da «Error al guardar» y queda escrita como si estuviera
 - **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** Mi pedido `/redexpres/mi-pedido`, cualquier casilla, notebook
 - **Qué ve una persona:** escribe -5 en «Afiche 54×74», sale de la casilla: aviso rojo «Error al guardar Nativo Florida» y el -5 sigue en la casilla; en la base quedó vacío. Con 99999999 baja a 20 y avisa «Máximo 20 por sucursal» (bien); con 2.5 guarda 2 sin decir nada.
@@ -248,18 +131,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** ![H-084](procesos-2026-11-26/img/H-084.jpg) (el mail de prueba tapado)
 - **Idea de arreglo:** para el local, en vez del formulario, un texto «Tu contraseña la cambia marketing: pedíselo a …».
 - **Visto:** 26/11 (Martina a ciegas) · procesos P03, P53
-
-### H-010 · El local entra a Don Tino y no a lo suyo
-- **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** al entrar (`/home`), celular claro
-- **Qué ve una persona:** al entrar, «Hola, Local 👋 — Don Tino está listo para ayudarte» y abajo «Asistente con IA real · Powered by Claude Sonnet 5» (en inglés). Nada de su pedido del mes ni de la foto que le pidieron: tiene que saber que eso está en la barra de abajo (Fotos, Mi pedido). La barra de abajo sí está (no se confirma «sin barra»).
-- **Por qué importa:** el encargado entra con poco tiempo a hacer una cosa (pedido o foto) y lo primero que ve es un chat.
-- **Cómo repetirlo:** entrar con local-de-prueba en el celular.
-- **Evidencia:** ![H-010](recorridos/2026-11-25/H-010.jpg)
-- **Pendiente de ver:** el cambio de contraseña en Mi perfil → confirmado el 26/11, ahora es H-084.
-- **Idea de arreglo:** que el local entre a «Fotos para subir» (si tiene alguna pendiente) o a «Mi pedido».
-- **Auditoría 25/11:** Martina: «yo vengo a pedir cenefas»; si el local le pregunta a Don Tino «¿qué tengo que hacer hoy?», le dice que pida permiso del calendario. ![H-010](auditoria-2026-11-25/img/H-010.jpg)
-- **Procesos 26/11:** el local sigue entrando a Don Tino, que le sugiere Google Ads, ROAS y precios de competencia (captura 002 de Martina) · procesos P01, P31
-- **Visto:** 24/11 (barrido) · 25/11 (confirmado en pantalla) · 25/11 (auditoría) · 26/11 (Lucía y Martina)
 
 ### H-012 · Pasado el bloqueo del login, un solo error vuelve a dejar a la persona 15 minutos afuera
 - **Gravedad:** 🟠 Traba · **Quién:** todos (sobre todo el encargado de local) · **Dónde:** `/login`
@@ -304,24 +175,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** que la miniatura de una foto muy ancha no quede por debajo del mínimo (o no aplicarle el mínimo), y que cualquier rechazo diga qué hacer en criollo («Sacala de nuevo un poco más de cerca»).
 - **26/11:** Martina subió una panorámica de 4000×1200 (3,3 a 1) y anduvo, y se ve entera al ampliarla. Falta probar una más ancha que 3,75 a 1 para darlo por resuelto.
 - **Visto:** 25/11
-
-### H-087 · Clientes VIP: el gráfico dice «0 M» en todo el eje y el informe del mes es un mensaje de error
-- **Gravedad:** 🟠 Traba · **Quién:** equipo con Clientes VIP (jefatura) · **Dónde:** `/clientes-vip`, notebook y celular, claro y oscuro
-- **Qué ve una persona:** en «Venta por mes» las cinco rayas del eje dicen «0 M» (las ventas son de miles). En «El informe del mes», firmado «Sofía (análisis) y Valentina (predicción)», el texto es «No tengo acceso al calendario con tus permisos: pedile a un administrador…», y lo ve la superadmin.
-- **Por qué importa:** es la pantalla confidencial para decidir; un eje en cero y un informe que es un error le quitan la confianza a todo lo demás.
-- **Cómo repetirlo:** equipo → Clientes VIP con un CSV inventado de montos chicos (2 meses).
-- **Evidencia:** ![H-087](procesos-2026-11-26/img/H-087.jpg)
-- **Ojo:** el eje «0 M» es de la pantalla. El texto del informe sale de la IA simulada de pruebas (contesta cualquier pedido como Don Tino): no se puede juzgar acá. #91 («el informe de la IA sale entero o no sale») está en `main` y no en el entorno probado: confirmar la próxima noche.
-- **Visto:** 26/11 (Lucía, Sofía y Ramiro) · proceso P48
-
-### H-088 · Clientes VIP: un mes imposible en el archivo muestra «undefined» y rebota la carga entera
-- **Gravedad:** 🟠 Traba · **Quién:** equipo con permiso de cargar · **Dónde:** `/clientes-vip` → Cargar archivo, notebook
-- **Qué ve una persona:** con una fila «30/13/2019», el resumen dice «Meses: enero 2019 a undefined 2019» y ofrece «Cargar los 2 meses»; al cargar, todo rebota con «Mes inválido: '2019-13'», sin decir qué fila.
-- **Por qué importa:** el archivo del mes viene de otro sistema; una fila mala frena la carga y nadie sabe cuál corregir. Por código, un año mal tipeado (2062) se aceptaría y pasaría a ser «el último mes», cambiando los segmentos de todos los clientes (no se probó para no pisar datos).
-- **Cómo repetirlo:** CSV inventado con las 10 columnas y una fila con mes 13 → Cargar archivo.
-- **Evidencia:** ![H-088](procesos-2026-11-26/img/H-088.jpg)
-- **Idea de arreglo:** marcar en la vista previa las filas con fecha imposible o futura (con su número) y dejar cargar el resto.
-- **Visto:** 26/11 (Ramiro) · proceso P47
 
 ### H-100 · Clientes VIP: con poca historia todos salen «Creciendo, riesgo 0», aunque hayan bajado
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo con Clientes VIP · **Dónde:** `/clientes-vip` → Clientes y ficha del cliente
@@ -968,6 +821,165 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Fuente:** al escribir las bibliotecas (25/11); confirmado en el código el 26/11.
 
 ## Hechos
+
+### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
+- **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
+- **Qué ve una persona:** el aviso de borrar una acción dice «N tareas»; el de una tarea dice «Borrar con sus entregas». Ninguno dice que se van también las imágenes y ZIP que mandó la agencia, que son el histórico.
+- **Por qué importa:** se pierde para siempre el histórico que tiene que ir a SharePoint, con un clic.
+- **Cómo repetirlo:** crear acción → tarea para la agencia → la agencia entrega imágenes → borrar la acción → las imágenes ya no existen en la base.
+- **Evidencia:** confirmado en el código: `ondelete="CASCADE"` en `backend/app/models/entregas.py` (entregas, versiones, imágenes y ZIP de la versión) y en `backend/app/models/calendario.py` (tareas de la acción).
+- **Idea de arreglo:** no dejar borrar una acción o tarea que ya tiene entregas (ofrecer cancelarla o archivarla), del lado del servidor y con su prueba. Sin migración.
+- **Auditoría 25/11:** el aviso dice «Se va con ella 1 tarea. No se puede deshacer.» ![H-001](auditoria-2026-11-25/img/H-001.jpg)
+- **Procesos 26/11:** borrar una acción sigue diciendo solo «Se va con ella 1 tarea. No se puede deshacer.» (captura 081 de Sofía). Sigue esperando respuesta de Ivan sobre cuándo hacerlo · proceso P09
+- **Visto:** 24/11 (código) · 25/11 (auditoría) · 26/11 (el aviso sigue igual)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-008 · Generar cenefas (motor v2) termina en «Error desconocido» y la corrida queda colgada
+- **Gravedad:** 🔴 Bloquea · **Quién:** equipo · **Dónde:** `/materiales/cenefas/v2/generar`, notebook claro
+- **Qué ve una persona:** elige la plantilla del editor, sube el Excel («El CSV está listo para generar», aunque es un Excel), toca «Generar cenefas» y a los 10 s: «Error en la generación — Error desconocido» y solo «Volver al inicio». En el Historial queda «Esperando confirmación», sin descargar ni confirmar.
+- **Por qué importa:** no hay forma de terminar la corrida; la plantilla hecha en el editor solo se puede usar acá (H-043).
+- **Cómo repetirlo:** Generar cenefas → «Cenefa A4» → subir el Excel de «Descargar plantilla Excel» → Validar → Generar → esperar → `/materiales/cenefas/v2/jobs`.
+- **Evidencia:** ![H-008](auditoria-2026-11-25/img/H-008.jpg)
+- **Fuente:** `plataforma/materiales-precios-locales.md` (la pieza que confirmaba, `PreviewStep.tsx`, no se usa).
+- **Procesos 26/11:** editor → «Guardar y Generar» → Excel de ejemplo → Validar (bien) → Generar → «Error en la generación — Error desconocido». El camino normal de Cenefas sí genera (P33). Captura 032 de Sofía · proceso P34
+- **Visto:** 24/11 (código) · 25/11 (auditoría: confirmado en pantalla) · 26/11 (sigue)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-010 · El local entra a Don Tino y no a lo suyo
+- **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** al entrar (`/home`), celular claro
+- **Qué ve una persona:** al entrar, «Hola, Local 👋 — Don Tino está listo para ayudarte» y abajo «Asistente con IA real · Powered by Claude Sonnet 5» (en inglés). Nada de su pedido del mes ni de la foto que le pidieron: tiene que saber que eso está en la barra de abajo (Fotos, Mi pedido). La barra de abajo sí está (no se confirma «sin barra»).
+- **Por qué importa:** el encargado entra con poco tiempo a hacer una cosa (pedido o foto) y lo primero que ve es un chat.
+- **Cómo repetirlo:** entrar con local-de-prueba en el celular.
+- **Evidencia:** ![H-010](recorridos/2026-11-25/H-010.jpg)
+- **Pendiente de ver:** el cambio de contraseña en Mi perfil → confirmado el 26/11, ahora es H-084.
+- **Idea de arreglo:** que el local entre a «Fotos para subir» (si tiene alguna pendiente) o a «Mi pedido».
+- **Auditoría 25/11:** Martina: «yo vengo a pedir cenefas»; si el local le pregunta a Don Tino «¿qué tengo que hacer hoy?», le dice que pida permiso del calendario. ![H-010](auditoria-2026-11-25/img/H-010.jpg)
+- **Procesos 26/11:** el local sigue entrando a Don Tino, que le sugiere Google Ads, ROAS y precios de competencia (captura 002 de Martina) · procesos P01, P31
+- **Visto:** 24/11 (barrido) · 25/11 (confirmado en pantalla) · 25/11 (auditoría) · 26/11 (Lucía y Martina)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-018 · La agencia con la que trabajás no aparece en «¿Quién la hace?», y una «Nueva tarjeta» no se le puede pasar
+- **Gravedad:** 🔴 Bloquea (una persona nueva no logra pedirle trabajo a su agencia) · **Quién:** equipo · **Dónde:** ficha de la acción → «Crear tarea» → «¿Quién la hace?», notebook
+- **Qué ve una persona:** la lista ofrece «Publicis (todavía sin usuarios)», «Another Monday (todavía sin usuarios)», «Diseñadores (todavía sin usuarios)» y «Equipo nocturno (vos)». «Agencia de prueba», que sí tiene cuenta, no está; recién aparece al desplegar la tarea ya creada, y cambiarla pide un aviso («Se la sacás a Publicis…»).
+- **Por qué importa:** cualquier agencia nueva (o una que no sea de las tres) obliga a crear la tarea para otra y después reasignarla: pasos de más y un aviso que no le corresponde a nadie.
+- **Cómo repetirlo:** equipo → acción → Crear tarea → Banners → abrir «¿Quién la hace?».
+- **Evidencia:** ![H-018](recorridos/2026-11-25/H-018.jpg)
+- **Prueba a ciegas (Martina, auditoría 25/11):** abandonó: «¿Cómo le pido algo a la agencia con la que trabajo todos los días?». Pasa también en Tablero → Nueva tarjeta. ![H-018](auditoria-2026-11-25/img/H-018.jpg)
+- **Procesos 26/11:** sigue en «Crear tarea» y en «Nueva tarjeta», en notebook y celular, y tampoco aparece una agencia recién dada de alta en /admin («Agencia Sofía»). **Se agrava:** una tarjeta creada con «Nueva tarjeta» (sin acción) no tiene en ningún lado cómo cambiarle la agencia (la ficha solo deja nombre, responsable y fecha; «Mover» solo cambia de columna): la agencia de verdad nunca recibe el pedido; hubo que pasarla por la API. En las tareas de una acción el atajo sigue siendo crear para Publicis y reasignar desde ⋯ (ventanita gris H-070, nombre cortado H-022). Ver también H-090 (en el tablero esas agencias caen en «Otras»). ![H-018](procesos-2026-11-26/img/H-018.jpg) · procesos P12, P13, P17, P51
+- **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) · 25/11 (auditoría: sube a 🔴) · 26/11 (procesos: sigue y se agrava) · 26/11 noche (Sofía: sigue en «Crear tarea»; reasignar desde ⋯ pide la ventanita gris)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-023 · «Aprobar y terminar» aprueba con piezas faltantes sin preguntar, y la aprobada sigue diciendo en rojo «Falta 1 pieza»
+- **Gravedad:** 🟠 Traba (sube 26/11) · **Quién:** equipo, agencia · **Dónde:** ficha de la tarjeta `/entregas?tarea=…`, notebook claro
+- **Qué ve una persona:** arriba «Finalizada: se aprobó la entrega» con papel picado; abajo, el recuadro rojo «Falta 1 pieza del pedido». No se sabe si está terminada o no.
+- **Por qué importa:** mensajes que se contradicen hacen dudar de lo aprobado (y de si hay que pedir la pieza que falta).
+- **Cómo repetirlo:** ciclo completo entregando sin la pieza «Slider fila (mobile)» → Aprobar.
+- **Evidencia:** ![H-023](recorridos/2026-11-25/H-023.jpg)
+- **Idea de arreglo:** una vez aprobada, mostrarlo como dato gris («Se aprobó sin: …»), no como alerta roja.
+- **Procesos 26/11:** con «Falta 1 pieza del pedido: Cuenta regresiva» en rojo en la revisión, un toque en «¿Ya está todo? Aprobar y terminar» aprueba sin preguntar (también con doble clic: una sola decisión); en el celular, aprobada con 4 piezas faltantes sigue diciendo «Faltan 4 piezas del pedido». La pieza que falta no llega nunca. Capturas 039, 040 y 090 de Ramiro; 172 de Sofía · proceso P24
+- **Visto:** 25/11 · 26/11 (Sofía en el celular y Ramiro: sube a 🟠)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-025 · La burbuja de Don Tino tapa botones: «Confirmar pedido» del local, «Validar placas», «Enviar» en La Triada
+- **Gravedad:** 🟠 Traba · **Quién:** local y equipo · **Dónde:** `/materiales/convertidor`, `/precios`, `/analytics`, `/facturacion`, `/materiales/cenefas`, celular
+- **Qué ve una persona:** el botón flotante de Don Tino queda encima de «Más», el último botón de la barra de abajo; en Finanzas el asistente es otro dibujo.
+- **Por qué importa:** «Más» es la puerta al resto del menú en el celular; tocarlo abre el chat en vez del menú.
+- **Cómo repetirlo:** equipo en el celular → Convertidor de Excel → mirar la barra de abajo.
+- **Evidencia:** ![H-025](recorridos/2026-11-25/H-025.jpg)
+- **Idea de arreglo:** subir el botón flotante por encima de la barra de abajo en el celular. Ivan (25/11): los asistentes conservan nombre e identidad aunque se vaya el dibujo de robot.
+- **Auditoría 25/11:** en la notebook tapa el botón de enviar del chat de La Triada (`/analytics`). ![H-025](auditoria-2026-11-25/img/H-025.jpg)
+- **Procesos 26/11:** **ya no tapa «Más»** de la barra del celular (arreglado por #87, una sola burbuja). **Sigue tapando:** «Confirmar pedido» y el sello «Confirmado» de **Mi pedido** del local (notebook: se lee «Confirm…»; celular igual), «Sacar foto» en Fotos (celular), «Validar placas (2)» en **Validación de RRSS** (notebook), «Enviar» en La Triada, el último «Confirmar pedido» visible en la **Planilla**, el final de «Pinchos Bombas», la columna «L» del calendario, el contador de columna del tablero, el texto del informe de Clientes VIP y chips de la Guía y Precios (celular). Al local le sugiere Google Ads / ROAS. ![H-025](procesos-2026-11-26/img/H-025.jpg) · procesos P31, P40, P41, P43, P44, P45, P57
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue: «Más» arreglado, tapa en lugares nuevos) · 26/11 noche (Lucía: sigue)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-035 · Al revisar dice «Ya están todas las piezas del pedido» cuando falta el carrito
+- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Revisar la ronda (Mis tareas → Revisar ahora), notebook claro
+- **Qué ve una persona:** el pedido es «Header · Carrito» y la agencia mandó solo el header (lo dice en el comentario), pero abajo dice «Ya están todas las piezas del pedido» y el botón grande verde es «Aprobar y terminar».
+- **Por qué importa:** quien revisa apurado aprueba y el carrito no llega nunca.
+- **Cómo repetirlo:** tarea «Black Friday 2026 - Banners» (Header + Carrito) entregada con una sola imagen 1920×416 → Revisar ahora. Con una tarea creada desde la pantalla, el control previo de la agencia sí avisó lo que faltaba: ver de qué depende.
+- **Evidencia:** ![H-035](auditoria-2026-11-25/img/H-035.jpg)
+- **Procesos 26/11:** con medidas de la lista la revisión ya avisa «Falta 1 pieza del pedido» (Ramiro, captura 039); con medidas escritas a mano no avisa nada (Sofía: el control previo no dijo que faltaba el 1080×1080). Ver H-094 y H-023 · procesos P19, P21, P26
+- **Visto:** 25/11 (Martina a ciegas) · 26/11 (en parte)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-036 · «Avanzar» con todo entregado le pide a la agencia «lo que falta», y no falta nada
+- **Gravedad:** 🟠 Traba · **Quién:** equipo y agencia · **Dónde:** Revisar la ronda, notebook; agencia en el celular
+- **Qué ve una persona:** con todas las piezas en la ronda 2, el link «¿Falta algo? Avanzar» devuelve la tarjeta a la agencia con «Te dieron el OK: entregá lo que falta (ronda 3)». Además los botones cambian de lugar: en la ronda 1 y 3 el verde grande es «Avanzar», en la 2 «Aprobar y terminar».
+- **Por qué importa:** una ronda de más y una agencia que no sabe qué mandar.
+- **Cómo repetirlo:** la agencia entrega todo en la ronda 2 → equipo «Revisar ahora» → «Avanzar».
+- **Evidencia:** ![H-036](auditoria-2026-11-25/img/H-036.jpg)
+- **Procesos 26/11:** «Avanzar» sobre una v3 con las dos medidas le dice a la agencia «Te dieron el OK: entregá lo que falta (versión 4)» y la tarjeta vuelve a En proceso. ![H-036](procesos-2026-11-26/img/H-036.jpg) · proceso P21
+- **Visto:** 25/11 · 26/11 (sigue)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-039 · «Atrás» o recargar en medio de una entrega borra todo lo cargado, sin preguntar
+- **Gravedad:** 🟠 Traba · **Quién:** agencia (y el equipo al entregar) · **Dónde:** ficha → Entregar, notebook y celular
+- **Qué ve una persona:** subió imágenes y escribió el comentario; atrás o F5 → tablero cerrado y todo perdido. Con Escape sí está protegido; al recargar no vuelve a la tarjeta.
+- **Por qué importa:** en el celular «atrás» es el gesto natural para cerrar.
+- **Cómo repetirlo:** agencia → tarjeta → Entregar → subir imagen y comentario → atrás o F5.
+- **Evidencia:** ![H-039](auditoria-2026-11-25/img/H-039.jpg)
+- **Visto:** 25/11 (Ramiro)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-040 · El link del mail lleva al login y, después de entrar, no abre la tarea
+- **Gravedad:** 🟠 Traba · **Quién:** agencia y equipo · **Dónde:** `/login` desde `/entregas?tarea=…`
+- **Qué ve una persona:** toca el link del aviso, entra y cae en el tablero general, sin la tarjeta abierta. Igual cuando la sesión vence trabajando.
+- **Por qué importa:** cada aviso por mail termina en buscar la tarjeta a mano.
+- **Cómo repetirlo:** sin sesión, abrir `/entregas?tarea=s1304c6e7a0be` → entrar como agencia.
+- **Evidencia:** ![H-040](auditoria-2026-11-25/img/H-040.jpg)
+- **Visto:** 25/11 (Ramiro)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-087 · Clientes VIP: el gráfico dice «0 M» en todo el eje y el informe del mes es un mensaje de error
+- **Gravedad:** 🟠 Traba · **Quién:** equipo con Clientes VIP (jefatura) · **Dónde:** `/clientes-vip`, notebook y celular, claro y oscuro
+- **Qué ve una persona:** en «Venta por mes» las cinco rayas del eje dicen «0 M» (las ventas son de miles). En «El informe del mes», firmado «Sofía (análisis) y Valentina (predicción)», el texto es «No tengo acceso al calendario con tus permisos: pedile a un administrador…», y lo ve la superadmin.
+- **Por qué importa:** es la pantalla confidencial para decidir; un eje en cero y un informe que es un error le quitan la confianza a todo lo demás.
+- **Cómo repetirlo:** equipo → Clientes VIP con un CSV inventado de montos chicos (2 meses).
+- **Evidencia:** ![H-087](procesos-2026-11-26/img/H-087.jpg)
+- **Ojo:** el eje «0 M» es de la pantalla. El texto del informe sale de la IA simulada de pruebas (contesta cualquier pedido como Don Tino): no se puede juzgar acá. #91 («el informe de la IA sale entero o no sale») está en `main` y no en el entorno probado: confirmar la próxima noche.
+- **Visto:** 26/11 (Lucía, Sofía y Ramiro) · proceso P48
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-088 · Clientes VIP: un mes imposible en el archivo muestra «undefined» y rebota la carga entera
+- **Gravedad:** 🟠 Traba · **Quién:** equipo con permiso de cargar · **Dónde:** `/clientes-vip` → Cargar archivo, notebook
+- **Qué ve una persona:** con una fila «30/13/2019», el resumen dice «Meses: enero 2019 a undefined 2019» y ofrece «Cargar los 2 meses»; al cargar, todo rebota con «Mes inválido: '2019-13'», sin decir qué fila.
+- **Por qué importa:** el archivo del mes viene de otro sistema; una fila mala frena la carga y nadie sabe cuál corregir. Por código, un año mal tipeado (2062) se aceptaría y pasaría a ser «el último mes», cambiando los segmentos de todos los clientes (no se probó para no pisar datos).
+- **Cómo repetirlo:** CSV inventado con las 10 columnas y una fila con mes 13 → Cargar archivo.
+- **Evidencia:** ![H-088](procesos-2026-11-26/img/H-088.jpg)
+- **Idea de arreglo:** marcar en la vista previa las filas con fecha imposible o futura (con su número) y dejar cargar el resto.
+- **Visto:** 26/11 (Ramiro) · proceso P47
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-090 · En el tablero del equipo, la agencia con la que trabajás no aparece por su nombre: está en «Otras»
+- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Tablero `/entregas`, pestañas de agencia, notebook y celular
+- **Qué ve una persona:** pestañas «Publicis 2 · Another Monday 0 · Diseñadores 0 · Otras 2». Las tarjetas de «Agencia de prueba» (la única con usuarios) caen en «Otras»; una pedida a Publicis y reasignada también terminó ahí. Cada vez que vuelve al tablero arranca en «Publicis», aunque todo lo suyo esté en «Otras».
+- **Por qué importa:** Ivan: «la van a usar varias agencias a la vez». Cada agencia nueva queda escondida bajo «Otras» y hay que acordarse de tocarla en cada visita. Es la misma raíz que H-018 (las tres agencias fijas).
+- **Cómo repetirlo:** equipo → Tablero → mirar las pestañas; ir a otra pantalla y volver.
+- **Evidencia:** ![H-090](procesos-2026-11-26/img/H-090.jpg)
+- **Idea de arreglo:** una pestaña por agencia que tenga tarjetas, y recordar la última elegida. Va en paquete con H-018.
+- **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P57 · 26/11 noche (Sofía: la tarjeta de Agencia de prueba aprobada sigue en «Otras»; el tablero vuelve a abrir en «Publicis 0») ![H-090](recorridos/2026-11-26/H-090.jpg)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+
+### H-083 · Las pruebas automáticas de `main` están en rojo desde el merge de #90 y #91
+- **Gravedad:** 🟠 Traba (no la ve nadie de promo y marca, pero todo PR nuevo nace en rojo) · **Quién:** el equipo que construye (Ivan y el Escuadrón) · **Dónde:** CI de GitHub, paso `npm run test:externos`
+- **Qué pasa:** la prueba «cada herramienta de un mundo tiene su permiso» falla para `/clientes-vip`: la ruta no está en la lista de requisitos de acceso del front (`frontend/lib/acceso.ts`). La API (403) y la pantalla («No tenés permiso para ver Clientes VIP») sí bloquean, así que no hay agujero. Como el script encadena con `&&`, tampoco corren test:usuarios, test:redexpres, test:adjuntos, test:guia ni test:clientes-vip (aparte, pasan todas).
+- **Por qué importa:** con `main` en rojo no se distingue un PR que rompe algo de uno sano; Ivan ve rojo en cada propuesta.
+- **Cómo repetirlo:** `cd frontend && npm run test:externos` → «FALLA … /clientes-vip · 1 prueba(s) fallaron». En GitHub, corrida del merge de #91.
+- **Evidencia:** salida del comando (Ramiro, 26/11) y el CI de `main` (dato del coordinador).
+- **Idea de arreglo:** sumar `/clientes-vip` con `clientes_vip.view` a los requisitos del front. Chico.
+- **Visto:** 26/11 (Ramiro y coordinador) · procesos P49, P55 · 26/11 noche (sigue: el CI del merge de #92 en `main` falla en `test:externos` por `/clientes-vip`; el arreglo está en PR #93, sin mergear)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #93 (Valentina y Clientes VIP).
+
+### H-111 · La campanita sigue diciendo «Te toca revisarla» de entregas que ya aprobaste
+- **Gravedad:** 🟠 Traba (sube con la prueba a ciegas) · **Quién:** equipo y agencia · **Dónde:** Notificaciones (campanita), notebook y celular
+- **Qué ve una persona:** después de revisar, pedir cambios y aprobar, la campanita del equipo sigue en rojo con «2»: «Agencia de prueba entregó la versión 2… Te toca revisarla» y «…versión 1… Te toca revisarla», como si fueran pendientes. A la agencia le pasa igual: «3» avisos, entre ellos «Te toca entregar la versión 2», cuando la tarjeta ya está Finalizada. Hay que marcarlos a mano uno por uno o con «Marcar todas como leídas».
+- **Por qué importa:** la campanita es lo primero que mira el equipo para saber qué le toca hoy (E4): con avisos viejos que dicen «te toca», el número en rojo deja de servir y se termina ignorando, también cuando llega algo nuevo de verdad.
+- **Cómo repetirlo:** hacer el ciclo completo (pedido → entrega v1 → pedir cambios → v2 → aprobar) abriendo la tarjeta desde Mis tareas, sin tocar la campanita; al final abrir Notificaciones en las dos cuentas.
+- **Evidencia:** ![H-111](recorridos/2026-11-26/H-111.jpg) (izquierda equipo, derecha agencia en el celular)
+- **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
+- **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
+- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #94 («La campanita al día», Ramiro VERDE).
 
 ### H-081 · Pedido de Ivan: que la agencia pueda ir y venir con la entrega hasta que se apruebe
 - **Gravedad:** 🟠 Traba (pedido de Ivan, 25/11) · **Quién:** agencia y equipo · **Dónde:** ficha de la tarjeta y tablero `/entregas`
