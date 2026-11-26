@@ -186,10 +186,16 @@ LARGO_POR_QUE = 500
 
 def faltan_validas(texto: str | None) -> list[str] | None:
     """La lista de piezas que faltan, como llega en el formulario (JSON): los
-    nombres limpios, sin repetidos, en su orden. None si no falta nada.
-    ValueError con el mensaje para la persona. Pura."""
+    nombres limpios, sin repetidos, en su orden. La lista vacía es que la
+    pantalla midió y no falta ninguna; None (no vino), que no se pudo medir y
+    no se sabe. Hasta el 26/11/2026 las dos cosas se guardaban igual y al
+    revisar se leía «Ya están todas las piezas del pedido» con el carrito sin
+    venir (H-035 de la auditoría del 25/11/2026). ValueError con el mensaje
+    para la persona. Pura."""
+    if texto is None or not texto.strip():
+        return None
     try:
-        lista = json.loads(texto or "[]")
+        lista = json.loads(texto)
     except ValueError:
         lista = None
     if not isinstance(lista, list) or not all(isinstance(x, str) for x in lista):
@@ -203,7 +209,7 @@ def faltan_validas(texto: str | None) -> list[str] | None:
             raise ValueError(f"«{nombre[:30]}…» es demasiado largo para el nombre de una pieza")
         if nombre and nombre not in limpias:
             limpias.append(nombre)
-    return limpias or None
+    return limpias
 
 
 def por_que_faltan_valido(texto: str | None, faltan: list[str] | None) -> str | None:

@@ -3963,19 +3963,49 @@ def test_lo_que_falta_del_pedido_viaja_con_la_entrega_y_lo_ven_quien_aprueba_y_l
             assert v["porQueFaltan"] == "Es el KV, para aprobarlo antes"
 
         # Vuelve con cambios y la ronda 2 trae todo: no falta nada (y un «por
-        # qué» sin piezas que falten no se guarda).
+        # qué» sin piezas que falten no se guarda). La pantalla lo midió: manda
+        # la lista vacía (H-035).
         assert (await mover(lucia, "esperando", "en-proceso", comentario="Dale, hacé el resto")).status_code == 200
-        r = await a1.post(url, data={"versionId": f"ve-2-{d.sufijo}", "porQueFaltan": "nada"}, files=archivos)
+        r = await a1.post(url, data={"versionId": f"ve-2-{d.sufijo}", "faltan": "[]", "porQueFaltan": "nada"},
+                          files=archivos)
         assert r.status_code == 201, r.text
         v2 = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][1]
         assert v2["faltan"] == [] and v2["porQueFaltan"] is None
         async with d.Sesion() as s:
-            # NULL de la base, no el null de JSON: "no faltaba nada".
-            assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
-                CalendarioVersion.id == f"ve-2-{d.sufijo}", CalendarioVersion.faltan.is_(None),
-            ))).scalar_one() == 1
+            assert (await s.get(CalendarioVersion, f"ve-2-{d.sufijo}")).faltan == []
             v1 = await s.get(CalendarioVersion, f"ve-1-{d.sufijo}")
             assert v1.faltan == ["Header (mobile)", "Checkout"] and v1.por_que_faltan == "Es el KV, para aprobarlo antes"
+    correr(prueba)
+
+
+def test_si_no_se_pudo_medir_lo_que_falta_no_se_dice_que_esta_todo():
+    """H-035 (auditoría del 25/11/2026): al revisar decía «Ya están todas las
+    piezas del pedido» con el carrito sin venir. «Se midió y no falta nada» y
+    «no se pudo medir» (un ZIP que el navegador no lee, uno con el folleto en
+    PDF) se guardaban igual, como NULL, y la pantalla leía las dos como «está
+    todo». Ahora la pantalla manda la lista siempre que pudo medir, también
+    vacía; si no vino, queda NULL y el detalle dice null: no se sabe."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)  # Header y Checkout: tres piezas
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        url = f"/calendario/tareas/{tarea_id}/versiones"
+        medida, sin_medir = f"ve-med-{d.sufijo}", f"ve-sin-{d.sufijo}"
+        archivos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        # Medida: no falta nada.
+        r = await a1.post(url, data={"versionId": medida, "faltan": "[]"}, files=archivos)
+        assert r.status_code == 201, r.text
+        # Sin medir, aunque traiga una imagen por pieza (la lista no vino). Va
+        # en lugar de la anterior, que esperaba revisión.
+        r = await a1.post(url, data={"versionId": sin_medir}, files=archivos * 3)
+        assert r.status_code == 201, r.text
+        versiones = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"]
+        assert [(v["id"], v["faltan"]) for v in versiones] == [(medida, []), (sin_medir, None)], versiones
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioVersion, medida)).faltan == []
+            # NULL de la base, no el null de JSON.
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
+                CalendarioVersion.id == sin_medir, CalendarioVersion.faltan.is_(None),
+            ))).scalar_one() == 1
     correr(prueba)
 
 

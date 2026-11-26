@@ -193,9 +193,12 @@ class CalendarioVersion(Base):
     # Las piezas del pedido que no venían en la ronda (0087, 21/11/2026): la
     # lista de nombres ("Header (mobile)", "Checkout") que vio la plataforma
     # por las medidas, y lo que escribió quien entrega en «¿Por qué no va
-    # todo?» ("Es el KV, para aprobarlo antes"). NULL: no faltaba nada, o es
-    # de antes. Lo ven quien aprueba y la agencia. `none_as_null`: un None se
-    # guarda como NULL de la base y no como el `null` de JSON.
+    # todo?» ("Es el KV, para aprobarlo antes"). La lista vacía: se midió y
+    # no faltaba nada. NULL: no se pudo medir (un ZIP que el navegador no
+    # lee, un PDF), o es de antes del 26/11/2026; no se sabe (H-035: hasta
+    # ahí NULL era también "no faltaba nada"). Lo ven quien aprueba y la
+    # agencia. `none_as_null`: un None se guarda como NULL de la base y no
+    # como el `null` de JSON.
     faltan: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     por_que_faltan: Mapped[str | None] = mapped_column(Text, nullable=True)
 

@@ -108,8 +108,9 @@ export type Version = {
   zip?: ZipDeVersion | null
   /** Las piezas del pedido que no venían en la ronda (21/11/2026): sus
    *  nombres ("Header (mobile)"), y lo que escribió quien entrega en «¿Por
-   *  qué no va todo?». Vacío o sin mandar: no faltaba nada, o es de antes. */
-  faltan?: string[]
+   *  qué no va todo?». Vacía: se midió y no faltaba nada. Null (o sin
+   *  mandar): no se pudo medir, o es de antes; no se sabe (H-035). */
+  faltan?: string[] | null
   porQueFaltan?: string | null
   decisiones: Decision[]
   marcas: Marca[]
@@ -384,19 +385,25 @@ export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boole
  * El botón grande al revisar (Ivan, 25/11/2026): «Avanzar», salvo que ya
  * estén todas las piezas del pedido; ahí, «Aprobar y terminar». Se sabe que
  * están todas cuando el pedido tiene piezas, la versión trae una imagen por
- * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y no faltó
- * ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar: no
- * cierra nada. Pura.
+ * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y la
+ * plataforma midió al entregar que no falta ninguna (`faltan` vacía; null o
+ * sin mandar es que no se pudo medir). Si no se sabe, Avanzar: no cierra
+ * nada. Pura.
  *
- * Una imagen por pieza (H-035 de la auditoría del 25/11/2026): si no se
- * pudo medir (un ZIP sin medidas), la lista de lo que falta llega vacía y
- * decía «Ya están todas las piezas» con una imagen para dos piezas.
+ * H-035 de la auditoría del 25/11/2026: decía «Ya están todas las piezas del
+ * pedido» con el carrito sin venir. «No falta nada» y «no se pudo medir» (un
+ * ZIP que acá no se lee, uno con el folleto en PDF: el servidor llena la
+ * versión con sus páginas) llegaban igual, como la lista vacía. Desde el
+ * 26/11/2026 la lista vacía es solo lo medido. Una imagen por pieza queda
+ * de resguardo: por ejemplo, si al pedido le sumaron piezas después de que
+ * se entregó.
  */
 export function botonGrandeAlRevisar(
   piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined, tope = Infinity,
 ): 'avanzar' | 'terminar' {
   const alcanzan = imagenes > 0 && imagenes >= Math.min(piezasPedidas, tope)
-  return piezasPedidas > 0 && alcanzan && !(faltan?.length) ? 'terminar' : 'avanzar'
+  const seMidioYNoFalta = faltan != null && faltan.length === 0
+  return piezasPedidas > 0 && alcanzan && seMidioYNoFalta ? 'terminar' : 'avanzar'
 }
 
 /** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase

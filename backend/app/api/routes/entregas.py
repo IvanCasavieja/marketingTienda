@@ -572,8 +572,10 @@ async def ver_entregas(
             "decididaEl": v.decidida_at.isoformat() if v.decidida_at else None,
             "comentario": v.comentario, "link": v.link, "corregidas": list(v.corregidas or []),
             # Las piezas del pedido que no venían en esta ronda y por qué
-            # (0087, 21/11/2026): lo ven quien aprueba y la agencia.
-            "faltan": list(v.faltan or []), "porQueFaltan": v.por_que_faltan,
+            # (0087, 21/11/2026): lo ven quien aprueba y la agencia. La lista
+            # vacía es que se midió y no faltaba nada; null, que no se pudo
+            # medir (o es de antes): no se sabe (H-035).
+            "faltan": list(v.faltan) if v.faltan is not None else None, "porQueFaltan": v.por_que_faltan,
             "imagenes": [
                 {"id": im.id, "orden": im.orden, "purgada": im.purgada_at is not None}
                 for im in imagenes.get(v.id, [])
@@ -1128,7 +1130,7 @@ async def entregar(
     miniaturas: list[UploadFile] | None = File(None),
     archivo_zip: UploadFile | None = File(None, alias="zip"),
     zipYaSubidas: str = Form("[]", max_length=2000),
-    faltan: str = Form("[]", max_length=20_000),
+    faltan: str | None = Form(None, max_length=20_000),
     porQueFaltan: str = Form("", max_length=5000),
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
@@ -1163,7 +1165,10 @@ async def entregar(
     piezas del pedido que la pantalla vio que no venían, por las medidas) y
     `porQueFaltan` (lo que escribió quien entrega: "Es el KV, para aprobarlo
     antes"). Se guardan con la ronda tal cual, con sus topes
-    (reglas.faltan_validas): no traban la entrega."""
+    (reglas.faltan_validas): no traban la entrega. Si la pantalla pudo
+    medir, `faltan` viene siempre, también vacía (no falta nada); si no
+    vino, no se pudo medir y queda NULL: al revisar no se dice que está
+    todo (H-035, 26/11/2026)."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -1432,7 +1437,7 @@ async def sumar_archivos(
     if not imagenes:
         raise HTTPException(status_code=422, detail="Elegí al menos una imagen para sumar")
     try:
-        quedan = (reglas.faltan_validas(faltan) or []) if faltan is not None else None
+        quedan = reglas.faltan_validas(faltan)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if len(miniaturas) != len(imagenes):
@@ -1458,7 +1463,8 @@ async def sumar_archivos(
         leidas.append((datos, tipo, datos_mini, tipo_mini))
     await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
     if quedan is not None and version.faltan:
-        version.faltan = [p for p in version.faltan if p in quedan] or None
+        # Si ya no falta ninguna, la lista queda vacía: se midió y está todo (H-035).
+        version.faltan = [p for p in version.faltan if p in quedan]
         if not version.faltan:
             version.por_que_faltan = None
     orden = (ultimo_orden if ultimo_orden is not None else -1) + 1

@@ -148,15 +148,20 @@ export function piezasQueFaltan(piezas: readonly Pieza[], imagenes: readonly Med
 /**
  * Lo que falta en una entrega, si se puede saber. `imagenes`: las medidas de
  * todo lo que se entrega, null en una que no se pudo medir; null entero si
- * no se puede saber qué hay (un ZIP que acá no se lee). Sin imágenes (solo
- * un link, o un ZIP con solo PDF) o con alguna sin medir no se dice nada:
- * la plataforma avisa solo lo que puede ver, para no decir que falta algo
- * que capaz está. Pura.
+ * no se puede saber qué hay (un ZIP que acá no se lee). Sin piezas en el
+ * pedido, sin imágenes (solo un link, o un ZIP con solo PDF) o con alguna
+ * sin medir no se puede saber, y da null: la plataforma avisa solo lo que
+ * puede ver, para no decir que falta algo que capaz está, y tampoco dice que
+ * está todo. La lista vacía es otra cosa: se midió y no falta ninguna.
+ *
+ * Las dos cosas eran la lista vacía (H-035 de la auditoría del 25/11/2026):
+ * al revisar, un ZIP con el folleto en PDF, sin medir, decía «Ya están todas
+ * las piezas del pedido» con el carrito sin venir. Pura.
  */
 export function faltanEnLaEntrega(
   piezas: readonly Pieza[] | null | undefined, imagenes: readonly (Medidas | null)[] | null,
-): Pieza[] {
-  if (!piezas?.length || !imagenes?.length || imagenes.some(m => m == null)) return []
+): Pieza[] | null {
+  if (!piezas?.length || !imagenes?.length || imagenes.some(m => m == null)) return null
   return piezasQueFaltan(piezas, imagenes as Medidas[])
 }
 
