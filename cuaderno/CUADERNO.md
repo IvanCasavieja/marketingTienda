@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 106 abiertos (101 confirmados, 1 pedido de Ivan, 4 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 111 abiertos (101 confirmados, 1 pedido de Ivan, 9 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -931,6 +931,36 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Gravedad:** 🟡 · **Quién:** equipo · **Dónde:** `/redes-sociales/validacion`
 - **Sospecha (código):** el tacho aparece en validaciones de otras personas; si el borrado falla, toda la lista dice «No se pudo cargar el historial».
 - **Fuente:** `plataforma/materiales-precios-locales.md`.
+
+### H-117 · Para confirmar: en English y en Português faltan 75 textos
+- **Gravedad:** 🟡 Desprolijo · **Quién:** quien usa la plataforma en inglés o portugués · **Dónde:** sobre todo el Convertidor (`convertidor.dividir.*`) y otras pantallas
+- **Sospecha (código, 26/11):** `frontend/lib/locales/es.json` tiene 75 claves que no están en `en.json` ni en `pt.json`; en esos idiomas se ven en castellano o como la clave cruda. La biblioteca de Bruno ya lo nota («Ya faltan claves de antes»).
+- **Cómo confirmarlo:** cambiar el idioma a English y abrir el Convertidor → «Dividir».
+- **Fuente:** al escribir las bibliotecas (25/11); contado en el código el 26/11.
+
+### H-118 · Para confirmar: el Convertidor muestra el error del servidor tal cual
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** Materiales → Convertidor
+- **Sospecha (código, 26/11):** `ConvertidorGrid.tsx` (líneas 604, 655, 846 y 864) muestra en el aviso el `detail` que manda el servidor, sin pasarlo a palabras: si el servidor contesta un error técnico (o en inglés), la persona lo ve así.
+- **Cómo confirmarlo:** provocar un error al guardar un grupo o al convertir (por ejemplo, un Excel roto) y leer el aviso.
+- **Fuente:** al escribir las bibliotecas (25/11); ubicado en el código el 26/11.
+
+### H-119 · Para confirmar: «local» y «sucursal» para lo mismo en Redexpres
+- **Gravedad:** ⚪ Detalle · **Quién:** locales y equipo · **Dónde:** textos de Redexpres
+- **Sospecha (biblioteca de Lucía, `referencias/escritura.md`):** en Redexpres conviven «local» y «sucursal» para el mismo lugar; los criterios del recorrido toman «local». En Precios, «sucursal» es la de una cadena y está bien.
+- **Cómo confirmarlo:** recorrer Mi pedido, la planilla y las fotos y anotar dónde dice cada una.
+- **Fuente:** al escribir las bibliotecas (25/11).
+
+### H-120 · Para confirmar: botones y bordes de campos con poco contraste
+- **Gravedad:** 🟡 Desprolijo (accesibilidad) · **Quién:** todos, más en el celular con sol · **Dónde:** botones secundarios y bordes de campos
+- **Sospecha:** algunos no llegan al contraste mínimo (WCAG 2.2 AA: 4,5:1 para texto y 3:1 para bordes y controles).
+- **Cómo confirmarlo:** medir con el método de la biblioteca de Lucía (`referencias/accesibilidad.md`, «Calcular un contraste sin herramienta»), en claro y en oscuro.
+- **Fuente:** al escribir las bibliotecas (25/11).
+
+### H-121 · Para confirmar: una migración que se traba puede dejar la plataforma colgada al publicar
+- **Gravedad:** 🟠 Traba (en el momento de publicar) · **Quién:** todos · **Dónde:** el arranque del servidor en Render
+- **Sospecha (código, 26/11):** ni `backend/migrations/env.py` ni las migraciones ponen `lock_timeout` ni `statement_timeout`. Si una migración espera un bloqueo de una tabla en uso, se queda esperando sin límite.
+- **Cómo confirmarlo:** Tomás lo revisa contra su biblioteca (`biblioteca-tomas/referencias/datos-y-migraciones.md`) antes de la próxima migración grande.
+- **Fuente:** al escribir las bibliotecas (25/11); confirmado en el código el 26/11.
 
 ## Hechos
 
