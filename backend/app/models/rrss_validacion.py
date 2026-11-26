@@ -11,12 +11,17 @@ class RrssValidacion(Base):
     """Una corrida de "Validación de RRSS": un mailing original contra un
     lote de placas de redes sociales.
 
-    Se guarda para poder volver a mirarla (historial), pero SIN los archivos
-    originales: el PDF del mailing pesa varios MB y las placas de 2250 px otro
-    tanto, y la base tiene poca cuota. Lo que queda es lo que hace falta para
-    revisar el resultado sin abrir nada aparte: las páginas del mailing ya
-    renderizadas, una vista chica de cada placa y los recortes de cada
-    diferencia. Ver rrss/validador.py."""
+    No hay historial: cada validación dura RRSS_RETENCION_HORAS horas (24),
+    terminada o no, para terminar de revisarla ese día o volver a abrirla si
+    se cerró la pestaña. Después se borra entera, con sus páginas y sus placas
+    (services/rrss/retencion.py). Ivan (26/11/2026), con 73 MB de validaciones
+    en la base: «no tiene sentido que mantengamos historial de validaciones».
+
+    Tampoco se guardan los archivos originales: el PDF del mailing pesa varios
+    MB y las placas de 2250 px otro tanto, y la base tiene poca cuota. Mientras
+    dura, queda lo que hace falta para revisar el resultado sin abrir nada
+    aparte: las páginas del mailing ya renderizadas, una vista chica de cada
+    placa y los recortes de cada diferencia. Ver rrss/validador.py."""
 
     __tablename__ = "rrss_validaciones"
 

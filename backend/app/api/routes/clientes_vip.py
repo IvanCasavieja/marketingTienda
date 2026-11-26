@@ -34,6 +34,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.alcance import hoy_en_uruguay
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.externos import puede_tener
@@ -361,7 +362,7 @@ class CargaNueva(BaseModel):
 @router.post("/cargas")
 async def empezar_carga(body: CargaNueva, db: AsyncSession = Depends(get_db), user: User = Depends(puede_cargar)):
     try:
-        meses = sorted({vip.mes_de(m) for m in body.meses})
+        meses = vip.meses_de_carga(body.meses, hoy_en_uruguay())
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     if not await hay_lugar(db, body.filas * _BYTES_POR_FILA):

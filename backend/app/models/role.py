@@ -42,7 +42,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     "facturacion.manage":      "Administrar las cuentas de Finanzas (crear, renombrar, desactivar)",
 
     # Redes sociales
-    "rrss.view":               "Ver la Validación de RRSS y su historial de validaciones",
+    "rrss.view":               "Ver la Validación de RRSS y las validaciones de hoy (se borran solas a las 24 horas)",
     "rrss.validate":           "Validar placas de redes sociales contra el mailing con CatTi y borrar las validaciones propias",
 
     # Calendario

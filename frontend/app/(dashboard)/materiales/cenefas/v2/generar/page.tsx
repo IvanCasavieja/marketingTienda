@@ -2,13 +2,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Upload, ChevronLeft, ChevronRight, ChevronDown, FileSpreadsheet,
-  CheckCircle2, AlertCircle, Loader2, Download, RefreshCw,
+  CheckCircle2, AlertCircle, Loader2,
   Trash2, Pencil, Check, X, BookOpen, ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cenefasV2Api } from "@/lib/api";
 import { useSuperuserGuard } from "@/hooks/useSuperuserGuard";
-import type { CenefaFormat, CenefaJob, CenefaTemplate, CenefaTemplateRecord } from "@/types/cenefas";
+import PreviewStep from "@/components/cenefas/PreviewStep";
+import type { CenefaFormat, CenefaTemplate, CenefaTemplateRecord } from "@/types/cenefas";
 
 type Step     = 1 | 2 | 3;
 type TmplMode = "v2" | "builtin";
@@ -60,11 +61,15 @@ export default function GenerarPage() {
 
   const [varModalOpen, setVarModalOpen] = useState(false);
 
-  // Job
-  const [job,     setJob]     = useState<CenefaJob | null>(null);
-  const [polling, setPolling] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const dlRef   = useRef<HTMLAnchorElement>(null);
+  // La corrida en curso. Su espera, la revisión y la descarga son de
+  // PreviewStep (paso 3).
+  const [jobId, setJobId] = useState<string | null>(null);
+  // Mientras se sube el Excel y se crea la corrida. Un segundo clic en
+  // «Generar» creaba otra corrida: la pantalla seguía una sola y la otra
+  // quedaba «Esperando confirmación» en el Historial (H-008). El ref frena
+  // el segundo clic aunque llegue antes de que se vuelva a dibujar el botón.
+  const [iniciando, setIniciando] = useState(false);
+  const iniciandoRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -86,23 +91,6 @@ export default function GenerarPage() {
       }
     }).catch(() => toast.error("No se pudieron cargar los templates/formatos"));
   }, []);
-
-  // Polling del job
-  useEffect(() => {
-    if (polling && job?.id) {
-      pollRef.current = setInterval(async () => {
-        try {
-          const { data } = await cenefasV2Api.getJob(job.id);
-          setJob(data);
-          if (data.status === "done" || data.status === "error") {
-            setPolling(false);
-            clearInterval(pollRef.current!);
-          }
-        } catch { /* ignore */ }
-      }, 2000);
-    }
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [polling, job?.id]);
 
   // Cargar definición del template seleccionado para detectar componentes de imagen
   useEffect(() => {
@@ -159,7 +147,9 @@ export default function GenerarPage() {
 
   // ── Crear job (llamado desde step 2 o directo para builtins)
   async function handleStartJob(direct = false) {
-    if (!excel) return;
+    if (!excel || iniciandoRef.current) return;
+    iniciandoRef.current = true;
+    setIniciando(true);
     try {
       const fd = new FormData();
       fd.append("excel",       excel);
@@ -187,15 +177,13 @@ export default function GenerarPage() {
       }
 
       const { data } = await cenefasV2Api.createJob(fd);
-      setJob({
-        id: data.job_id, status: "pending",
-        format: data.format, export_type: "pptx",
-        error_count: 0, created_at: new Date().toISOString(),
-      });
-      setPolling(true);
+      setJobId(data.job_id);
       setStep(3);
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? "Error al iniciar la generación");
+    } finally {
+      iniciandoRef.current = false;
+      setIniciando(false);
     }
   }
 
@@ -211,26 +199,12 @@ export default function GenerarPage() {
     });
   }
 
-  async function handleDownload() {
-    if (!job) return;
-    try {
-      const { data } = await cenefasV2Api.downloadJob(job.id);
-      const url = URL.createObjectURL(new Blob([data]));
-      if (dlRef.current) {
-        dlRef.current.href = url;
-        dlRef.current.download = `cenefas_${formatId}.pptx`;
-        dlRef.current.click();
-      }
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error("Error al descargar");
-    }
-  }
-
   if (!allowed) return null;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    // La revisión del paso 3 es el lienzo de tres columnas del camino de
+    // siempre: necesita el ancho entero, no la columna de los pasos 1 y 2.
+    <div className={`${step === 3 ? "w-full" : "max-w-2xl"} mx-auto space-y-6`}>
       {/* Variable reference modal */}
       {varModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -477,9 +451,9 @@ export default function GenerarPage() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <button onClick={handleNext} disabled={validating || !excel || (tmplMode === "v2" && !templateId)}
+            <button onClick={handleNext} disabled={validating || iniciando || !excel || (tmplMode === "v2" && !templateId)}
               className="btn-primary flex items-center gap-2 px-5 py-2.5 disabled:opacity-50">
-              {validating ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />}
+              {validating || iniciando ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />}
               {tmplMode === "builtin" ? "Generar" : "Siguiente — Validar"}
             </button>
           </div>
@@ -540,8 +514,9 @@ export default function GenerarPage() {
                 if (validation.missing_required.length > 0) setShowMissingModal(true);
                 else handleStartJob();
               }}
-              className="btn-primary flex items-center gap-2 px-5 py-2.5">
-              <ChevronRight size={15} /> Generar cenefas
+              disabled={iniciando}
+              className="btn-primary flex items-center gap-2 px-5 py-2.5 disabled:opacity-50">
+              {iniciando ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />} Generar cenefas
             </button>
           </div>
 
@@ -570,7 +545,8 @@ export default function GenerarPage() {
                     Cancelar
                   </button>
                   <button onClick={() => { setShowMissingModal(false); handleStartJob(); }}
-                    className="flex-1 btn-primary py-2 text-sm">
+                    disabled={iniciando}
+                    className="flex-1 btn-primary py-2 text-sm disabled:opacity-50">
                     Continuar igual
                   </button>
                 </div>
@@ -580,75 +556,21 @@ export default function GenerarPage() {
         </div>
       )}
 
-      {/* ── STEP 3: Exportación ── */}
-      {step === 3 && job && (
-        <div className="card p-6 space-y-6 text-center">
-          {job.status === "pending" || job.status === "running" ? (
-            <>
-              <Loader2 size={40} className="animate-spin text-brand-500 mx-auto" />
-              <div>
-                <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Generando cenefas…</p>
-                <p className="text-sm text-slate-400 dark:text-slate-500 mt-1 capitalize">{job.status}</p>
-              </div>
-            </>
-          ) : job.status === "done" ? (
-            <>
-              <CheckCircle2 size={40} className="text-emerald-500 mx-auto" />
-              <div>
-                <p className="text-base font-semibold text-slate-700 dark:text-slate-300">¡Listo!</p>
-                {job.row_count && (
-                  <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
-                    {job.row_count} productos generados • {job.error_count} errores de datos
-                  </p>
-                )}
-              </div>
-              {job.missing_vars && job.missing_vars.length > 0 && (
-                <div className="text-left rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-                  <p className="text-sm font-semibold text-amber-800">
-                    Variables del template no encontradas en el Excel
-                  </p>
-                  <p className="text-xs text-amber-700">
-                    Estos placeholders existen en el diseño pero el Excel no tiene una columna con ese nombre exacto. Se exportaron en blanco:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {job.missing_vars.map((v) => (
-                      <code key={v} className="text-xs bg-white border border-amber-300 text-amber-900 rounded px-2 py-0.5 font-mono">
-                        {"<<"}{v}{">>"}
-                      </code>
-                    ))}
-                  </div>
-                  <p className="text-xs text-amber-600">
-                    Agregá una columna con ese nombre exacto en el Excel y generá de nuevo.
-                  </p>
-                </div>
-              )}
-              <div className="flex justify-center gap-3">
-                <button onClick={handleDownload}
-                  className="btn-primary flex items-center gap-2 px-6 py-2.5">
-                  <Download size={15} /> Descargar PPTX
-                </button>
-                <button onClick={() => { setStep(1); setJob(null); setValidation(null); }}
-                  className="btn-secondary flex items-center gap-2 px-4 py-2.5">
-                  <RefreshCw size={14} /> Nueva generación
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <AlertCircle size={40} className="text-rose-500 mx-auto" />
-              <p className="text-base font-semibold text-slate-700 dark:text-slate-300">Error en la generación</p>
-              <p className="text-sm text-rose-500">
-                {(job as any).validation_report?.error ?? "Error desconocido"}
-              </p>
-              <button onClick={() => setStep(1)} className="btn-secondary flex items-center gap-2 px-4 py-2 mx-auto">
-                <ChevronLeft size={14} /> Volver al inicio
-              </button>
-            </>
-          )}
-        </div>
+      {/* ── STEP 3: Exportación ──
+          El motor genera en dos tiempos desde el 14/07/2026: la corrida queda
+          lista para revisar ("preview") y el archivo recién se arma cuando
+          alguien confirma. Este paso solo entendía el flujo de antes: tomaba
+          "preview" por un error («Error desconocido»), consultaba para siempre
+          y nadie confirmaba la corrida (H-008). Ahora pasa por la revisión,
+          como el camino de siempre: la cenefa con los datos del Excel, los
+          avisos y «Confirmar y descargar». «Volver» deja esa corrida sin
+          confirmar y generar de nuevo arma otra. */}
+      {step === 3 && jobId && (
+        <PreviewStep
+          jobId={jobId}
+          onBack={() => { setJobId(null); setStep(tmplMode === "v2" && validation ? 2 : 1); }}
+        />
       )}
-
-      <a ref={dlRef} className="hidden" />
     </div>
   );
 }

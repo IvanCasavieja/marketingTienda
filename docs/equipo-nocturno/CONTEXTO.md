@@ -107,6 +107,11 @@ en `.claude/skills/recorrido-humano/criterios.md`.
 - Sacar Medios (`/dashboard`, `/analytics`, `/campaigns`, `/canales`) o
   Finanzas (`/facturacion`) del menú: siguen por decisión de Ivan (20/11/2026).
   Sí se puede mejorar cómo se ven.
+- Volver a guardar historial de las validaciones de RRSS. Desde el 26/11/2026
+  cada validación dura 24 horas («Las de hoy», para terminar de revisarla ese
+  día) y después se borra entera, con sus imágenes (Ivan, con 73 MB de
+  validaciones en la base: «no tiene sentido que mantengamos historial de
+  validaciones»).
 - Volver a poner tipos o plantillas de cenefa en Tienda Inglesa. Ivan los
   borró el 26/11/2026 («el resto elimina todos los submundos esos de cenefas
   porque no se van a usar»; migración 0094): las cenefas que se usan son las de

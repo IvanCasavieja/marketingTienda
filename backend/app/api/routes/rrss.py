@@ -18,8 +18,10 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
+from app.core.externos import puede_tener
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, RrssValidacionPagina
@@ -38,18 +40,33 @@ _MAX_IMAGENES_POR_VALIDACION = 150
 # (GET /rrss/config). Ver archivos.py.
 
 
+def _ya_no_esta() -> str:
+    """Lo que se dice cuando se pide una validación que no existe. Casi
+    siempre es una que se borró sola (duran RRSS_RETENCION_HORAS horas, ver
+    services/rrss/retencion.py): un «no se encontró» pelado parece una falla."""
+    horas = settings.RRSS_RETENCION_HORAS
+    if horas <= 0:
+        return "No se encontró esa validación"
+    return f"Esa validación ya no está: las validaciones se borran solas a las {horas} horas."
+
+
 async def _get_validacion_or_404(db: AsyncSession, validacion_id: int) -> RrssValidacion:
     v = await db.get(RrssValidacion, validacion_id)
     if v is None:
-        raise HTTPException(status_code=404, detail="No se encontró esa validación")
+        raise HTTPException(status_code=404, detail=_ya_no_esta())
     return v
 
 
+def _es_suya(creado_por_id: int | None, user: User) -> bool:
+    """Cualquiera con rrss.view puede MIRAR una validación (las de hoy son
+    del equipo), pero solo quien la creó -o un superusuario- puede
+    modificarla o borrarla. La misma regla la usa la lista para decir en qué
+    filas va el tacho (puede_borrar)."""
+    return user.is_superuser or creado_por_id == user.id
+
+
 def _exigir_dueno(v: RrssValidacion, user: User) -> None:
-    """Cualquiera con rrss.view puede MIRAR una validación (el historial es del
-    equipo), pero solo quien la creó -o un superusuario- puede modificarla o
-    borrarla."""
-    if not user.is_superuser and v.creado_por_id != user.id:
+    if not _es_suya(v.creado_por_id, user):
         raise HTTPException(status_code=403, detail="Solo quien creó la validación puede modificarla")
 
 
@@ -266,6 +283,13 @@ async def validar_imagen(
             detail=f"'{archivo.filename}' supera los {archivos.max_mb('placas')} MB",
         )
 
+    # Lo que sigue tarda: CatTi mira la placa hasta cinco veces. Hasta acá solo
+    # se leyó, así que la transacción se cierra: si no, quedaba abierta todo
+    # ese rato, con una conexión del pool tomada y las tablas de RRSS en uso, y
+    # la purga no podía compactarlas (services/rrss/retencion.py). Lo que se
+    # guarda al final va en una transacción corta.
+    await db.commit()
+
     async def cargar_paginas():
         # Las páginas del mailing (ya renderizadas) sirven para recortar el lado del
         # mailing de cada diferencia: solo se traen si la placa tiene alguna.
@@ -273,11 +297,28 @@ async def validar_imagen(
         # cuatro enteras por placa, con tres placas a la vez, tiraba el servidor
         # (ver imagenes.Carillas.desde_jpegs).
         paginas_db = await _paginas(db, v.id)
+        await db.commit()  # lo mismo: después de traerlas, CatTi vuelve a mirar
         return imagenes.Carillas.desde_jpegs(
             [p.imagen for p in paginas_db], [(p.ancho, p.alto) for p in paginas_db])
 
     r = await validador.validar_placa(datos, archivo.filename or "placa", v.mailing, cargar_paginas, v.config)
     r.resultado["tiempos_ms"]["hasta_guardar"] = round((time.perf_counter() - inicio) * 1000)
+
+    # Que la validación siga estando mientras se guarda la placa: FOR KEY SHARE
+    # no deja borrarla hasta el commit, y es la misma traba que pone la clave
+    # foránea al insertar. Si ya no está (venció mientras CatTi miraba, ver
+    # services/rrss/retencion.py, o la borró quien la creó), la placa no tiene
+    # dónde guardarse: se dice por qué, como al abrirla, en vez del 500 de la
+    # clave foránea. Los tokens ya se gastaron: se anotan igual.
+    sigue = await db.scalar(
+        select(RrssValidacion.id).where(RrssValidacion.id == v.id).with_for_update(read=True, key_share=True)
+    )
+    if sigue is None:
+        if r.tokens_in or r.tokens_out:
+            await log_ai_usage(db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL,
+                               r.tokens_in, r.tokens_out)
+            await db.commit()
+        raise HTTPException(status_code=404, detail=_ya_no_esta())
 
     # Idempotente por `orden`: si el navegador reintenta una placa (la request se
     # cortó pero el servidor sí la había guardado) o la persona reintenta las que
@@ -353,10 +394,18 @@ async def cerrar_validacion(
 
 @router.get("/validaciones")
 async def listar_validaciones(
-    _: User = Depends(require_permission("rrss.view")),
+    current_user: User = Depends(require_permission("rrss.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """El historial: una fila por validación, con sus contadores."""
+    """Las validaciones de hoy, una fila por validación con sus contadores:
+    para retomar una si se cerró la pestaña. No es un historial: cada una se
+    borra sola a las RRSS_RETENCION_HORAS horas (services/rrss/retencion.py).
+
+    `puede_borrar` dice si ESTA persona puede borrar esa fila (rrss.validate y
+    que sea suya, o superusuario), con la misma regla que DELETE: la pantalla
+    mostraba el tacho en todas y, al tocarlo en la de otra persona, el 403
+    reemplazaba la lista entera por un error (H-016, Ramiro 26/11/2026)."""
+    puede_validar = puede_tener(current_user, "rrss.validate")
     I = RrssValidacionImagen
     res = await db.execute(
         select(
@@ -367,6 +416,7 @@ async def listar_validaciones(
             func.count(I.id).filter(I.estado.in_(("diferencias", "avisos"))),
             func.count(I.id).filter(I.estado == "sin_match"),
             func.count(I.id).filter(I.estado == "error"),
+            RrssValidacion.creado_por_id,
         )
         .outerjoin(I, I.validacion_id == RrssValidacion.id)
         .outerjoin(User, User.id == RrssValidacion.creado_por_id)
@@ -379,6 +429,7 @@ async def listar_validaciones(
             "id": r[0], "nombre_mailing": r[1], "estado": r[2],
             "created_at": r[3].isoformat() if r[3] else None, "usuario": r[4],
             "total": r[5], "ok": r[6], "con_diferencias": r[7], "sin_match": r[8], "error": r[9],
+            "puede_borrar": puede_validar and _es_suya(r[10], current_user),
         }
         for r in res.all()
     ]

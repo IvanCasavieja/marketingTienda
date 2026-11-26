@@ -17,18 +17,13 @@ Acá se escriben sin el prefijo.
 - **Solo hay UNA persona interna.** Con eso no se puede probar: una cadena de varios aprobadores, la
   vista Equipo con varias personas, ni que alguien apruebe una pieza que se hizo uno mismo (la regla
   es "nadie decide sobre lo que subió"). Para eso hay que crear más usuarios en `/admin` (otra zona).
-- **Importante (sospecha fuerte):** el README del equipo nocturno dice "pedirle una pieza a «Agencia
-  de prueba»" desde la pestaña Tareas. Pero «Crear tarea» → «¿Quién la hace?» ofrece **solo los tres
-  tableros fijos** (Publicis, Another Monday, Diseñadores; `GET /calendario/tableros` en
-  `backend/app/core/tableros.py`) más la gente de Tienda. «Agencia de prueba» no aparece. Caminos que
-  sí funcionan según el código:
-  1. Crear la tarea para «Publicis» y, en la tarea ya creada (desplegada), en el selector
-     «Quién la hace», elegir «Agencia de prueba (Agencia de prueba)». Sale un `confirm` ("Se la sacás
-     a Publicis…"); al aceptar, el servidor la pasa a la agencia «Agencia de prueba» y su cuenta la ve.
-  2. Armar una plantilla (las plantillas listan como agencias las empresas de las cuentas externas,
-     incluida «Agencia de prueba») y usarla en la acción.
-  3. Por API: `POST /calendario/barras/{id}/tareas` con `para: "agencia", agencia: "Agencia de prueba"`.
-  En el tablero del equipo esas tarjetas caen en la pestaña **«Otras»** (no son de los tres tableros).
+- **Pedirle una pieza a «Agencia de prueba»:** desde el 26/11/2026 (H-018 y H-090) «¿Quién la
+  hace?», en «Crear tarea» y en «Nueva tarjeta», ofrece los tres tableros fijos (Publicis, Another
+  Monday, Diseñadores, aunque no tengan cuentas) y además cualquier otra agencia con cuentas, también
+  una recién dada de alta (`GET /calendario/tableros`). Una tarjeta sin acción se pasa a otra agencia
+  desde la tarjeta («Cambiar quién la hace…»; `PATCH /calendario/tareas/{id}` con `agencia`). En el
+  tablero del equipo cada agencia tiene su pestaña; «Otras» queda para lo de Tienda y lo de
+  agencias de afuera. Antes «Agencia de prueba» no aparecía y sus tarjetas caían en «Otras».
 - **La IA está simulada** (`scripts/servidor_ia_simulada.py`): el control previo, la revisión de la
   pieza y el dictado contestan con reglas. Sirve para ver pantallas y permisos, no para juzgar lo que
   diría Claude.
@@ -236,7 +231,9 @@ Acá se escriben sin el prefijo.
     plantilla ancladas se corren solas y sale un toast con cuántas).
   - Eliminar → pide confirmación en el pie: "¿Eliminar <nombre>? Se van con ella N tareas, N piezas y N
     avisos (y el pedido de fotos). No se puede deshacer." → `DELETE /calendario/barras/{id}` (queda en
-    auditoría `calendario.borrar`).
+    auditoría `calendario.borrar`). Si alguna tarea ya tiene entregas, no se ofrece: el pie (ámbar)
+    dice "«<nombre>» no se puede eliminar: una de sus tareas ya tiene entregas…" y qué hacer, con
+    «Entendido»; el servidor contesta 409 igual (H-001, 26/11/2026).
   - Cerrar con `Esc`, la X, «Cancelar» o tocando afuera.
 - **Estados:** «Crear/Guardar» apagado si falta el nombre o las fechas no son válidas (fin antes del
   inicio, año irreal); el resumen de fechas se pone rojo. Error del servidor: toast. Fuera del alcance
@@ -247,11 +244,9 @@ Acá se escriben sin el prefijo.
 - **Código:** `frontend/components/calendario/EditorBarra.tsx`, `store.ts` (`guardarBarra`,
   `borrarBarra`); servidor `calendario.py` (`crear_barra`, `cambiar_barra`, `borrar_barra`).
 - **Puntos a mirar:**
-  - **Eliminar una acción borra en cascada sus tareas y, con ellas, las entregas con sus imágenes y
-    ZIP** (`ondelete="CASCADE"` en `calendario_entregas`, `calendario_versiones`,
-    `calendario_version_imagenes`, `calendario_version_zips`). La confirmación dice "N tareas", no que
-    se van imágenes entregadas por la agencia. Choca con la regla "las imágenes de las entregas no se
-    borran nunca" (sospecha fuerte).
+  - Resuelto (H-001, 26/11/2026): eliminar una acción con una tarea ya entregada se llevaba en cascada
+    las imágenes y los ZIP de la agencia. Ahora `borrar_barra` no la elimina (409, y la pantalla ni lo
+    ofrece). Queda en el calendario: si ya no va, quien gestiona las tareas las da por hechas.
   - Tocar afuera cierra sin preguntar y se pierde lo escrito.
   - Los campos de fecha son nativos (`type="date"`) acá, y en otros lugares se usa `CampoFecha`.
 
@@ -345,8 +340,9 @@ Acá se escriben sin el prefijo.
   - Vencimiento → `PATCH … {vence}` (suelta el ancla). Nombre (Enter guarda, Esc cancela) y detalle →
     `PATCH`.
   - Ordenar arrastrando la manija ⋮⋮ (mouse o dedo) o con `↑` `↓` → `PUT /calendario/barras/{id}/tareas/orden`.
-  - Borrar → confirmación en el mismo botón ("Sí, borrar" o "Borrar con sus entregas") → `DELETE
-    /calendario/tareas/{id}`.
+  - Borrar → confirmación en el mismo botón ("Sí, borrar" o "Sí, borrar con su tarjeta") → `DELETE
+    /calendario/tareas/{id}`. Con algo ya entregado no se borra: «Borrar» muestra "No se puede borrar:
+    ya tiene entregas…" y que se puede dar por hecha (el servidor contesta 409; H-001, 26/11/2026).
   - Plantilla sugerida → `POST /calendario/barras/{id}/plantilla`; «Ahora no» se guarda solo en el
     navegador (`calendario-plantillas-descartadas`).
   - Archivos de una tarea ya creada: `GET /calendario/tareas/{id}/adjuntos`, bajar `GET
@@ -364,10 +360,8 @@ Acá se escriben sin el prefijo.
   servidor `calendario.py` (`crear_tarea`, `cambiar_tarea`, `borrar_tarea`, `ordenar_tareas`,
   `_nacer_tarjetas`), `services/tipos_de_tarea.py`, `api/routes/adjuntos.py`, `services/adjuntos.py`.
 - **Puntos a mirar:**
-  - **Borrar una tarea con entregas borra sus imágenes y ZIP en cascada** (el botón dice "Borrar con
-    sus entregas", pero no "y las imágenes que mandó la agencia").
-  - «Agencia de prueba» no aparece en «¿Quién la hace?» (ver arriba). En general, cualquier agencia que
-    no sea una de las tres solo se puede elegir por plantilla o reasignando después.
+  - Resuelto (H-001, 26/11/2026): borrar una tarea con entregas se llevaba sus imágenes y ZIP en
+    cascada. Ahora `borrar_tarea` no la borra si ya se entregó algo (aunque sea solo un link).
   - Inconsistencia: el servidor y las plantillas siguen aceptando "Otra agencia (fuera de la
     plataforma)" (`para = 'fuera'`), pero «Crear tarea» ya no la ofrece.
   - El aviso "te pidió" a la agencia sale en el alta, **antes** de que terminen de subir los archivos:
@@ -564,8 +558,9 @@ Acá se escriben sin el prefijo.
   - Cabecera con ícono, título, bajada (para la agencia: "Lo que te pidieron… para mandarla a revisar,
     soltala en «Esperando feedback» y subí los materiales") y el **buscador** ("Buscar: Ciberlunes -
     Banners").
-  - Para el equipo, **pestañas de tableros**: Publicis, Another Monday, Diseñadores y «Otras» (si hay
-    tarjetas de otras agencias o de Tienda), cada una con su número.
+  - Para el equipo, **pestañas de tableros**: una por agencia (los tres de siempre, las demás con
+    cuentas y cualquiera que tenga tarjetas) y «Otras» (si hay tarjetas de Tienda o de agencias de
+    afuera), cada una con su número. Recuerda la última que se eligió (26/11/2026).
   - Las cinco columnas con su número y bajada; tarjetas con: acción (y color del mundo), nombre, tipo
     corto, opciones pedidas, fases compactas si hay varias, para cuándo ("Para el 25/11 · 3 días antes
     del Ciberlunes", rojo si venció), quién la hace (el equipo ve el nombre de la agencia), a quién le toca
@@ -620,7 +615,6 @@ Acá se escriben sin el prefijo.
     arrastre).
   - Después de la primera carga, si se corta la conexión **no se avisa**: el tablero queda viejo en
     silencio (solo hay mensaje si nunca cargó).
-  - Las tarjetas de agencias que no son las tres (como «Agencia de prueba») van a «Otras».
 
 ---
 
@@ -630,6 +624,8 @@ Acá se escriben sin el prefijo.
   devuelve o se cambia la configuración.
 - **Quién la ve:** quien puede ver la tarea (el equipo del mundo; la agencia dueña). Vive una sola vez en
   el layout: la abren el tablero, la ficha de la acción («Abrir la tarjeta»), Mis tareas y la campanita.
+  En el tablero, la abierta queda en la dirección (`/entregas?tarea=…`): recargar, o volver a entrar
+  cuando venció la sesión, la abre de nuevo; al cerrarla se saca (H-039 y H-040, 26/11/2026).
 - **Qué hay en la pantalla (modo «ver»):**
   - Encabezado: tipo, nombre, acción, "Vence el / Venció el", X.
   - 1) Línea de fases (si hay varias), "Ronda 2 · Volvió con cambios" (en rojo), el **próximo paso** en
@@ -687,11 +683,14 @@ Acá se escriben sin el prefijo.
   máximo es 40 MB. Si es más grande, pegá el link de WeTransfer."; ZIP sin imágenes ni PDF; link sin http;
   error: "No se pudo entregar. Revisá la conexión y probá de nuevo: no se pierde nada."; ZIP no guardado
   por espacio: toast de advertencia (la entrega se hace igual).
-- **Código:** `entregas/FormularioEntrega.tsx`, `LoQueVioLaIA.tsx`, `lib/calendario/zip.ts`, `piezas.ts`,
-  `control-previo.ts`; servidor `entregas.py` (`entregar`, `control_previo`), `services/revision_ia.py`,
-  `services/espacio.py`.
-- **Puntos a mirar:** "Cancelar avisa si hay algo sin mandar" según el comentario; no lo verifiqué en
-  pantalla.
+- **Si se sale con algo cargado:** Cancelar («¿Descartar lo que cargaste?») y «atrás» («¿Salir sin
+  mandar?») preguntan y, si se dice que sí, se descarta; recargar o cerrar la pestaña preguntan con el
+  aviso del navegador (el iPhone no pregunta). Lo cargado (la nota, el link, el porqué y las imágenes sueltas; el ZIP no) queda guardado en
+  ese navegador un día y vuelve al entregar de nuevo esa tarjeta, con «Recuperamos lo que estabas
+  cargando» y «Descartar». Se borra al mandar, al descartar y al cerrar sesión (H-039, 26/11/2026).
+- **Código:** `entregas/FormularioEntrega.tsx`, `LoQueVioLaIA.tsx`, `borradores.ts`, `lib/calendario/zip.ts`,
+  `piezas.ts`, `control-previo.ts`, `borrador.ts`; servidor `entregas.py` (`entregar`, `control_previo`),
+  `services/revision_ia.py`, `services/espacio.py`.
 
 #### Revisar (modo «revisar»: aprobar o pedir cambios)
 - **Quién:** el aprobador de turno, o quien tiene `calendario.tareas` como respaldo. Nunca una cuenta
@@ -795,8 +794,6 @@ Acá se escriben sin el prefijo.
 - **Puntos a mirar:**
   - Con alcance habilitado, la agencia ve los nombres y piezas de **todas** las acciones de su ventana, no
     solo las suyas (es el diseño de la 0070, pero conviene tenerlo presente al probar permisos).
-  - Si la empresa de la cuenta no coincide con uno de los tres tableros, el equipo no puede elegirla en
-    «Crear tarea».
 
 ---
 
@@ -819,8 +816,8 @@ Acá se escriben sin el prefijo.
      pidió: Ciberlunes 2026 - Banners (Header, Slider). Es para el …" en la campanita de **cada cuenta de
      Publicis** (sin mail); aviso al responsable de Tienda (con mail si lo tiene prendido); el semáforo de
      la acción cuenta la tarea pendiente.
-   - **5b (entorno de pruebas):** despliega la tarea, en «Quién la hace» elige «Agencia de prueba (Agencia
-     de prueba)», acepta el `confirm`. La tarjeta pasa a la agencia de prueba (pestaña «Otras» del equipo).
+   - **5b (entorno de pruebas):** en «¿Quién la hace?» elige directo «Agencia de prueba» (está desde el
+     26/11/2026). La tarjeta va a la pestaña «Agencia de prueba» del equipo.
 6. **Agencia** entra con su cuenta → cae en **«Tablero de Agencia de prueba»**. Ve la tarjeta en
    Ingresado y el aviso en la campanita. Toca la tarjeta: lee «Lo que se pidió» y baja el Excel.
 7. Arrastra la tarjeta a **En proceso** (arrancar). Después la arrastra a **Esperando feedback** (o toca

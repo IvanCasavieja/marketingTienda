@@ -61,19 +61,21 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
 
 
 # Las tablas que se pueden compactar: las que la plataforma vacía sola (la
-# purga de cenefas) y las de Clientes VIP, que cada carga reemplaza (26/11/2026:
-# recargar 2025 y enero-octubre 2026 dejó 22 MB de filas viejas). Y las
-# plantillas de cenefa, cuando sobra lugar de las borradas (ver
-# compactar_plantillas_si_sobra_lugar en services/cenefas/jobs.py). Por nombre
-# fijo, nunca algo que venga de afuera.
+# purga de cenefas y la de las validaciones de RRSS) y las de Clientes VIP, que
+# cada carga reemplaza (26/11/2026: recargar 2025 y enero-octubre 2026 dejó
+# 22 MB de filas viejas). Y las plantillas de cenefa, cuando sobra lugar de las
+# borradas (ver compactar_plantillas_si_sobra_lugar en services/cenefas/jobs.py).
+# Por nombre fijo, nunca algo que venga de afuera.
 TABLAS_COMPACTABLES = frozenset({
     "cenefa_jobs", "cenefa_templates_v2",
+    "rrss_validaciones", "rrss_validacion_paginas", "rrss_validacion_imagenes",
     "vip_cliente_mes", "vip_clientes", "vip_mes_dimension", "vip_detalle",
 })
 
 
-class TablaEnUso(RuntimeError):
-    """La tabla estaba en uso y no se compactó: queda para la próxima."""
+class TablaEnUso(Exception):
+    """La tabla se estaba usando y `compactar` no la tocó: queda para la
+    próxima (ver su docstring)."""
 
 
 async def compactar(tabla: str) -> tuple[int, int]:
@@ -89,12 +91,14 @@ async def compactar(tabla: str) -> tuple[int, int]:
 
     Va con SKIP_LOCKED: si alguien está usando la tabla no espera, porque
     mientras esperara su turno todos los que llegaran detrás (una pantalla
-    abriéndose) quedarían colgados. Es un lock_timeout de cero que no depende
-    de la sesión: con el pooler de Supabase en modo transacción un `SET
-    lock_timeout` puede ir a una conexión y el VACUUM a otra, y SET LOCAL
-    necesita una transacción. En ese caso levanta TablaEnUso. Se sabe porque
-    el archivo de la tabla (pg_relation_filenode) sigue siendo el mismo:
-    VACUUM FULL siempre escribe uno nuevo."""
+    abriéndose, hasta un SELECT) quedarían colgados: pasaba con una placa de
+    RRSS a medio validar (visto el 26/11/2026 contra Postgres). Es un
+    lock_timeout de cero que no depende de la sesión: con el pooler de
+    Supabase en modo transacción un `SET lock_timeout` puede ir a una conexión
+    y el VACUUM a otra, y SET LOCAL necesita una transacción. En ese caso
+    levanta TablaEnUso. Se sabe porque el archivo de la tabla
+    (pg_relation_filenode) sigue siendo el mismo: VACUUM FULL siempre escribe
+    uno nuevo."""
     if tabla not in TABLAS_COMPACTABLES:
         raise ValueError(f"No se compacta {tabla!r}")
     from app.core.database import engine  # acá: evita importar la base al cargar el módulo

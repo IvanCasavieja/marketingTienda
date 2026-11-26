@@ -9,14 +9,14 @@
  * dónde se puede soltar una tarjeta.
  */
 import {
-  COLUMNAS_DEL_TABLERO, avisoDeAgenciasSinCuentas, conservarArchivadas, deQuien, filtroVigente, grupoDeQuien,
-  modoAlTocar, opcionesDeQuien, ordenar, pestanasDeTableros, queHaceMover, quienLaHaceTexto, rotuloDePieza,
-  seMovioElDedo, sePuedeSoltar, tableroDeTarjeta, textoDeFecha,
+  COLUMNAS_DEL_TABLERO, OTRAS, avisoDeAgenciasSinCuentas, cambioDeQuien, conservarArchivadas, deQuien, enLaPestana,
+  filtroVigente, grupoDeQuien, modoAlTocar, opcionesDeQuien, ordenar, pestanasDeTableros, queHaceMover,
+  quienDeLaTarjeta, quienLaHaceTexto, rotuloDePieza, seMovioElDedo, sePuedeSoltar, tableroDeTarjeta, textoDeFecha,
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import {
-  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, textoDeAprobar,
-  type ResumenEntrega, type Tarjeta,
+  avanzarSinDecirQueFalta, botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, faltanAlAprobar, fechaDia,
+  pasoEnLaVista, proximoPaso, seAproboSinEllas, textoDeAprobar, type ResumenEntrega, type Tarjeta,
 } from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
@@ -212,6 +212,40 @@ igual('las dos escrituras suman en la misma pestaña', pestanasDeTableros([
 igual('y en el filtro «¿Quién la hace?» son una sola agencia',
   grupoDeQuien({ tipo: 'agencia', nombre: 'Disenadores' }).clave, grupoDeQuien({ tipo: 'agencia', nombre: 'Diseñadores' }).clave)
 
+// Una pestaña por agencia (26/11/2026, H-090): la que no es de las tres va
+// con su nombre y no a «Otras», esté o no en la lista del servidor. «Otras»
+// queda para lo de Tienda y lo de una agencia de afuera.
+const agencias = [...tableros, 'Agencia de prueba']
+const variasAgencias = [
+  tarjetaDe({ tipo: 'agencia', nombre: 'Publicis' }), tarjetaDe({ tipo: 'agencia', nombre: 'agencia de  PRUEBA' }),
+  tarjetaDe({ tipo: 'agencia', nombre: 'Agencia Pampa' }), tarjetaDe({ tipo: 'agencia', nombre: ' agencia pampa' }),
+  tarjetaDe({ tipo: 'tienda', nombre: 'Fer' }), tarjetaDe({ tipo: 'fuera', nombre: 'Estudio X', carga: 'Fer' }),
+]
+const pestanasDeVarias = pestanasDeTableros(variasAgencias, agencias)
+igual('cada agencia en su pestaña, por su nombre', pestanasDeVarias.map(p => `${p.nombre}:${p.cuantas}`),
+  ['Publicis:1', 'Another Monday:0', 'Diseñadores:0', 'Agencia de prueba:1', 'Agencia Pampa:2', 'Otras:2'])
+ok('la de la agencia de prueba va en su pestaña', enLaPestana(variasAgencias[1], 'Agencia de prueba', pestanasDeVarias))
+ok('y no en Otras', !enLaPestana(variasAgencias[1], OTRAS, pestanasDeVarias))
+ok('una agencia que no está en la lista también tiene la suya', enLaPestana(variasAgencias[3], 'Agencia Pampa', pestanasDeVarias))
+ok('lo de Tienda va en Otras', enLaPestana(variasAgencias[4], OTRAS, pestanasDeVarias))
+ok('lo de una agencia de afuera, también', enLaPestana(variasAgencias[5], OTRAS, pestanasDeVarias))
+igual('sin tarjetas igual está cada agencia de la lista', pestanasDeTableros([], agencias).map(p => p.nombre), agencias)
+
+// Pasar una tarjeta a otra agencia (26/11/2026, H-018): el valor del selector
+// y lo que se le manda al servidor.
+igual('la de una agencia, escrita como en la lista', quienDeLaTarjeta({ tipo: 'agencia', nombre: 'PUBLICIS' }, null, agencias), 'agencia:Publicis')
+igual('una agencia que no está en la lista, con su nombre', quienDeLaTarjeta({ tipo: 'agencia', nombre: 'Agencia Pampa' }, null, agencias), 'agencia:Agencia Pampa')
+igual('aunque la tenga alguien de la agencia, es de la agencia', quienDeLaTarjeta({ tipo: 'agencia', nombre: 'Publicis' }, 7, agencias), 'agencia:Publicis')
+igual('la de alguien de Tienda', quienDeLaTarjeta({ tipo: 'tienda', nombre: 'Fer' }, 12, agencias), 'persona:12')
+igual('la de una agencia de afuera', quienDeLaTarjeta({ tipo: 'fuera', nombre: 'Estudio X' }, 12, agencias), 'fuera')
+igual('de Publicis a la agencia de prueba: a la agencia entera',
+  cambioDeQuien('agencia:Publicis', 'agencia:Agencia de prueba'), { agencia: 'Agencia de prueba' })
+igual('de alguien de Tienda a una agencia', cambioDeQuien('persona:12', 'agencia:Publicis'), { agencia: 'Publicis' })
+igual('de una agencia a alguien de Tienda', cambioDeQuien('agencia:Publicis', 'persona:12'), { asignadoA: 12 })
+igual('la misma agencia escrita distinto no es un cambio', cambioDeQuien('agencia:Publicis', 'agencia:publicis '), null)
+igual('la misma persona tampoco', cambioDeQuien('persona:12', 'persona:12'), null)
+igual('lo de afuera, sin tocar, tampoco', cambioDeQuien('fuera', 'fuera'), null)
+
 // La push (17/11/2026): título, link de destino y fecha y hora, leída como en el servidor.
 const push: TipoDeTarea = {
   clave: 'push', nombre: 'Push', opciones: [], otras: false, medida: null, bajada: null, pieza: 'otro',
@@ -272,12 +306,41 @@ igual('faltan piezas: Avanzar', botonGrandeAlRevisar(4, 1, ['Header (mobile)']),
 igual('no se sabe (el pedido no tiene piezas): Avanzar', botonGrandeAlRevisar(0, 2, undefined), 'avanzar')
 igual('solo un link: Avanzar', botonGrandeAlRevisar(4, 0, undefined), 'avanzar')
 igual('vino todo: Aprobar y terminar', botonGrandeAlRevisar(4, 4, []), 'terminar')
-// H-035 (25/11/2026): sin medir, la lista llega vacía; una imagen para dos piezas no es «todas».
-igual('una imagen para dos piezas, aunque no se haya medido: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
-igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP): Aprobar y terminar',
-  botonGrandeAlRevisar(10, 4, undefined, 4), 'terminar')
+// H-035 (25/11/2026): «Ya están todas las piezas del pedido» con el carrito
+// sin venir. La lista vacía es solo lo medido; sin medir (null o sin mandar)
+// no se sabe, aunque las imágenes alcancen.
+igual('una imagen para dos piezas: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
+igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP, medido): Aprobar y terminar',
+  botonGrandeAlRevisar(10, 4, [], 4), 'terminar')
+igual('un ZIP con el folleto en PDF (sin medir: el servidor llena la versión con sus páginas): Avanzar',
+  [botonGrandeAlRevisar(3, 4, null, 4), botonGrandeAlRevisar(3, 4, undefined, 4)], ['avanzar', 'avanzar'])
+// H-036 (25/11/2026): con todas las piezas, «¿Falta algo? Avanzar» le decía
+// a la agencia «entregá lo que falta» y no faltaba nada. Ahí, hay que decir
+// qué falta (backend/tests/test_tablero_agencia.py, los mismos casos).
+igual('avanzar con todo y sin decir qué falta: se frena',
+  [avanzarSinDecirQueFalta('terminar', ''), avanzarSinDecirQueFalta('terminar', '  \n ')], [true, true])
+igual('diciendo qué falta, sí', avanzarSinDecirQueFalta('terminar', 'Falta el PDF con las medidas'), false)
+igual('si falta algo (o no se sabe), Avanzar anda sin escribir nada', avanzarSinDecirQueFalta('avanzar', ''), false)
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
+// H-023 (25/11/2026): «¿Ya está todo? Aprobar y terminar» aprobaba sin
+// preguntar con «Falta 1 pieza del pedido» al lado. Ahora pregunta, y dice cuáles.
+igual('aprobar con una pieza que falta: pregunta', faltanAlAprobar('aprobada', ['Carrito']),
+  { count: 1, piezas: 'Carrito', otras: 0 })
+const diezQueFaltan = ['Carrito', 'Checkout', 'Cocardas', 'Header (mobile)', 'Dobles (web)', 'Dobles (mobile)', 'Quíntuples',
+  'Séxtuples', 'Séptuples', 'Óctuples']
+igual('con muchas, las primeras tres y cuántas más («…, Cocardas y 7 más»)', faltanAlAprobar('aprobada', diezQueFaltan),
+  { count: 10, piezas: 'Carrito, Checkout, Cocardas', otras: 7 })
+igual('con cuatro, las cuatro: «y 1 más» ocupa lo mismo que nombrarla', faltanAlAprobar('aprobada', diezQueFaltan.slice(0, 4)),
+  { count: 4, piezas: 'Carrito, Checkout, Cocardas, Header (mobile)', otras: 0 })
+igual('sin piezas que falten (o sin medir): no pregunta',
+  [faltanAlAprobar('aprobada', []), faltanAlAprobar('aprobada', null), faltanAlAprobar('aprobada', undefined)], [null, null, null])
+igual('avanzar y pedir cambios no preguntan', [faltanAlAprobar('avanzar', ['Carrito']), faltanAlAprobar('cambios', ['Carrito'])],
+  [null, null])
+// Y una vez aprobada, lo que faltaba es un dato (en gris), no un aviso en rojo.
+igual('lo que faltaba, en gris solo si se aprobó',
+  (['aprobada', 'revision', 'avanzar', 'cambios', 'reemplazada'] as const).map(seAproboSinEllas),
+  [true, false, false, false, false])
 // El día de cada ronda, en el renglón cerrado.
 igual('el día de una ronda', [fechaDia(null), fechaDia('x'), fechaDia('2026-11-19T12:00:00')], ['', '', '19/11'])
 

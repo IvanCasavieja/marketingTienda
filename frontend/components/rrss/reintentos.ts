@@ -20,6 +20,13 @@ export function esTransitorio(e: unknown): boolean {
   return [408, 425, 429, 502, 503, 504].includes(respuesta.status ?? 0);
 }
 
+/** ¿La validación ya no está? Un 404: se borró sola (duran 24 horas, desde el
+ *  26/11/2026 no hay historial) o la borró alguien. Reintentar no la trae de
+ *  vuelta: se dice por qué, con rrss.yaNoEsta, en vez del error pelado. */
+export function yaNoEsta(e: unknown): boolean {
+  return (e as { response?: { status?: number } } | null)?.response?.status === 404;
+}
+
 export async function conReintentos<T>(fn: () => Promise<T>, alReintentar?: (intento: number) => void): Promise<T> {
   for (let intento = 0; ; intento++) {
     try {

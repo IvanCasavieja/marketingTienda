@@ -501,7 +501,9 @@
       "generateError": "Error generating the file",
       "downloaded": "Banner generated and downloaded",
       "confirmError": "Error confirming",
-      "confirmTimeout": "Generation is taking too long. Try again or with fewer products."
+      "confirmTimeout": "Generation is taking too long. Try again or with fewer products.",
+      "noResponse": "We couldn't check how the generation is going because the server isn't responding. Check your connection and try again.",
+      "downloadError": "The banner was generated but couldn't be downloaded. Try «Download again»."
     },
     "usarLegales": "Use legal text",
     "usarLegalesHint": "Leave off if the template already has the legal text in the design.",
@@ -541,7 +543,7 @@
         "error": "error"
       },
       "verifTitulo": "Did the signs come out right?",
-      "verifDetalle": "Open the file and check it. If you confirm, the file is kept so you can view it anytime and the run counts as verified in the report. Unconfirmed files are deleted after 7 days — the numbers remain.",
+      "verifDetalle": "Open the file and check it. If you confirm, the run counts as verified in the report. The file is deleted after 24 hours, confirmed or not — the numbers remain.",
       "verifSi": "Yes, they're good",
       "verifNo": "No, something's wrong",
       "verifOk": "{{n}} run(s) verified: they count in the report",
@@ -1016,9 +1018,18 @@
     "laPlanilla": "The spreadsheet",
     "sinParejaNinguna": "I did not find this post {{fuente}}: no row is close enough.",
     "sinParejaAmbiguo": "More than one row {{fuente}} looks equally close. I am not picking one: check it yourself.",
-    "fuenteNombre": { "mailing": "the mailing", "planilla": "the spreadsheet" },
-    "fuenteDe": { "mailing": "of the mailing", "planilla": "of the spreadsheet" },
-    "fuenteEn": { "mailing": "in the mailing", "planilla": "in the spreadsheet" },
+    "fuenteNombre": {
+      "mailing": "the mailing",
+      "planilla": "the spreadsheet"
+    },
+    "fuenteDe": {
+      "mailing": "of the mailing",
+      "planilla": "of the spreadsheet"
+    },
+    "fuenteEn": {
+      "mailing": "in the mailing",
+      "planilla": "in the spreadsheet"
+    },
     "campoFecha": "Campaign dates",
     "planillaColumnasNombres": "CatTi looks for, whatever they are called: {{columnas}}.",
     "planillaEntendio": "This is how CatTi read the spreadsheet:",
@@ -1050,7 +1061,7 @@
       ]
     },
     "tabNueva": "New check",
-    "tabHistorial": "History",
+    "tabHistorial": "Today's checks",
     "placas": "Posts",
     "placasHint": "Drop a folder or choose the images ({{tipos}})",
     "elegirImagenes": "Pick images",
@@ -1071,8 +1082,8 @@
     "errorPlaca": "I could not check this post",
     "errorCerrar": "The check could not be closed",
     "errorAbrir": "That check could not be opened",
-    "errorHistorial": "The history could not be loaded",
-    "volverHistorial": "Back to history",
+    "errorHistorial": "Today's checks could not be loaded",
+    "volverHistorial": "Back to today's checks",
     "nuevaValidacion": "New check",
     "pagina": "Page {{n}}",
     "sinRecorte": "I could not crop this product from the mailing",
@@ -1127,8 +1138,12 @@
     "descargarExcel": "Download corrections Excel",
     "armandoExcel": "Building the Excel…",
     "errorExcel": "The Excel could not be built. Try again.",
-    "historialVacio": "There are no checks yet.",
+    "historialVacio": "No checks today.",
+    "deHoyAviso": "Each check is deleted automatically after 24 hours. Here you can reopen one if you closed the tab; if you'll need the Excel, download it first.",
+    "yaNoEsta": "That check is no longer available: checks are deleted automatically after 24 hours. If you need it, run it again.",
     "borrarConfirm": "Delete the check for \"{{nombre}}\"? This cannot be undone.",
+    "borrarSoloQuienLaCreo": "Only the person who ran the check can delete it.",
+    "errorBorrar": "The check could not be deleted. Try again.",
     "hFecha": "Date",
     "hUsuario": "User",
     "hResultado": "Result",
@@ -1408,6 +1423,68 @@
   },
   "calendario": {
     "accessDenied": "You don't have access to the calendar",
-    "loading": "Loading the calendar…"
+    "loading": "Loading the calendar…",
+    "quienLaHace": {
+      "titulo": "Who does it?",
+      "agencias": "Agencies",
+      "tienda": "Tienda Inglesa",
+      "cargando": "Loading…",
+      "elegir": "Choose who does it",
+      "sinUsuarios": "{{agencia}} (no users yet)",
+      "deAfuera": "{{agencia}} (outside agency)",
+      "quienLaHaceHoy": "Whoever does it now",
+      "pasaALaAgencia": "It moves to {{agencia}}'s board and we'll let them know.",
+      "pasaALaAgenciaSinUsuarios": "It moves to {{agencia}}'s board: they'll see it once they have users.",
+      "pasaAPersona": "{{persona}} will do it.",
+      "dejaLaAgencia": "It leaves {{agencia}}'s board: {{persona}} will do it.",
+      "sinLista": "We couldn't load the list of agencies. Close this and open it again to retry."
+    },
+    "tarjetaSinAccion": {
+      "cambiar": "Change who does it, the name, the date or the person in charge"
+    },
+    "borrar": {
+      "si": "Yes, delete",
+      "siConTarjeta": "Yes, delete it and its card",
+      "tareaConEntregas": "It can't be deleted: it already has deliveries, and delivered work is never deleted because it's the history of the pieces.",
+      "tareaSiYaNoVa": "If it's no longer needed, mark it as done: its card goes to Archived with everything delivered.",
+      "accionConEntregas_one": "“{{nombre}}” can't be deleted: one of its tasks already has deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark it as done: its card goes to Archived with everything delivered.",
+      "accionConEntregas_other": "“{{nombre}}” can't be deleted: {{count}} of its tasks already have deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark them as done: their cards go to Archived with everything delivered.",
+      "entendido": "Got it"
+    },
+    "entrega": {
+      "recuperado": "We brought back what you were getting ready to deliver.",
+      "recuperadoSinZip": "We brought back what you were getting ready to deliver. The ZIP “{{zip}}” is not kept: choose it again.",
+      "descartar": "Discard"
+    },
+    "revisar": {
+      "faltanAlAprobar_one": "1 piece of the order is missing: {{piezas}}. Approve anyway?",
+      "faltanAlAprobar_other": "{{count}} pieces of the order are missing: {{piezas}}. Approve anyway?",
+      "faltanAlAprobarYOtras_other": "{{count}} pieces of the order are missing: {{piezas}} and {{otras}} more. Approve anyway?",
+      "aprobarIgual": "Approve anyway",
+      "seguirRevisando": "Keep reviewing",
+      "seAproboSin_one": "Approved without 1 piece of the order",
+      "seAproboSin_other": "Approved without {{count}} pieces of the order",
+      "avanzarConTodo": "All the pieces of the order are already here: if something is missing, write what in the comment, so the agency knows what to send. If everything is there, approve it."
+    }
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} row won't be loaded:",
+      "noEntran_other": "{{n}} rows won't be loaded:",
+      "fila": "Row {{fila}}",
+      "filaDe": "Row {{fila}} in {{archivo}}",
+      "motivo": {
+        "sinCliente": "it has no customer number.",
+        "sinFecha": "it has no date.",
+        "fechaIlegible": "the date \"{{dato}}\" can't be read.",
+        "mesInexistente": "the date \"{{dato}}\" has a month that doesn't exist.",
+        "fechaVieja": "the date \"{{dato}}\" is before 2000: check the year.",
+        "fechaFutura": "the date \"{{dato}}\" hasn't come yet."
+      },
+      "yMas_one": "And {{n}} more row.",
+      "yMas_other": "And {{n}} more rows.",
+      "queHacer": "To include them, fix them in the file and load it again. If not, load the rest.",
+      "ningunaSirve": "There are no rows left to load: fix the file and load it again."
+    }
   }
 }

@@ -813,10 +813,20 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   mailing (PDF/imagen) o la planilla (Excel) de la campaña y marca diferencias
   de precio, descripción, legales, fecha.
 - **Quién la ve:** `rrss.view` (menú "REDES SOCIALES → Validación de RRSS").
-  Solo Tienda Inglesa. Validar y borrar: `rrss.validate`; sin él solo se ve el
-  Historial.
+  Solo Tienda Inglesa. Validar: `rrss.validate`; sin él solo se ve "Las de
+  hoy". Borrar: con `rrss.validate`, solo las propias (superadmin, todas); el
+  tacho aparece solo donde el servidor deja (`puede_borrar` de la lista).
+- **No hay historial (26/11/2026):** cada validación dura 24 horas, terminada o
+  no, y después se borra entera (páginas del mailing, placas y recortes) y se
+  compactan las tablas (`services/rrss/retencion.py`, `RRSS_RETENCION_HORAS`).
+  Ivan: «no tiene sentido que mantengamos historial de validaciones». La
+  compactación no traba a nadie: si una tabla está en uso, o lo recién borrado
+  quedó retenido por una transacción más vieja, se compacta en la pasada
+  siguiente (una por hora), así que el lugar puede tardar una hora en volver.
+  Si una validación vence mientras CatTi mira una placa, esa placa dice que ya
+  no está.
 - **Qué hay en la pantalla:** título y subtítulo; pestañas "Nueva validación"
-  / "Historial" (o "Volver al historial" / "Nueva validación" al revisar).
+  / "Las de hoy" (o "Volver a las de hoy" / "Nueva validación" al revisar).
   Carga (`UploadStep`): "Mailing o planilla" (uno solo; arrastrar o elegir),
   explicación de cómo se lee la planilla y su tope de filas; "Fecha de la
   campaña"; "Placas" (arrastrar carpeta, "Elegir imágenes", "Elegir carpeta",
@@ -825,8 +835,10 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   "CatTi está leyendo el mailing/la planilla…". Revisión (`ReviewStep`): placa
   por placa con estado, campos Coincide / Distinto / Falta en la placa / Sobra,
   recorte del mailing o tira de la planilla, "Siguiente con problemas",
-  reintentar las que dieron error, "Descargar Excel de correcciones". Historial:
-  tabla con abrir y borrar.
+  reintentar las que dieron error, "Descargar Excel de correcciones". Las de
+  hoy: un renglón que dice que se borran solas a las 24 horas y la tabla con
+  abrir y borrar, para retomar una si se cerró la pestaña (en el celular la
+  tabla se desliza de costado para llegar a "Abrir").
 - **Qué se puede hacer:** `GET /rrss/config`, `POST /rrss/validaciones`
   (fuente + legales, hasta 5 min), `POST /rrss/validaciones/{id}/imagenes` (3
   placas a la vez, con reintentos), `POST /rrss/validaciones/{id}/cerrar`,
@@ -835,21 +847,32 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
 - **Estados:** sin configuración: "No pude cargar la configuración de la
   pantalla. Recargá la página." (la carga no se dibuja); servidor caído: "El
   servidor no responde…"; error de fuente: "No pude leer el archivo…"; error por
-  placa: "No pude validar esta placa"; historial vacío: "Todavía no hay validaciones."
+  placa: "No pude validar esta placa"; ninguna de hoy: "Hoy no hay
+  validaciones."; abrir o bajar el Excel de una que ya se borró: "Esa
+  validación ya no está: las validaciones se borran solas a las 24 horas…"
+  (y la lista se vuelve a pedir, ya sin ella); si se borra mientras se valida
+  (o al "Reintentar" al otro día): el mismo aviso, una sola vez, y vuelve a
+  la carga con los mismos archivos; borrar una que el servidor rechaza: "Solo
+  quien creó la validación puede borrarla." (la lista queda).
 - **Celular:** pocas clases responsive (algunas en carga y revisión).
 - **Datos para probarla:** `backend/tests/data/planilla_rrss.xlsx` como fuente
   (leer la planilla no usa IA) + cualquier imagen como placa. En pruebas, la
   validación de cada placa va a dar error (CatTi usa la API real): sirve para
-  ver errores, reintentos y el historial.
+  ver errores, reintentos y la lista de las de hoy.
 - **Código:** `frontend/app/(dashboard)/redes-sociales/validacion/page.tsx`,
-  `components/rrss/*` (ReviewStep 828 líneas, UploadStep 444, Historial),
-  `backend/app/api/routes/rrss.py`, `services/rrss/*`, `app/data/rrss_archivos.json`.
+  `components/rrss/*` (ReviewStep 828 líneas, UploadStep 444, Historial = la
+  lista de las de hoy), `backend/app/api/routes/rrss.py`, `services/rrss/*`,
+  `app/data/rrss_archivos.json`.
 - **Puntos a mirar:**
-  - Sospecha fuerte: en el Historial el botón borrar aparece en todas las filas,
-    pero el servidor solo deja borrar las propias (o superadmin). Si falla, toda
-    la lista se reemplaza por "No se pudo cargar el historial".
-  - Sin confirmar: qué pasa con una validación que se abandona a mitad de camino
-    (queda sin cerrar).
+  - Arreglado el 26/11/2026 (Ramiro, visto en el navegador): el tacho aparecía
+    en las validaciones de todas las personas y, al tocarlo en una ajena, el
+    403 reemplazaba la lista entera por "No se pudieron cargar las validaciones
+    de hoy" (H-016). En el celular (390 px) la tarjeta cortaba la tabla:
+    "Abrir" quedaba fuera de la pantalla, sin forma de llegar. Y si la
+    validación se borraba mientras se validaba, terminaba en "El servidor dejó
+    de responder… Lo que ya se revisó quedó guardado. Apretá Reintentar".
+  - Una validación que se abandona a mitad de camino queda sin cerrar hasta
+    que se borra sola, a las 24 horas.
 
 ---
 
@@ -995,8 +1018,9 @@ Quién: `rrss.validate`, en Tienda Inglesa.
 3. Ve las placas analizándose de a 3; las que fallan se pueden reintentar.
 4. Recorre con "Siguiente con problemas"; descarga el "Excel de correcciones"
    para la agencia.
-5. Repercute: queda en el Historial para todo el equipo con `rrss.view`; solo
-   quien la creó (o un superadmin) puede borrarla.
+5. Repercute: queda 24 horas en "Las de hoy" para todo el equipo con
+   `rrss.view` y después se borra sola, con sus imágenes; antes, solo quien la
+   creó (o un superadmin) puede borrarla.
 
 ### I. Corregir el Diccionario y verlo en el Convertidor
 

@@ -47,6 +47,7 @@ from sqlalchemy.orm import aliased
 from app.models.calendario import CalendarioBarra, CalendarioTarea
 from app.models.entregas import (
     CalendarioDecision, CalendarioEntrega, CalendarioFase, CalendarioVersion, CalendarioVersionImagen,
+    CalendarioVersionZip,
 )
 from app.models.notificacion import Notificacion
 
@@ -186,10 +187,16 @@ LARGO_POR_QUE = 500
 
 def faltan_validas(texto: str | None) -> list[str] | None:
     """La lista de piezas que faltan, como llega en el formulario (JSON): los
-    nombres limpios, sin repetidos, en su orden. None si no falta nada.
-    ValueError con el mensaje para la persona. Pura."""
+    nombres limpios, sin repetidos, en su orden. La lista vacía es que la
+    pantalla midió y no falta ninguna; None (no vino), que no se pudo medir y
+    no se sabe. Hasta el 26/11/2026 las dos cosas se guardaban igual y al
+    revisar se leía «Ya están todas las piezas del pedido» con el carrito sin
+    venir (H-035 de la auditoría del 25/11/2026). ValueError con el mensaje
+    para la persona. Pura."""
+    if texto is None or not texto.strip():
+        return None
     try:
-        lista = json.loads(texto or "[]")
+        lista = json.loads(texto)
     except ValueError:
         lista = None
     if not isinstance(lista, list) or not all(isinstance(x, str) for x in lista):
@@ -203,7 +210,7 @@ def faltan_validas(texto: str | None) -> list[str] | None:
             raise ValueError(f"«{nombre[:30]}…» es demasiado largo para el nombre de una pieza")
         if nombre and nombre not in limpias:
             limpias.append(nombre)
-    return limpias or None
+    return limpias
 
 
 def por_que_faltan_valido(texto: str | None, faltan: list[str] | None) -> str | None:
@@ -500,6 +507,18 @@ def con_ok(momento: str, ronda: int) -> bool:
     return momento == "produccion" and (ronda or 0) > 0
 
 
+def vinieron_todas(piezas_pedidas: int, imagenes: int, faltan: list[str] | None, tope: int = MAX_IMAGENES) -> bool:
+    """Si en una versión ya vinieron todas las piezas del pedido: el pedido
+    tiene piezas, la versión trae una imagen por pieza (hasta el tope de
+    imágenes: lo demás viene en el ZIP) y la pantalla midió al entregar que
+    no falta ninguna (`faltan` vacía; None es que no se pudo medir). Ahí,
+    «Avanzar» (seguir con lo que falta) va solo diciendo qué falta (H-036).
+    Lo mismo que botonGrandeAlRevisar en frontend/lib/calendario/entregas.ts.
+    Pura."""
+    alcanzan = imagenes > 0 and imagenes >= min(piezas_pedidas, tope)
+    return piezas_pedidas > 0 and alcanzan and faltan is not None and not faltan
+
+
 def nombre_de_fase_nueva(nombres: list[str]) -> str:
     """El nombre de la fase que abre una devolución: "Entrega N", donde N es
     la cantidad de fases que va a haber. La que nace con la pieza se llama
@@ -529,6 +548,47 @@ def estado_de_tarea(momento: str, hay_versiones: bool, actual: str) -> str:
     if hay_versiones:
         return "en-proceso"
     return actual if actual in ("pendiente", "en-proceso") else "pendiente"
+
+
+_LO_ENTREGADO_SE_QUEDA = "y lo entregado no se borra nunca porque es el histórico de las piezas"
+
+
+def por_que_no_se_borra(tareas_con_entregas: int, archivos: int, *, accion: bool) -> str | None:
+    """Por qué no se puede borrar una tarea (o una acción entera) en la que ya
+    se entregó algo, dicho para quien la quiere borrar; None si no se entregó
+    nada y se puede. Pura.
+
+    Las imágenes y los ZIP de las entregas no se borran nunca (Ivan,
+    19/11/2026: son el histórico de piezas, ver arriba), pero borrar la
+    tarea o su acción se los llevaba en cascada sin avisar (H-001,
+    26/11/2026). Alcanza con una versión entregada, aunque sea solo un link:
+    con ella se iría la historia de rondas (lo mismo que cuida
+    `quitar_entregas`). Dice cuántos archivos hay y qué hacer en su lugar:
+    darla por hecha la cancela, y su tarjeta pasa a Archivado con todo lo
+    entregado."""
+    if tareas_con_entregas <= 0:
+        return None
+    if not accion:
+        tiene = (
+            "ya tiene 1 archivo entregado" if archivos == 1
+            else f"ya tiene {archivos} archivos entregados" if archivos
+            else "ya tiene entregas"
+        )
+        return (
+            f"Esta tarea no se puede borrar: {tiene}, {_LO_ENTREGADO_SE_QUEDA}. "
+            "Si ya no va, dala por hecha: su tarjeta pasa a Archivado con todo lo entregado."
+        )
+    cuantos = "" if not archivos else " (1 archivo)" if archivos == 1 else f" ({archivos} archivos)"
+    if tareas_con_entregas == 1:
+        cuales = f"una de sus tareas ya tiene entregas{cuantos}"
+        que_hacer = "la puede dar por hecha: su tarjeta pasa"
+    else:
+        cuales = f"{tareas_con_entregas} de sus tareas ya tienen entregas{cuantos}"
+        que_hacer = "las puede dar por hechas: sus tarjetas pasan"
+    return (
+        f"Esta acción no se puede eliminar: {cuales}, {_LO_ENTREGADO_SE_QUEDA}. "
+        f"Si ya no va, quien gestiona las tareas {que_hacer} a Archivado con todo lo entregado."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1442,6 +1502,31 @@ async def resumenes_de_entregas(db: AsyncSession, tareas, entregas: list | None 
         if n is not None:
             rondas[f.id] = n
     return {e.tarea_id: resumen_json(e, fases.get(e.tarea_id, []), rondas) for e in entregas}
+
+
+async def lo_entregado(db: AsyncSession, tareas) -> tuple[int, int]:
+    """De entre `tareas` (una lista de ids o una subconsulta), en cuántas ya
+    se entregó algo (alguna versión, aunque sea solo un link) y cuántos
+    archivos guardados suman sus versiones: las imágenes y los ZIP originales
+    (no cuentan los que nunca se guardaron por falta de lugar, ni los que
+    vació la purga de antes del 19/11/2026). Es lo que dice
+    `por_que_no_se_borra`. Una sola ida a la base."""
+    de_esas = CalendarioVersion.tarea_id.in_(tareas)
+    con_entregas = select(func.count(func.distinct(CalendarioVersion.tarea_id))).where(de_esas)
+    imagenes = (
+        select(func.count()).select_from(CalendarioVersionImagen)
+        .join(CalendarioVersion, CalendarioVersion.id == CalendarioVersionImagen.version_id)
+        .where(de_esas, CalendarioVersionImagen.datos.isnot(None))
+    )
+    zips = (
+        select(func.count()).select_from(CalendarioVersionZip)
+        .join(CalendarioVersion, CalendarioVersion.id == CalendarioVersionZip.version_id)
+        .where(de_esas, CalendarioVersionZip.datos.isnot(None))
+    )
+    n_tareas, n_imagenes, n_zips = (await db.execute(
+        select(con_entregas.scalar_subquery(), imagenes.scalar_subquery(), zips.scalar_subquery())
+    )).one()
+    return n_tareas or 0, (n_imagenes or 0) + (n_zips or 0)
 
 
 # ---------------------------------------------------------------------------

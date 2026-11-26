@@ -24,12 +24,21 @@ export type TotalDelMes = {
   venta: number; margen: number; unidades: number; tickets: number; clientes: number
 }
 
+/** Por qué una fila del archivo no se tiene en cuenta. */
+export type Motivo = 'sinCliente' | 'sinFecha' | 'fechaIlegible' | 'mesInexistente' | 'fechaVieja' | 'fechaFutura'
+
+/** Una fila que no entra: su número como lo muestra Excel (la cabecera es la 1),
+ *  de qué CSV del zip es ('' si se cargó el CSV suelto), por qué y qué decía. */
+export type FilaDescartada = { fila: number; archivo: string; motivo: Motivo; dato: string }
+
 export type Resumen = {
   filas: FilaResumen[]
   dimensiones: TotalDelMes[]
   meses: string[]
   filasArchivo: number
   descartadas: number
+  /** Las primeras que no entran, para que quien carga sepa cuál corregir. */
+  primerasDescartadas: FilaDescartada[]
   clientes: number
   venta: number
 }
@@ -53,6 +62,7 @@ export type NombreDetalle = (typeof DETALLES)[number]
 const CANALES = ['Tienda Inglesa', 'E-commerce', 'Smart', 'Sin clasificar'] as const
 const MAX_CATEGORIAS = 64
 const MAX_MESES = 31 // los meses de un archivo, como bits
+const DESCARTADAS_A_MOSTRAR = 5
 
 type Acum = {
   cliente: number; mes: string
@@ -86,6 +96,20 @@ export function mesDe(fecha: string | undefined): string | null {
   if (m) return `${m[1]}-${m[2]}`
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(f)
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}`
+  return null
+}
+
+/** Por qué un mes ("AAAA-MM") no puede ser el de una compra; null si puede.
+ *  Es lo que acepta el servidor (`mes_de` y `meses_de_carga` en
+ *  backend/app/services/clientes_vip.py): de enero de 2000 al mes en curso.
+ *  Una fila de «30/13/2019» hacía rebotar el archivo entero sin decir cuál
+ *  era (H-088, 26/11/2026); un año mal tipeado (2062) pasaba a ser «el último
+ *  mes» y cambiaba el segmento de todos los clientes. */
+export function problemaDelMes(mes: string, mesActual: string): Motivo | null {
+  const m = Number(mes.slice(5, 7))
+  if (m < 1 || m > 12) return 'mesInexistente'
+  if (mes < '2000-01') return 'fechaVieja'
+  if (mes > mesActual) return 'fechaFutura'
   return null
 }
 
@@ -140,14 +164,27 @@ export class Resumidor {
   private porSkuMes = new Map<string, AcumSku>()
   private productos = new Map<string, [string, string, string, string, string]>()
   private textos = new Map<string, string>()
+  // Para decir qué filas no entran, dónde están y por qué
+  private readonly mesActual: string
+  private archivo = ''
+  private lineaDelArchivo = 0
+  private primerasDescartadas: FilaDescartada[] = []
   filasArchivo = 0
   descartadas = 0
 
-  /** Cada CSV trae su propia primera fila con los nombres de las columnas. */
-  nuevoArchivo(): void {
+  /** `hoy` dice qué meses todavía no llegaron (en las pruebas, una fecha fija). */
+  constructor(hoy: Date = new Date()) {
+    this.mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  /** Cada CSV trae su propia primera fila con los nombres de las columnas.
+   *  `nombre` es el del CSV adentro del zip, para decir de cuál es una fila. */
+  nuevoArchivo(nombre = ''): void {
     if (this.resto) this.linea(this.resto)
     this.resto = ''
     this.idx = null
+    this.archivo = nombre
+    this.lineaDelArchivo = 0
   }
 
   agregarTexto(texto: string): void {
@@ -295,7 +332,15 @@ export class Resumidor {
     }
   }
 
+  private descartar(motivo: Motivo, dato: string): void {
+    this.descartadas++
+    if (this.primerasDescartadas.length < DESCARTADAS_A_MOSTRAR) {
+      this.primerasDescartadas.push({ fila: this.lineaDelArchivo, archivo: this.archivo, motivo, dato: copia(dato.trim().slice(0, 40)) })
+    }
+  }
+
   private linea(cruda: string): void {
+    this.lineaDelArchivo++ // también las vacías: el número tiene que ser el que se ve al abrirlo
     const l = cruda.endsWith('\r') ? cruda.slice(0, -1) : cruda
     if (!l.trim()) return
     if (!this.idx) return this.cabecera(l)
@@ -305,11 +350,11 @@ export class Resumidor {
     const cliente = Number(c[i.id_cliente])
     const fecha = c[i.fecha] ?? ''
     const crudo = mesDe(fecha)
-    const mes = crudo === null ? null : this.unico(crudo)
-    if (!Number.isInteger(cliente) || cliente <= 0 || !mes) {
-      this.descartadas++
-      return
-    }
+    if (!Number.isInteger(cliente) || cliente <= 0) return this.descartar('sinCliente', c[i.id_cliente] ?? '')
+    if (crudo === null) return this.descartar(fecha.trim() ? 'fechaIlegible' : 'sinFecha', fecha)
+    const problema = problemaDelMes(crudo, this.mesActual)
+    if (problema) return this.descartar(problema, fecha)
+    const mes = this.unico(crudo)
     const ticket = c[i.id_ticket] ?? ''
     const venta = numero(c[i.venta_neta_sin_iva])
     const margen = numero(c[i.margen_neto_sin_iva])
@@ -405,6 +450,6 @@ export class Resumidor {
     }
     const meses = [...new Set(filas.map(f => f[1]))].sort()
     return { filas, dimensiones, meses, filasArchivo: this.filasArchivo, descartadas: this.descartadas,
-             clientes: clientes.size, venta: Math.round(ventaTotal) }
+             primerasDescartadas: this.primerasDescartadas, clientes: clientes.size, venta: Math.round(ventaTotal) }
   }
 }

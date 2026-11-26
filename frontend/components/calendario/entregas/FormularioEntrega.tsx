@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Camera, FileArchive, ImagePlus, Link2, Loader2, RotateCcw, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 import { entregasApi } from '@/lib/api'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
+import { claveDeBorrador } from '@/lib/calendario/borrador'
 import {
   conLugar, hayQueControlar, mismasImagenes, observacionesParaAvisar, paraAvisar, textosDelControl,
   type CambioControlado, type ControlPrevio, type ObservacionDelControl,
@@ -20,6 +23,7 @@ import {
   zipSumaImagenes, zipYaResueltas, ZipRaro, type EntradaZip, type EstadoDelZip,
 } from '@/lib/calendario/zip'
 import { LoQueVioLaIA } from './LoQueVioLaIA'
+import { useBorradorDeEntrega } from './borradores'
 
 function detalleDeError(e: unknown): string | null {
   const d = (e as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
@@ -127,8 +131,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const primera = ronda === 1
 
   // El id se arma una vez: si la subida se corta y se reintenta, el
-  // servidor reconoce que es la misma y no la duplica.
-  const [versionId] = useState(nuevoIdDeVersion)
+  // servidor reconoce que es la misma y no la duplica. Vuelve con lo
+  // guardado en el navegador (ver useBorradorDeEntrega).
+  const [versionId, setVersionId] = useState(nuevoIdDeVersion)
   const [imagenes, setImagenes] = useState<Imagen[]>([])
   const [preparando, setPreparando] = useState(0)
   const [comentario, setComentario] = useState('')
@@ -152,11 +157,54 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   // perdía sin preguntar; con Escape ya estaba protegido).
   const hayAlgo = imagenes.length > 0 || zip !== null || comentario.trim() !== '' || link.trim() !== ''
   const hayAlgoRef = useRef(false)
+  // Y si igual se sale (recargar sin querer, el iPhone, que no pregunta, la
+  // sesión que venció), lo cargado queda guardado en este navegador y vuelve
+  // al entregar de nuevo esta tarjeta (H-039; lib/calendario/borrador.ts).
+  const { t } = useTranslation()
+  const { user } = useCurrentUser()
+  const olvidarBorrador = useBorradorDeEntrega({
+    clave: user ? claveDeBorrador(user.id, detalle.tarea.id) : null,
+    entrega: {
+      fase: resumen.faseActual, ronda: resumen.ronda,
+      versiones: detalle.fases.flatMap(f => f.versiones.map(v => v.id)),
+    },
+    cargado: { versionId, comentario, link, porQue, imagenes, zip: zip?.archivo.name ?? null },
+    quieto: preparando === 0 && !leyendoZip && subiendo === null,
+    alRecuperar: b => {
+      // Si ya se empezó a cargar otra cosa, manda lo nuevo.
+      if (hayAlgoRef.current) return
+      setVersionId(b.versionId)
+      setComentario(b.comentario)
+      setLink(b.link)
+      setPorQue(b.porQue)
+      setImagenes(b.imagenes.map(im => ({ ...im, vista: URL.createObjectURL(im.mini) })))
+      toast.success(b.zip ? t('calendario.entrega.recuperadoSinZip', { zip: b.zip }) : t('calendario.entrega.recuperado'), {
+        duration: 10_000,
+        action: { label: t('calendario.entrega.descartar'), onClick: empezarDeCero },
+      })
+    },
+  })
+  /** «Descartar» lo recuperado: el formulario, vacío. */
+  function empezarDeCero() {
+    olvidarBorrador()
+    setImagenes(prev => {
+      prev.forEach(im => URL.revokeObjectURL(im.vista))
+      return []
+    })
+    setZip(null)
+    setComentario('')
+    setLink('')
+    setPorQue('')
+  }
   const cancelarRef = useRef(onCancelar)
   useEffect(() => {
     hayAlgoRef.current = hayAlgo && subiendo === null
-    cancelarRef.current = onCancelar
-  }, [hayAlgo, subiendo, onCancelar])
+    // Salir con «atrás» descarta lo cargado, como Cancelar: no queda guardado.
+    cancelarRef.current = () => {
+      olvidarBorrador()
+      onCancelar()
+    }
+  }, [hayAlgo, subiendo, onCancelar, olvidarBorrador])
   useEffect(() => {
     const alSalir = (e: BeforeUnloadEvent) => {
       if (!hayAlgoRef.current) return
@@ -190,6 +238,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
 
   function cancelar() {
     if (hayAlgo && !window.confirm('¿Descartar lo que cargaste?')) return
+    olvidarBorrador()
     onCancelar()
   }
   const camaraRef = useRef<HTMLInputElement>(null)
@@ -212,9 +261,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo) || zipDaImagenes
 
   /** Las piezas del pedido que no vienen en lo que se entrega: las imágenes
-   *  sueltas y todas las del ZIP, con su tamaño original. Si no se puede
-   *  saber (solo un link, algo del ZIP sin medir), ninguna. */
-  function loQueFalta(): Pieza[] {
+   *  sueltas y todas las del ZIP, con su tamaño original. Null si no se
+   *  puede saber (solo un link, algo del ZIP sin medir). */
+  function loQueFalta(): Pieza[] | null {
     const sueltas = imagenes
       .filter(im => im.deZip == null)
       .map(im => (im.ancho > 0 && im.alto > 0 ? { ancho: im.ancho, alto: im.alto } : null))
@@ -327,7 +376,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
    *  plataforma sola, siempre igual, y se avisa haya dicho algo la IA o no. */
   async function entregar() {
     if (!hayMateriales || linkMalo || ocupado) return
-    const faltan = loQueFalta()
+    const faltan = loQueFalta() ?? []
     const grandes = imagenes.map(im => im.grande)
     if (!hayQueControlar(grandes.length)
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
@@ -370,7 +419,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     controlando?.abort()
     setControlando(null)
     // Sin esperar a la IA. Lo que falta del pedido no la necesita: se avisa igual.
-    const faltan = loQueFalta()
+    const faltan = loQueFalta() ?? []
     if (faltan.length > 0) {
       setAvisos(soloLoQueFalta(faltan))
       return
@@ -388,11 +437,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     form.append('corregidas', '[]')
     // Lo que falta del pedido y por qué (21/11/2026): lo ven quien aprueba y
     // la agencia, en la ronda. Se vuelve a mirar acá por si sacó o sumó algo.
+    // Si se pudo medir, la lista va siempre, también vacía: así quien revisa
+    // sabe que está todo. Si no se pudo, no va, y nadie dice que está todo
+    // (H-035 de la auditoría del 25/11/2026).
     const faltan = loQueFalta()
-    if (faltan.length > 0) {
-      form.append('faltan', JSON.stringify(faltan.map(p => p.nombre)))
-      if (porQue.trim()) form.append('porQueFaltan', porQue.trim())
-    }
+    if (faltan) form.append('faltan', JSON.stringify(faltan.map(p => p.nombre)))
+    if (faltan?.length && porQue.trim()) form.append('porQueFaltan', porQue.trim())
     imagenes.forEach((im, i) => {
       form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)
@@ -411,6 +461,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
       // Con una sola fase (la "Entrega" de las tarjetas) no se nombra la fase.
       const deFase = resumen.fases.length > 1 ? ` de ${fase?.nombre ?? 'la fase'}` : ''
       hayAlgoRef.current = false
+      olvidarBorrador()
       if (data.zip && !data.zip.guardado) {
         // Entregada igual; el ZIP no entró en la base (no se borra nada para hacerle lugar).
         toast.warning(`Mandaste la versión ${ronda}${deFase}. ${avisoZipSinGuardar(link.trim() !== '', true)}`)

@@ -17,7 +17,7 @@
 // pedido según el tipo de pieza y la compresión de las imágenes.
 // ---------------------------------------------------------------------------
 
-import type { Pieza } from './piezas'
+import { primeras, type Pieza } from './piezas'
 import type { Adjunto } from './adjuntos'
 
 export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
@@ -108,8 +108,9 @@ export type Version = {
   zip?: ZipDeVersion | null
   /** Las piezas del pedido que no venían en la ronda (21/11/2026): sus
    *  nombres ("Header (mobile)"), y lo que escribió quien entrega en «¿Por
-   *  qué no va todo?». Vacío o sin mandar: no faltaba nada, o es de antes. */
-  faltan?: string[]
+   *  qué no va todo?». Vacía: se midió y no faltaba nada. Null (o sin
+   *  mandar): no se pudo medir, o es de antes; no se sabe (H-035). */
+  faltan?: string[] | null
   porQueFaltan?: string | null
   decisiones: Decision[]
   marcas: Marca[]
@@ -384,25 +385,80 @@ export function conOk(resumen: Pick<ResumenEntrega, 'momento' | 'ronda'>): boole
  * El botón grande al revisar (Ivan, 25/11/2026): «Avanzar», salvo que ya
  * estén todas las piezas del pedido; ahí, «Aprobar y terminar». Se sabe que
  * están todas cuando el pedido tiene piezas, la versión trae una imagen por
- * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y no faltó
- * ninguna (lo mide la plataforma al entregar). Si no se sabe, Avanzar: no
- * cierra nada. Pura.
+ * pieza (hasta el tope de imágenes: lo demás viene en el ZIP) y la
+ * plataforma midió al entregar que no falta ninguna (`faltan` vacía; null o
+ * sin mandar es que no se pudo medir). Si no se sabe, Avanzar: no cierra
+ * nada. Lo mismo mira el servidor (reglas.vinieron_todas). Pura.
  *
- * Una imagen por pieza (H-035 de la auditoría del 25/11/2026): si no se
- * pudo medir (un ZIP sin medidas), la lista de lo que falta llega vacía y
- * decía «Ya están todas las piezas» con una imagen para dos piezas.
+ * H-035 de la auditoría del 25/11/2026: decía «Ya están todas las piezas del
+ * pedido» con el carrito sin venir. «No falta nada» y «no se pudo medir» (un
+ * ZIP que acá no se lee, uno con el folleto en PDF: el servidor llena la
+ * versión con sus páginas) llegaban igual, como la lista vacía. Desde el
+ * 26/11/2026 la lista vacía es solo lo medido. Una imagen por pieza queda
+ * de resguardo: por ejemplo, si al pedido le sumaron piezas después de que
+ * se entregó.
  */
 export function botonGrandeAlRevisar(
   piezasPedidas: number, imagenes: number, faltan: readonly string[] | null | undefined, tope = Infinity,
 ): 'avanzar' | 'terminar' {
   const alcanzan = imagenes > 0 && imagenes >= Math.min(piezasPedidas, tope)
-  return piezasPedidas > 0 && alcanzan && !(faltan?.length) ? 'terminar' : 'avanzar'
+  const seMidioYNoFalta = faltan != null && faltan.length === 0
+  return piezasPedidas > 0 && alcanzan && seMidioYNoFalta ? 'terminar' : 'avanzar'
+}
+
+/**
+ * Si «Avanzar» se frena para pedir que se diga qué falta: ya vinieron todas
+ * las piezas del pedido (el botón grande es «Aprobar y terminar») y el
+ * comentario para la agencia está vacío. Avanzar es seguir con lo que
+ * falta: si la plataforma no ve nada que falte, lo tiene que decir quien
+ * revisa. Lo mismo controla el servidor (reglas.vinieron_todas). Pura.
+ *
+ * H-036 de la auditoría del 25/11/2026: con todas las piezas, «¿Falta algo?
+ * Avanzar» le decía a la agencia «Te dieron el OK: entregá lo que falta» y
+ * no faltaba nada: una ronda de más y una agencia que no sabe qué mandar.
+ */
+export function avanzarSinDecirQueFalta(grande: 'avanzar' | 'terminar', comentario: string): boolean {
+  return grande === 'terminar' && !comentario.trim()
 }
 
 /** «Aprobar y terminar» solo si aprobar termina de verdad: es la última fase
  *  y no queda nadie después en la cadena. Si no, «Aprobar». Pura. */
 export function textoDeAprobar(esUltimaFase: boolean, quedanDespuesEnLaCadena: number): string {
   return esUltimaFase && quedanDespuesEnLaCadena <= 0 ? 'Aprobar y terminar' : 'Aprobar'
+}
+
+/**
+ * Si hay que preguntar antes de aprobar: al aprobar una versión a la que le
+ * faltan piezas del pedido. Devuelve cuántas son, las primeras y cuántas
+ * otras, para decirlas en la pregunta («Falta 1 pieza del pedido: Carrito.
+ * ¿Aprobar igual?»; si son muchas, «…: Carrito, Checkout, Cocardas y 7
+ * más»); null si no hay que preguntar. Se corta como los chips (primeras):
+ * «y 1 más» ocupa lo mismo que nombrarla. Pura.
+ *
+ * H-023 de la auditoría del 25/11/2026: «¿Ya está todo? Aprobar y terminar»
+ * aprobaba sin preguntar con «Falta 1 pieza del pedido» en rojo al lado, y
+ * la pieza no llegaba nunca. Avanzar no pregunta: es justo para eso.
+ */
+export function faltanAlAprobar(
+  decision: TipoDecision, faltan: readonly string[] | null | undefined, tope = 3,
+): { count: number; piezas: string; otras: number } | null {
+  if (decision !== 'aprobada' || !faltan?.length) return null
+  const { vistas, resto } = primeras(faltan, tope)
+  return { count: faltan.length, piezas: vistas.join(', '), otras: resto }
+}
+
+/**
+ * Si lo que faltaba en una versión ya no es un aviso sino un dato: la
+ * versión se aprobó sin esas piezas («Se aprobó sin 1 pieza del pedido», en
+ * gris). En las demás (esperando revisión, con el OK para avanzar, con
+ * cambios), falta: en rojo. Pura.
+ *
+ * H-023 de la auditoría del 25/11/2026: con la versión aprobada, arriba
+ * decía «Finalizada: se aprobó la entrega» y abajo, en rojo, «Falta 1 pieza
+ * del pedido». No se sabía si estaba terminada o no.
+ */
+export function seAproboSinEllas(estado: EstadoVersion): boolean {
+  return estado === 'aprobada'
 }
 
 /** "Fase 1 · Boceto": el estado de cada fase en una línea corta. */

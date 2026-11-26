@@ -38,28 +38,49 @@ export function useCatalogoDeTipos(): { tipos: TipoDeTarea[] | null; error: bool
   return { tipos, error, reintentar: traer };
 }
 
-/** Un tablero al que va una pieza (17/11/2026): Publicis, Another Monday o
- *  Diseñadores, con cuántas cuentas tiene en el mundo (0 = todavía no entra
- *  nadie; la pieza espera ahí igual). Los define el servidor
- *  (app/core/tableros.py). */
+/** Una agencia a la que se le puede pedir trabajo, cada una con su tablero:
+ *  los tres de siempre (Publicis, Another Monday y Diseñadores, aunque no
+ *  tengan cuentas) y, desde el 26/11/2026, cualquier otra con cuentas. Con
+ *  cuántas cuentas tiene en el mundo (0 = todavía no entra nadie; la pieza
+ *  espera ahí igual). Las define el servidor (GET /calendario/tableros). */
 export type Tablero = { nombre: string; cuentas: number };
 
-const tablerosPorMundo = new Map<string, Promise<Tablero[]>>();
+/** La última lista que llegó de cada mundo, y el pedido que está en camino. */
+const ultimosTableros = new Map<string, Tablero[]>();
+const pidiendoTableros = new Map<string, Promise<Tablero[]>>();
 
-/** Los tableros del mundo, pedidos una vez por sesión y mundo. */
-export function useTableros(mundo: string | null | undefined): { tableros: Tablero[] | null } {
-  const [tableros, setTableros] = useState<Tablero[] | null>(null);
+/**
+ * Las agencias del mundo. Se ve al toque la última lista que llegó y se pide
+ * de nuevo cada vez que una pantalla la necesita (es una consulta chica; dos
+ * pantallas a la vez comparten el pedido). Antes se pedía una sola vez por
+ * sesión, y una agencia dada de alta mientras tanto no aparecía en «¿Quién la
+ * hace?» hasta recargar la página (H-018, 26/11/2026).
+ *
+ * `error`: no se pudo traer la lista y no había ninguna de antes. Quien la
+ * muestra lo dice: si no, «¿Quién la hace?» quedaba sin agencias (o
+ * «Cargando…» para siempre) sin decir por qué, que es justo lo de H-018.
+ * Se vuelve a pedir la próxima vez que se abre la pantalla.
+ */
+export function useTableros(mundo: string | null | undefined): { tableros: Tablero[] | null; error: boolean } {
+  const [llegada, setLlegada] = useState<{ mundo: string; tableros: Tablero[] } | null>(null);
+  const [fallo, setFallo] = useState<string | null>(null);
   useEffect(() => {
     if (!mundo) return;
     let vivo = true;
-    let pedido = tablerosPorMundo.get(mundo);
+    let pedido = pidiendoTableros.get(mundo);
     if (!pedido) {
-      pedido = calendarioApi.tableros(mundo).then(({ data }) => data);
-      tablerosPorMundo.set(mundo, pedido);
-      pedido.catch(() => tablerosPorMundo.delete(mundo));
+      pedido = calendarioApi.tableros(mundo)
+        .then(({ data }) => { ultimosTableros.set(mundo, data); return data; })
+        .finally(() => pidiendoTableros.delete(mundo));
+      pidiendoTableros.set(mundo, pedido);
     }
-    pedido.then((t) => { if (vivo) setTableros(t); }).catch(() => {});
+    pedido.then(
+      (tableros) => { if (vivo) { setLlegada({ mundo, tableros }); setFallo(null); } },
+      () => { if (vivo) setFallo(mundo); },
+    );
     return () => { vivo = false; };
   }, [mundo]);
-  return { tableros };
+  if (!mundo) return { tableros: null, error: false };
+  const tableros = llegada?.mundo === mundo ? llegada.tableros : ultimosTableros.get(mundo) ?? null;
+  return { tableros, error: tableros === null && fallo === mundo };
 }

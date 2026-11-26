@@ -1,7 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Check, Trash2, X } from 'lucide-react'
+import { tareasConEntregas } from '@/lib/calendario/borrar'
 import { SIN_CATEGORIA, esSinCategoria } from '@/lib/calendario/categorias'
 import { PALETA, colorPorDefecto, textoSobre } from '@/lib/calendario/colores'
 import {
@@ -342,6 +344,34 @@ export function EditorBarra() {
 
 /** "¿Seguro?" antes de eliminar, diciendo qué se va con la acción. */
 function ConfirmarBorrado({ barra, onSi, onNo }: { barra: BarraGuardada; onSi: () => void; onNo: () => void }) {
+  const { t } = useTranslation()
+  // Con una tarea que ya tiene entregas no se ofrece eliminar: se llevaría lo
+  // que mandó la agencia, que no se borra nunca, y el servidor lo rechaza
+  // (H-001). Se dice por qué y qué hacer en su lugar.
+  const conEntregas = tareasConEntregas(barra)
+  if (conEntregas > 0) {
+    return (
+      <footer
+        role="alertdialog"
+        aria-labelledby="confirmar-borrado"
+        className="shrink-0 animate-fade-in space-y-3 border-t border-amber-200 bg-amber-50 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-amber-500/30 dark:bg-amber-500/10"
+      >
+        <p id="confirmar-borrado" className="text-sm text-amber-900 dark:text-amber-100">
+          {t('calendario.borrar.accionConEntregas', { count: conEntregas, nombre: barra.nombre })}
+        </p>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            autoFocus
+            onClick={onNo}
+            className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-300 transition hover:bg-white/70 active:scale-95 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-800 sm:min-h-[40px]"
+          >
+            {t('calendario.borrar.entendido')}
+          </button>
+        </div>
+      </footer>
+    )
+  }
   const cosas = [
     [barra.tareas?.length ?? 0, 'tarea', 'tareas'],
     [barra.piezas?.length ?? 0, 'pieza', 'piezas'],

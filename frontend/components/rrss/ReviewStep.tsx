@@ -27,7 +27,7 @@ interface Props {
   validacion: RrssValidacion;
   pendientes: ItemPendiente[];
   progreso: Progreso | null;
-  /** Retoma lo que quedó cortado o con error. Solo existe en una sesión en vivo, no al abrir del historial. */
+  /** Retoma lo que quedó cortado o con error. Solo existe en una sesión en vivo, no al volver a abrirla de «Las de hoy». */
   onReintentar?: () => void;
 }
 
@@ -504,7 +504,7 @@ export default function ReviewStep({ validacion: v, pendientes, progreso, onRein
   const { t } = useTranslation();
   // `elegida` es lo que la persona clickeó; sin nada elegido la selección la decide el
   // momento: en vivo, acompaña a la placa que acaba de terminar; ya terminado (o
-  // abierta del historial), arranca por la primera placa con algo para mirar.
+  // vuelta a abrir de «Las de hoy»), arranca por la primera placa con algo para mirar.
   const [elegida, setElegida] = useState<Seleccion>(null);
   const [soloProblemas, setSoloProblemas] = useState(false);
 

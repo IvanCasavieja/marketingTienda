@@ -501,7 +501,9 @@
       "generateError": "Erro ao gerar o arquivo",
       "downloaded": "Faixa gerada e baixada",
       "confirmError": "Erro ao confirmar",
-      "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos."
+      "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos.",
+      "noResponse": "Não conseguimos saber como vai a geração porque o servidor não responde. Verifique sua conexão e tente de novo.",
+      "downloadError": "A faixa foi gerada, mas não foi possível baixá-la. Tente «Baixar de novo»."
     },
     "usarLegales": "Usar textos legais",
     "usarLegalesHint": "Deixe desligado se o modelo já traz os textos legais no design.",
@@ -541,7 +543,7 @@
         "error": "erro"
       },
       "verifTitulo": "Confirma que os cartazes saíram bem?",
-      "verifDetalle": "Abra o arquivo e confira. Ao confirmar, o arquivo fica guardado para ver quando quiser e a rodada conta como verificada no relatório. Sem confirmar, o arquivo é apagado em 7 dias — os números permanecem.",
+      "verifDetalle": "Abra o arquivo e confira. Ao confirmar, a rodada conta como verificada no relatório. O arquivo é apagado em 24 horas, confirmado ou não — os números permanecem.",
       "verifSi": "Sim, saíram bem",
       "verifNo": "Não, saíram com erro",
       "verifOk": "{{n}} rodada(s) verificadas: contam no relatório",
@@ -1016,9 +1018,18 @@
     "laPlanilla": "A planilha",
     "sinParejaNinguna": "Não encontrei esta peça {{fuente}}: nenhuma linha se parece o suficiente.",
     "sinParejaAmbiguo": "Há mais de uma linha {{fuente}} que se parece igual. Não escolho eu: confira você.",
-    "fuenteNombre": { "mailing": "o mailing", "planilla": "a planilha" },
-    "fuenteDe": { "mailing": "do mailing", "planilla": "da planilha" },
-    "fuenteEn": { "mailing": "no mailing", "planilla": "na planilha" },
+    "fuenteNombre": {
+      "mailing": "o mailing",
+      "planilla": "a planilha"
+    },
+    "fuenteDe": {
+      "mailing": "do mailing",
+      "planilla": "da planilha"
+    },
+    "fuenteEn": {
+      "mailing": "no mailing",
+      "planilla": "na planilha"
+    },
     "campoFecha": "Data da campanha",
     "planillaColumnasNombres": "A CatTi procura, com o nome que tiverem: {{columnas}}.",
     "planillaEntendio": "Assim a CatTi leu a planilha:",
@@ -1050,7 +1061,7 @@
       ]
     },
     "tabNueva": "Nova validação",
-    "tabHistorial": "Histórico",
+    "tabHistorial": "As de hoje",
     "placas": "Peças",
     "placasHint": "Arraste uma pasta ou escolha as imagens ({{tipos}})",
     "elegirImagenes": "Escolher imagens",
@@ -1071,8 +1082,8 @@
     "errorPlaca": "Não consegui validar esta peça",
     "errorCerrar": "Não foi possível fechar a validação",
     "errorAbrir": "Não foi possível abrir essa validação",
-    "errorHistorial": "Não foi possível carregar o histórico",
-    "volverHistorial": "Voltar ao histórico",
+    "errorHistorial": "Não foi possível carregar as validações de hoje",
+    "volverHistorial": "Voltar às de hoje",
     "nuevaValidacion": "Nova validação",
     "pagina": "Página {{n}}",
     "sinRecorte": "Não consegui recortar este produto do mailing",
@@ -1127,8 +1138,12 @@
     "descargarExcel": "Baixar Excel de correções",
     "armandoExcel": "Montando o Excel…",
     "errorExcel": "Não foi possível montar o Excel. Tente de novo.",
-    "historialVacio": "Ainda não há validações.",
+    "historialVacio": "Nenhuma validação hoje.",
+    "deHoyAviso": "Cada validação é apagada automaticamente após 24 horas. Aqui você pode reabrir uma se fechou a aba; se for precisar do Excel, baixe antes.",
+    "yaNoEsta": "Essa validação não está mais disponível: as validações são apagadas automaticamente após 24 horas. Se precisar, faça de novo.",
     "borrarConfirm": "Excluir a validação de \"{{nombre}}\"? Não dá para desfazer.",
+    "borrarSoloQuienLaCreo": "Só quem criou a validação pode excluí-la.",
+    "errorBorrar": "Não foi possível excluir a validação. Tente de novo.",
     "hFecha": "Data",
     "hUsuario": "Usuário",
     "hResultado": "Resultado",
@@ -1408,6 +1423,68 @@
   },
   "calendario": {
     "accessDenied": "Você não tem acesso ao calendário",
-    "loading": "Carregando o calendário…"
+    "loading": "Carregando o calendário…",
+    "quienLaHace": {
+      "titulo": "Quem faz?",
+      "agencias": "Agências",
+      "tienda": "Tienda Inglesa",
+      "cargando": "Carregando…",
+      "elegir": "Escolha quem faz",
+      "sinUsuarios": "{{agencia}} (ainda sem usuários)",
+      "deAfuera": "{{agencia}} (agência de fora)",
+      "quienLaHaceHoy": "Quem faz agora",
+      "pasaALaAgencia": "Passa para o quadro de {{agencia}} e nós avisamos.",
+      "pasaALaAgenciaSinUsuarios": "Passa para o quadro de {{agencia}}: vão ver quando tiverem usuários.",
+      "pasaAPersona": "{{persona}} vai fazer.",
+      "dejaLaAgencia": "Sai do quadro de {{agencia}}: {{persona}} vai fazer.",
+      "sinLista": "Não foi possível carregar a lista de agências. Feche e abra de novo para tentar outra vez."
+    },
+    "tarjetaSinAccion": {
+      "cambiar": "Mudar quem faz, o nome, a data ou o responsável"
+    },
+    "borrar": {
+      "si": "Sim, apagar",
+      "siConTarjeta": "Sim, apagar com o cartão",
+      "tareaConEntregas": "Não dá para apagar: já tem entregas, e o que foi entregue nunca é apagado porque é o histórico das peças.",
+      "tareaSiYaNoVa": "Se não for mais necessária, marque como feita: o cartão vai para Arquivado com tudo o que foi entregue.",
+      "accionConEntregas_one": "“{{nombre}}” não pode ser excluída: uma das tarefas já tem entregas, e o que foi entregue nunca é apagado porque é o histórico das peças. Se não for mais necessária, quem gerencia as tarefas pode marcá-la como feita: o cartão vai para Arquivado com tudo o que foi entregue.",
+      "accionConEntregas_other": "“{{nombre}}” não pode ser excluída: {{count}} das tarefas já têm entregas, e o que foi entregue nunca é apagado porque é o histórico das peças. Se não for mais necessária, quem gerencia as tarefas pode marcá-las como feitas: os cartões vão para Arquivado com tudo o que foi entregue.",
+      "entendido": "Entendi"
+    },
+    "entrega": {
+      "recuperado": "Recuperamos o que você estava preparando para entregar.",
+      "recuperadoSinZip": "Recuperamos o que você estava preparando para entregar. O ZIP «{{zip}}» não fica salvo: escolha-o de novo.",
+      "descartar": "Descartar"
+    },
+    "revisar": {
+      "faltanAlAprobar_one": "Falta 1 peça do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobar_other": "Faltam {{count}} peças do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobarYOtras_other": "Faltam {{count}} peças do pedido: {{piezas}} e mais {{otras}}. Aprovar mesmo assim?",
+      "aprobarIgual": "Aprovar mesmo assim",
+      "seguirRevisando": "Continuar revisando",
+      "seAproboSin_one": "Aprovado sem 1 peça do pedido",
+      "seAproboSin_other": "Aprovado sem {{count}} peças do pedido",
+      "avanzarConTodo": "Todas as peças do pedido já chegaram: se falta algo, escreva o quê no comentário, para a agência saber o que enviar. Se está tudo certo, aprove."
+    }
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} linha não vai ser carregada:",
+      "noEntran_other": "{{n}} linhas não vão ser carregadas:",
+      "fila": "Linha {{fila}}",
+      "filaDe": "Linha {{fila}} de {{archivo}}",
+      "motivo": {
+        "sinCliente": "não tem número de cliente.",
+        "sinFecha": "não tem data.",
+        "fechaIlegible": "não dá para entender a data “{{dato}}”.",
+        "mesInexistente": "a data “{{dato}}” tem um mês que não existe.",
+        "fechaVieja": "a data “{{dato}}” é anterior a 2000: confira o ano.",
+        "fechaFutura": "a data “{{dato}}” ainda não chegou."
+      },
+      "yMas_one": "E mais {{n}} linha.",
+      "yMas_other": "E mais {{n}} linhas.",
+      "queHacer": "Para incluí-las, corrija no arquivo e carregue de novo. Se não, carregue o resto.",
+      "ningunaSirve": "Não sobrou nenhuma linha para carregar: corrija o arquivo e carregue de novo."
+    }
   }
 }

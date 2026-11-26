@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     # CENEFAS_RETENCION_DIAS) para que no lo pise una variable vieja de Render.
     CENEFAS_RETENCION_HORAS: int = 24
 
+    # Validaciones de RRSS (0 = no se borran). Cada una (las páginas del
+    # mailing ya renderizadas, la vista chica de cada placa y los recortes de
+    # cada diferencia) dura N horas, terminada o no: lo justo para terminar de
+    # revisarla y volver a abrirla si se cerró la pestaña. Después se borra
+    # entera. Ivan (26/11/2026), con 73 MB de validaciones en la base: «no
+    # tiene sentido que mantengamos historial de validaciones». Ver
+    # services/rrss/retencion.py.
+    RRSS_RETENCION_HORAS: int = 24
+
     # Fotos de colocación (las que suben los locales, ver
     # services/colocacion.py). Se borran a los N días de que termina la acción
     # (0 = no se borran nunca). Y un tope de lo que pueden ocupar entre todas:
