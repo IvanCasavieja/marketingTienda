@@ -808,7 +808,12 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
 - **No hay historial (26/11/2026):** cada validación dura 24 horas, terminada o
   no, y después se borra entera (páginas del mailing, placas y recortes) y se
   compactan las tablas (`services/rrss/retencion.py`, `RRSS_RETENCION_HORAS`).
-  Ivan: «no tiene sentido que mantengamos historial de validaciones».
+  Ivan: «no tiene sentido que mantengamos historial de validaciones». La
+  compactación no traba a nadie: si una tabla está en uso, o lo recién borrado
+  quedó retenido por una transacción más vieja, se compacta en la pasada
+  siguiente (una por hora), así que el lugar puede tardar una hora en volver.
+  Si una validación vence mientras CatTi mira una placa, esa placa dice que ya
+  no está.
 - **Qué hay en la pantalla:** título y subtítulo; pestañas "Nueva validación"
   / "Las de hoy" (o "Volver a las de hoy" / "Nueva validación" al revisar).
   Carga (`UploadStep`): "Mailing o planilla" (uno solo; arrastrar o elegir),
