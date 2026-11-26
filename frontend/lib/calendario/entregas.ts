@@ -17,7 +17,7 @@
 // pedido según el tipo de pieza y la compresión de las imágenes.
 // ---------------------------------------------------------------------------
 
-import type { Pieza } from './piezas'
+import { primeras, type Pieza } from './piezas'
 import type { Adjunto } from './adjuntos'
 
 export type TipoPieza = 'cenefa' | 'mailing' | 'banner' | 'redes' | 'otro'
@@ -429,9 +429,11 @@ export function textoDeAprobar(esUltimaFase: boolean, quedanDespuesEnLaCadena: n
 
 /**
  * Si hay que preguntar antes de aprobar: al aprobar una versión a la que le
- * faltan piezas del pedido. Devuelve cuántas son y las primeras, para
- * decirlas en la pregunta («Falta 1 pieza del pedido: Carrito. ¿Aprobar
- * igual?»); null si no hay que preguntar. Pura.
+ * faltan piezas del pedido. Devuelve cuántas son, las primeras y cuántas
+ * otras, para decirlas en la pregunta («Falta 1 pieza del pedido: Carrito.
+ * ¿Aprobar igual?»; si son muchas, «…: Carrito, Checkout, Cocardas y 7
+ * más»); null si no hay que preguntar. Se corta como los chips (primeras):
+ * «y 1 más» ocupa lo mismo que nombrarla. Pura.
  *
  * H-023 de la auditoría del 25/11/2026: «¿Ya está todo? Aprobar y terminar»
  * aprobaba sin preguntar con «Falta 1 pieza del pedido» en rojo al lado, y
@@ -439,9 +441,10 @@ export function textoDeAprobar(esUltimaFase: boolean, quedanDespuesEnLaCadena: n
  */
 export function faltanAlAprobar(
   decision: TipoDecision, faltan: readonly string[] | null | undefined, tope = 3,
-): { count: number; piezas: string } | null {
+): { count: number; piezas: string; otras: number } | null {
   if (decision !== 'aprobada' || !faltan?.length) return null
-  return { count: faltan.length, piezas: faltan.slice(0, tope).join(', ') + (faltan.length > tope ? ', …' : '') }
+  const { vistas, resto } = primeras(faltan, tope)
+  return { count: faltan.length, piezas: vistas.join(', '), otras: resto }
 }
 
 /**

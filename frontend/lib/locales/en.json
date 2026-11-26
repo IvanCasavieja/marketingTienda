@@ -1410,6 +1410,7 @@
     "revisar": {
       "faltanAlAprobar_one": "1 piece of the order is missing: {{piezas}}. Approve anyway?",
       "faltanAlAprobar_other": "{{count}} pieces of the order are missing: {{piezas}}. Approve anyway?",
+      "faltanAlAprobarYOtras_other": "{{count}} pieces of the order are missing: {{piezas}} and {{otras}} more. Approve anyway?",
       "aprobarIgual": "Approve anyway",
       "seguirRevisando": "Keep reviewing",
       "seAproboSin_one": "Approved without 1 piece of the order",

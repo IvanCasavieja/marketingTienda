@@ -1410,6 +1410,7 @@
     "revisar": {
       "faltanAlAprobar_one": "Falta 1 peça do pedido: {{piezas}}. Aprovar mesmo assim?",
       "faltanAlAprobar_other": "Faltam {{count}} peças do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobarYOtras_other": "Faltam {{count}} peças do pedido: {{piezas}} e mais {{otras}}. Aprovar mesmo assim?",
       "aprobarIgual": "Aprovar mesmo assim",
       "seguirRevisando": "Continuar revisando",
       "seAproboSin_one": "Aprovado sem 1 peça do pedido",

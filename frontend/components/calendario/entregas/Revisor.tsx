@@ -844,7 +844,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
           // El foco va a «Seguir revisando»: un Enter de más no aprueba.
           <div className="flex flex-wrap items-center gap-2 py-1">
             <p id={idPregunta} className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {t('calendario.revisar.faltanAlAprobar', faltanSiAprueba)}
+              {t(faltanSiAprueba.otras > 0 ? 'calendario.revisar.faltanAlAprobarYOtras' : 'calendario.revisar.faltanAlAprobar',
+                faltanSiAprueba)}
             </p>
             <button
               type="button"

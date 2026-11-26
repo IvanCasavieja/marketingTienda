@@ -291,9 +291,14 @@ igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDe
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
 // H-023 (25/11/2026): «¿Ya está todo? Aprobar y terminar» aprobaba sin
 // preguntar con «Falta 1 pieza del pedido» al lado. Ahora pregunta, y dice cuáles.
-igual('aprobar con una pieza que falta: pregunta', faltanAlAprobar('aprobada', ['Carrito']), { count: 1, piezas: 'Carrito' })
-igual('con muchas, las primeras tres', faltanAlAprobar('aprobada', ['Carrito', 'Checkout', 'Header (mobile)', 'Cocardas']),
-  { count: 4, piezas: 'Carrito, Checkout, Header (mobile), …' })
+igual('aprobar con una pieza que falta: pregunta', faltanAlAprobar('aprobada', ['Carrito']),
+  { count: 1, piezas: 'Carrito', otras: 0 })
+const diezQueFaltan = ['Carrito', 'Checkout', 'Cocardas', 'Header (mobile)', 'Dobles (web)', 'Dobles (mobile)', 'Quíntuples',
+  'Séxtuples', 'Séptuples', 'Óctuples']
+igual('con muchas, las primeras tres y cuántas más («…, Cocardas y 7 más»)', faltanAlAprobar('aprobada', diezQueFaltan),
+  { count: 10, piezas: 'Carrito, Checkout, Cocardas', otras: 7 })
+igual('con cuatro, las cuatro: «y 1 más» ocupa lo mismo que nombrarla', faltanAlAprobar('aprobada', diezQueFaltan.slice(0, 4)),
+  { count: 4, piezas: 'Carrito, Checkout, Cocardas, Header (mobile)', otras: 0 })
 igual('sin piezas que falten (o sin medir): no pregunta',
   [faltanAlAprobar('aprobada', []), faltanAlAprobar('aprobada', null), faltanAlAprobar('aprobada', undefined)], [null, null, null])
 igual('avanzar y pedir cambios no preguntan', [faltanAlAprobar('avanzar', ['Carrito']), faltanAlAprobar('cambios', ['Carrito'])],
