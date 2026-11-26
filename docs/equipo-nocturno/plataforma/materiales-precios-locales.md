@@ -50,10 +50,12 @@ de los supermercados: necesita internet y puede venir vacía por bloqueo.
 
 ### Qué trae la base vacía (lo siembran las migraciones)
 
-- Tipos de cenefa (`cenefa_destinos`, migraciones 0040, 0046, 0060):
-  **Rompe Precios**, **Parrilla y Vinos** (con 2.700 cenefas "declaradas" que
-  ya aparecen en el informe) y **Pruebas** (sin costo) en Tienda Inglesa;
-  **Redexpres** (sin costo) en Redexpres.
+- Tipos de cenefa (`cenefa_destinos`): solo **Redexpres** (sin costo), en
+  Redexpres. **Tienda Inglesa arranca sin ningún tipo**: la 0094 (26/11/2026,
+  pedido de Ivan) borró los de Tienda Inglesa y sus plantillas. Para generar
+  cenefas en Tienda Inglesa, primero se crea un tipo (recorrido E, "Nuevo tipo
+  de cenefa"). El informe igual muestra "Declarado · Parrilla y Vinos" (2.700):
+  lo que necesita de un tipo borrado queda en `cenefa_destinos_borrados`.
 - Ninguna plantilla de cenefa, ningún mes de Redexpres, ninguna descripción en
   el Diccionario, ninguna lista de precios, ningún pedido de fotos.
 - La lista de los ~60 locales de Redexpres está fija en el código
@@ -101,7 +103,7 @@ El servidor exige igual el permiso en cada endpoint (`require_permission`).
 
 | Pantalla | Tienda Inglesa | Redexpres | Express / Viajes / Farma |
 |---|---|---|---|
-| Cenefas, editor, informe, conocimiento, Convertidor (`/materiales/*`) | Sí. Tipos: Rompe Precios, Parrilla y Vinos, Pruebas (+ los que se creen) | Sí. Tipo único Redexpres: se entra derecho, sin elegir | No (FueraDeMundo) |
+| Cenefas, editor, informe, conocimiento, Convertidor (`/materiales/*`) | Sí. Tipos: los que se creen (desde la 0094 no queda ninguno de antes) | Sí. Tipo único Redexpres: se entra derecho, sin elegir | No (FueraDeMundo) |
 | Diccionario | Sí | No (FueraDeMundo), aunque el Convertidor de Redexpres escribe en el mismo catálogo | No |
 | Validación de RRSS | Sí | No | No |
 | Buscar precios / Listas | Sí | No | No |
@@ -892,7 +894,8 @@ Quién: el equipo de promo (`cenefas.view`, `cenefas.generate`; IA con `ai.tinin
    descripciones (cada una se guarda en el Diccionario).
 4. "Convertir a cenefa" → salta a Cenefas con el Excel ya cargado
    ("Excel traído del Convertidor").
-5. Elige el tipo (Rompe Precios, Parrilla y Vinos…; en Redexpres entra directo).
+5. Elige el tipo (en Tienda Inglesa, uno que se haya creado: ver E; en
+   Redexpres entra directo).
 6. "Elegir plantillas" para el Excel (hasta 5), vigencia, legales, cocarda →
    "Generar y descargar PPTX".
 7. Revisión del lote: recorre cada cenefa, mueve lo que no entra, mira los
@@ -928,7 +931,9 @@ Quién: `cenefas.edit`, en Tienda Inglesa o Redexpres.
 1. Cenefas → "Cambiar tipo de cenefa" (si ya estaba adentro) → "Nuevo tipo de
    cenefa": nombre, descripción, ícono, color, cobrable → "Crear tipo de cenefa".
 2. Nace en el mundo en el que se está. Aparece en el selector de ese mundo.
-3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena.
+3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena. Sus
+   corridas siguen en el informe igual que antes (nombre, cobrable o sin
+   costo): lo que necesita de él queda en `cenefa_destinos_borrados`.
 4. Repercute: en Redexpres, con dos tipos, deja de entrarse directo; en el
    informe aparece como mundo cobrable o sin costo.
 

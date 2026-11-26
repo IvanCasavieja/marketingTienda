@@ -43,23 +43,46 @@ Aparte va la produccion DECLARADA (`cenefa_destinos.cenefas_previas`): lo que
 se hizo antes de que hubiera registro y solo se puede afirmar, no demostrar.
 Suma al total cobrable pero viaja en su propio renglon y etiquetada, para que
 se vea de un lado lo respaldado corrida por corrida y del otro lo declarado.
+
+Un mundo borrado no cambia el informe
+-------------------------------------
+El nombre del mundo, si se cobra y lo declarado salen de su fila en
+`cenefa_destinos`. Si el mundo se borro (la 0094 borro los de Tienda Inglesa el
+26/11/2026), salen de lo que quedo guardado de el en `cenefa_destinos_borrados`.
+Sus corridas no se tocan: el mundo y el nombre de la plantilla viven en cada
+una (`categoria`, `template_nombre`).
 """
 from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Integer, func, select, true
+from sqlalchemy import Integer, func, select, true, union_all
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.cenefa_destino import CenefaDestino
+from app.models.cenefa_destino import CenefaDestino, CenefaDestinoBorrado
 from app.models.cenefa_job import CenefaJob
 
 # Costo por cenefa disenada, en pesos. Es solo el valor por defecto: la
 # pantalla lo deja cambiar y el numero viaja en cada consulta, para que
 # actualizarlo no dependa de un deploy.
 COSTO_POR_CENEFA = 49.0
+
+# El nombre del mundo de una corrida y si se cobra: del mundo vivo o, si se
+# borro, de lo que quedo guardado de el. Un mundo borrado antes de que eso se
+# guardara (no hay ninguno con corridas al 26/11/2026) se asume cobrable, que es
+# el default, y se muestra con su slug como nombre.
+_NOMBRE_MUNDO = func.coalesce(CenefaDestino.nombre, CenefaDestinoBorrado.nombre, "")
+_COBRABLE = func.coalesce(CenefaDestino.cobrable, CenefaDestinoBorrado.cobrable, true())
+
+
+def _con_su_mundo(consulta):
+    """La consulta sobre las corridas, con el mundo de cada una al lado (vivo
+    o borrado). Los dos van por la clave, asi que no multiplican filas."""
+    return (consulta.select_from(CenefaJob)
+            .outerjoin(CenefaDestino, CenefaDestino.slug == CenefaJob.categoria)
+            .outerjoin(CenefaDestinoBorrado, CenefaDestinoBorrado.slug == CenefaJob.categoria))
 
 
 def _num(campo: str):
@@ -169,11 +192,8 @@ async def _reales_por_mes(db: AsyncSession, cond: list) -> dict[str, dict[str, i
         )
         if solo_cobrables:
             # Mismo criterio que el cuadro por mundo: con mundo asignado y
-            # cobrable (un mundo borrado cuenta cobrable, que es el default).
-            q = (q.select_from(CenefaJob)
-                 .outerjoin(CenefaDestino, CenefaDestino.slug == CenefaJob.categoria)
-                 .where(CenefaJob.categoria.isnot(None),
-                        func.coalesce(CenefaDestino.cobrable, true())))
+            # cobrable (vivo o borrado, ver _COBRABLE).
+            q = _con_su_mundo(q).where(CenefaJob.categoria.isnot(None), _COBRABLE)
         sub = (
             q.where(*cond, CenefaJob.excel_nombre.isnot(None),
                     CenefaJob.row_count.isnot(None))
@@ -255,14 +275,13 @@ async def resumen(
 
     # Apertura por mundo. El mundo se lee de la columna del job y NO de la
     # plantilla: la plantilla puede haberse borrado (FK ON DELETE SET NULL) y
-    # ahi se perdia la atribucion. Un mundo borrado deja corridas con categoria
-    # pero sin fila en cenefa_destinos: se asume cobrable, que es el default, y
-    # se muestra con su slug como nombre.
+    # ahi se perdia la atribucion. Su nombre y si se cobra, del mundo vivo o
+    # del borrado (ver _NOMBRE_MUNDO y _COBRABLE).
     por_mundo = (await db.execute(
-        select(
+        _con_su_mundo(select(
             func.coalesce(CenefaJob.categoria, "").label("mundo"),
-            func.coalesce(CenefaDestino.nombre, "").label("nombre"),
-            func.coalesce(CenefaDestino.cobrable, true()).label("cobrable"),
+            _NOMBRE_MUNDO.label("nombre"),
+            _COBRABLE.label("cobrable"),
             func.count().label("corridas"),
             func.coalesce(func.sum(total), 0).label("cenefas"),
             func.coalesce(func.sum(correctas), 0).label("correctas"),
@@ -270,11 +289,10 @@ async def resumen(
             func.coalesce(func.sum(criticos), 0).label("criticos"),
             verif_corridas.label("verif_corridas"),
             verif_cenefas.label("verif_cenefas"),
-        )
-        .select_from(CenefaJob)
-        .outerjoin(CenefaDestino, CenefaDestino.slug == CenefaJob.categoria)
+        ))
         .where(*cond)
-        .group_by(CenefaJob.categoria, CenefaDestino.nombre, CenefaDestino.cobrable)
+        .group_by(CenefaJob.categoria, CenefaDestino.nombre, CenefaDestino.cobrable,
+                  CenefaDestinoBorrado.nombre, CenefaDestinoBorrado.cobrable)
         .order_by(func.coalesce(func.sum(total), 0).desc())
     )).all()
 
@@ -283,16 +301,20 @@ async def resumen(
 
     # Produccion declarada: una cifra fija por mundo, sin corridas detras. Solo
     # se incluye en la vista sin filtros -- acotada a un mes o a una plantilla
-    # no significa nada, porque no tiene fecha ni plantilla que filtrar.
+    # no significa nada, porque no tiene fecha ni plantilla que filtrar. La de
+    # un mundo borrado sigue contando: es trabajo que se hizo (Parrilla y Vinos).
     sin_filtros = desde is None and hasta is None and not template
-    declaradas = (await db.execute(
-        select(
-            CenefaDestino.slug, CenefaDestino.nombre, CenefaDestino.cobrable,
-            CenefaDestino.cenefas_previas, CenefaDestino.cenefas_previas_nota,
-        )
-        .where(CenefaDestino.cenefas_previas > 0)
-        .order_by(CenefaDestino.orden, CenefaDestino.slug)
-    )).all() if sin_filtros else []
+    if sin_filtros:
+        de_los_dos = union_all(*(
+            select(m.slug, m.nombre, m.cobrable, m.cenefas_previas, m.cenefas_previas_nota, m.orden)
+            .where(m.cenefas_previas > 0)
+            for m in (CenefaDestino, CenefaDestinoBorrado)
+        )).subquery()
+        declaradas = (await db.execute(
+            select(de_los_dos).order_by(de_los_dos.c.orden, de_los_dos.c.slug)
+        )).all()
+    else:
+        declaradas = []
 
     _CAMPOS = ("corridas", "cenefas", "correctas", "avisos", "criticos",
                "verif_corridas", "verif_cenefas")
