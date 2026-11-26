@@ -499,7 +499,9 @@
       "generateError": "Error generating the file",
       "downloaded": "Banner generated and downloaded",
       "confirmError": "Error confirming",
-      "confirmTimeout": "Generation is taking too long. Try again or with fewer products."
+      "confirmTimeout": "Generation is taking too long. Try again or with fewer products.",
+      "noResponse": "We couldn't check how the generation is going because the server isn't responding. Check your connection and try again.",
+      "downloadError": "The banner was generated but couldn't be downloaded. Try «Download again»."
     },
     "usarLegales": "Use legal text",
     "usarLegalesHint": "Leave off if the template already has the legal text in the design.",

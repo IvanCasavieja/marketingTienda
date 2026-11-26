@@ -499,7 +499,9 @@
       "generateError": "Error al generar el archivo",
       "downloaded": "Cenefa generada y descargada",
       "confirmError": "Error al confirmar",
-      "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos."
+      "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos.",
+      "noResponse": "No pudimos saber cómo va la generación porque el servidor no contesta. Revisá tu conexión y volvé a probar.",
+      "downloadError": "La cenefa se generó, pero no se pudo descargar. Probá con «Descargar de nuevo»."
     },
     "usarLegales": "Usar legales",
     "usarLegalesHint": "Dejalo apagado si la plantilla ya trae los legales impresos en el diseño.",
