@@ -1,12 +1,11 @@
-"""Clientes VIP (0091, 25/11/2026).
+"""Clientes VIP (0091, 25/11/2026) y lo que usa Valentina desde la nube (0092).
 
 Ivan: "un dashboard con un agente que analice… prever el comportamiento futuro
 de los clientes VIP… tengo acceso yo y Emi Perdomo". Lo puro (segmentos,
-riesgo, predicción, el mail) corre siempre; la carga de punta a punta con la
+riesgo, predicción) corre siempre; la carga de punta a punta con la
 API usa la base de TEST_DATABASE_URL, con las ayudas de
 test_tablero_agencia_api.py.
 """
-import asyncio
 import os
 from datetime import date
 
@@ -141,108 +140,6 @@ def test_prediccion_con_dos_anios_promedia_y_mide_su_error():
 
 
 # ---------------------------------------------------------------------------
-# El informe y el mail
-# ---------------------------------------------------------------------------
-
-NUMEROS = {
-    "ultimo_mes": "octubre 2026", "meses_cargados": "enero 2025 a octubre 2026", "clientes_vip": 9949,
-    "el_mes": {"venta": 281_000_000, "margen_pct": 33.9, "clientes_que_compraron": 9100, "tickets": 120_000,
-               "ticket_promedio": 2340, "compras_por_cliente": 13.2, "parte_ecommerce_pct": 8.0,
-               "parte_marca_propia_pct": 12.0},
-    "el_mes_anterior": {"venta": 275_000_000},
-    "el_mismo_mes_del_anio_anterior": {"venta": 260_000_000},
-    "venta_por_mes": {}, "categorias_ultimos_3_meses": [],
-    "categorias_movimientos": {"los_que_mas_bajan": [{"valor": "Bebidas", "contra_3m_antes": -7.5}],
-                               "los_que_mas_suben": []},
-    "sucursales_movimientos": {"los_que_mas_bajan": [], "los_que_mas_suben": []}, "canales": [],
-    "segmentos": [{"segmento": "En riesgo", "clientes": 412, "venta_3m": 20_000_000, "venta_3m_antes": 55_000_000,
-                   "venta_esperada": 6_000_000}],
-    "clientes_a_mirar": [],
-    "prediccion_de_valentina": {"mes": "2026-11", "venta": 290_000_000, "desde": 275_000_000, "hasta": 305_000_000,
-                                "como": "el mismo mes del año pasado con la tendencia de hoy"},
-}
-
-
-def test_sin_clave_de_ia_el_informe_sale_igual_con_los_numeros():
-    texto = vip.informe_con_reglas(NUMEROS)
-    for parte in ("### 📊 Cómo cerró octubre 2026", "### 🔎 Lo que hay que mirar", "### 🔮 Lo que viene",
-                  "### ✅ Qué haríamos"):
-        assert parte in texto
-    assert "$ 281,0 millones" in texto and "(+2,2%)" in texto
-    assert "Bebidas" in texto and "412 clientes en riesgo" in texto
-    assert "noviembre 2026" in texto
-
-
-class _ClienteFalso:
-    """Lo que devuelve messages.create: un bloque de razonamiento y el texto."""
-
-    def __init__(self, texto: str, stop_reason: str):
-        from types import SimpleNamespace as N
-        self.pedidos = []
-        respuesta = N(stop_reason=stop_reason, usage=N(input_tokens=10, output_tokens=20),
-                      content=[N(type="thinking", thinking=""), N(type="text", text=texto)])
-
-        async def crear(**kw):
-            self.pedidos.append(kw)
-            return respuesta
-        self.messages = N(create=crear)
-
-
-def _con_ia(monkeypatch, cliente):
-    from app.services import ia_cliente
-    monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "clave-de-prueba")
-    monkeypatch.setattr(ia_cliente, "cliente_anthropic", lambda: cliente)
-
-
-def test_el_informe_con_ia_completo_se_queda_con_el_texto_y_tiene_lugar(monkeypatch):
-    cliente = _ClienteFalso("### 📊 Cómo cerró octubre 2026\n- Todo bien.", "end_turn")
-    _con_ia(monkeypatch, cliente)
-    texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))
-    assert con_ia and texto == "### 📊 Cómo cerró octubre 2026\n- Todo bien." and usage.output_tokens == 20
-    # El razonamiento cuenta dentro de max_tokens: con 2.000 se cortó (25/11/2026).
-    assert cliente.pedidos[0]["max_tokens"] >= 16_000
-    assert cliente.pedidos[0]["output_config"] == {"effort": "medium"}
-
-
-def test_el_informe_cortado_no_se_guarda_va_el_de_reglas(monkeypatch):
-    _con_ia(monkeypatch, _ClienteFalso("### 📊 Cómo cerró\n- Vendimos $ 285 millones, entre $ 277 y", "max_tokens"))
-    texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))
-    assert not con_ia and usage is None
-    assert "### ✅ Qué haríamos" in texto  # el de reglas, entero
-
-
-def test_escribir_analisis_sin_clave_no_llama_a_la_ia(monkeypatch):
-    monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "")
-    texto, con_ia, usage = asyncio.run(vip.escribir_analisis(NUMEROS))
-    assert not con_ia and usage is None and texto.startswith("### 📊")
-
-
-def test_el_mail_es_html_limpio_con_el_link_y_el_aviso_de_confidencial():
-    informe = vip.VipInforme(mes=OCT, analisis="### 📊 Cómo cerró\n- Venta: **$ 281 millones** <script>\n\nFin.",
-                             prediccion={}, con_ia=True)
-    asunto, html, texto = vip.armar_mail(informe, "https://core.example/clientes-vip")
-    assert asunto == "⭐ Clientes VIP · octubre 2026"
-    assert "<strong>$ 281 millones</strong>" in html and "<script>" not in html and "&lt;script&gt;" in html
-    assert "<ul" in html and "<h3" in html and "https://core.example/clientes-vip" in html
-    assert "confidencial" in html and "Ver el tablero" in texto
-
-
-def test_el_mail_sale_solo_si_los_datos_son_recientes():
-    hoy = date(2026, 11, 25)
-    assert vip.es_reciente(date(2026, 10, 1), hoy)
-    assert vip.es_reciente(date(2026, 8, 1), hoy)
-    assert not vip.es_reciente(date(2026, 7, 1), hoy)
-    assert not vip.es_reciente(date(2025, 12, 1), hoy)
-    assert not vip.es_reciente(None, hoy)
-
-
-def test_las_cuentas_internas_y_de_prueba_no_reciben_mails():
-    assert vip.destinatario_real("emi@tiendainglesa.com.uy")
-    for no in ("agente-claude@internal.marketingtienda", "equipo-nocturno@example.com", "", None, "x@y.invalid"):
-        assert not vip.destinatario_real(no)
-
-
-# ---------------------------------------------------------------------------
 # De punta a punta, con la API y una base de verdad
 # ---------------------------------------------------------------------------
 
@@ -273,9 +170,7 @@ async def _cargar(cliente, archivo: str, filas: list[list], dims: list[dict] | N
 
 
 @_con_base
-def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no(monkeypatch):
-    informes = []
-    monkeypatch.setattr(vip, "informe_en_segundo_plano", lambda carga_id, user_id: informes.append(carga_id))
+def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
 
     async def prueba(d):
         emi = Cliente(d.http, await _persona(d, "Emi VIP", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR)))
@@ -289,7 +184,7 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no(monkeypatch):
         dims = [{"mes": "2025-12", "dimension": "categoria", "valor": "Almacén", "venta": 10_000, "margen": 3_000,
                  "unidades": 10, "tickets": 3, "clientes": 1}]
         r = await _cargar(emi, "compras_2025.zip", filas, dims)
-        assert r["clientes"] == 2 and len(informes) == 1
+        assert r["clientes"] == 2
 
         t = (await mira.get("/clientes-vip/tablero")).json()
         assert t["ultimo_mes"] == "2025-12" and t["clientes"] == 2
@@ -333,38 +228,122 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no(monkeypatch):
 
 
 @_con_base
-def test_el_informe_se_guarda_sin_ia_y_no_le_llega_a_las_cuentas_internas(monkeypatch):
-    monkeypatch.setattr(vip, "informe_en_segundo_plano", lambda *a: None)
-    monkeypatch.setattr(vip.settings, "ANTHROPIC_API_KEY", "")
-    from datetime import datetime, timezone
-    monkeypatch.setattr(vip, "ahora", lambda: datetime(2026, 11, 25, tzinfo=timezone.utc))  # octubre es reciente
-    enviados = []
-
-    async def falso_envio(to, subject, html, plain, de=None):
-        enviados.append((to, subject, de))
-
-    from app.services import email_service
-    monkeypatch.setattr(email_service, "send_email", falso_envio)
-    monkeypatch.setattr(email_service, "email_configurado", lambda: True)
-    dormir = asyncio.sleep
-    monkeypatch.setattr(vip.asyncio, "sleep", lambda *_: dormir(0))
+def test_valentina_baja_los_datos_publica_su_informe_y_anota_lo_que_aprende():
+    """Valentina (Escuadrón Lechuza, en la nube) con su cuenta: ver y cargar."""
 
     async def prueba(d):
-        emi_u = await _persona(d, "Emi Informe", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR))
-        lector = await _persona(d, "Lector VIP", permisos=(vip.PERMISO_VER,))
-        sin_permiso = await _persona(d, "Otro Sin VIP")
-        async with d.Sesion() as s:
-            for u, mail in ((lector, "lector.vip@ejemplo.uy"), (sin_permiso, "otro.sin.vip@ejemplo.uy")):
-                (await s.get(type(u), u.id)).email = mail
-            await s.commit()
-        await _cargar(Cliente(d.http, emi_u), "2026.csv", [_fila(1, f"2026-{m:02d}", 10_000) for m in range(1, 11)])
-        async with d.Sesion() as s:
-            informe = await vip.armar_informe(s, None, emi_u.id)
-        assert informe and not informe.con_ia and "octubre 2026" in informe.analisis
-        assert informe.prediccion["mes"] == "2026-11" and informe.enviado_a == len(enviados)
-        para = [e[0] for e in enviados]
-        assert "lector.vip@ejemplo.uy" in para  # tiene el permiso
-        assert "otro.sin.vip@ejemplo.uy" not in para  # no lo tiene
-        assert not any(p.endswith(".test") for p in para)  # las cuentas de prueba, nunca
-        assert all(e[1] == "⭐ Clientes VIP · octubre 2026" and e[2].startswith("Sofía y Valentina · ") for e in enviados)
+        emi = Cliente(d.http, await _persona(d, "Emi Datos", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR)))
+        valentina = Cliente(d.http, await _persona(d, "Valentina Agente", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR)))
+        mira = Cliente(d.http, await _persona(d, "Mira Datos", permisos=(vip.PERMISO_VER,)))
+        nadie = Cliente(d.http, await _persona(d, "Sin Datos"))
+        filas = [_fila(1, f"2026-{m:02d}", 10_000) for m in range(1, 11)] + [_fila(2, "2026-10", 7_000, 'La "Barra";')]
+        dims = [{"mes": "2026-10", "dimension": "canal", "valor": "Tienda Inglesa", "venta": 17_000, "margen": 5_000,
+                 "unidades": 20, "tickets": 6, "clientes": 2}]
+        await _cargar(emi, "2026.csv", filas, dims)
+
+        # Antes de que ella publique: el tablero no tiene informe ni predicción suya.
+        t = (await mira.get("/clientes-vip/tablero")).json()
+        assert t["informe"] is None and t["prediccion_valentina"] is None and t["prediccion"]["mes"] == "2026-11"
+
+        # Baja los datos en CSV (las comillas y el punto y coma de un nombre no rompen nada).
+        r = await valentina.get("/clientes-vip/datos", params={"tabla": "clientes_mes"})
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/csv")
+        lineas = r.text.strip().split("\n")
+        assert lineas[0] == ";".join(vip.COLUMNAS_CLIENTES_MES) and len(lineas) == 1 + len(filas)
+        assert '"La ""Barra"";"' in r.text
+        assert (await valentina.get("/clientes-vip/datos", params={"tabla": "dimensiones"})).text.count("\n") == 2
+        assert (await valentina.get("/clientes-vip/datos", params={"tabla": "clientes"})).status_code == 200
+        assert (await valentina.get("/clientes-vip/datos", params={"tabla": "users"})).status_code == 400
+        n = (await valentina.get("/clientes-vip/numeros")).json()
+        assert n["ultimo_mes"] == "octubre 2026" and n["clientes_vip"] == 2
+
+        # Anota lo que aprendió; lo puede ver cualquiera con el permiso.
+        r = await valentina.post("/clientes-vip/memoria", json={
+            "tema": "Calendario comercial", "texto": "Noviembre trae Black Friday y CyberLunes: no compararlo con octubre a secas.",
+            "fuente": "mail de Ivan del 26/11"})
+        assert r.status_code == 200, r.text
+        nota = r.json()
+        assert [x["tema"] for x in (await mira.get("/clientes-vip/memoria")).json()] == ["Calendario comercial"]
+        # Se corrige y se retira, sin borrar: queda en el historial.
+        r = await valentina.patch(f"/clientes-vip/memoria/{nota['id']}", json={"activo": False})
+        assert r.status_code == 200 and r.json()["activo"] is False
+        assert (await mira.get("/clientes-vip/memoria")).json() == []
+        assert len((await mira.get("/clientes-vip/memoria", params={"retiradas": True})).json()) == 1
+
+        # Publica su informe con su predicción: el tablero muestra los dos.
+        r = await valentina.post("/clientes-vip/informes", json={
+            "mes": "2026-10", "autor": "Valentina",
+            "analisis": "### 📊 Cómo cerró octubre 2026\n- Lo que pasó, explicado con calma y con los datos.",
+            "prediccion": {"mes": "2026-11", "venta": 18_000, "desde": 16_000, "hasta": 20_000, "como": "cohortes + calendario"}})
+        assert r.status_code == 200, r.text
+        t = (await mira.get("/clientes-vip/tablero")).json()
+        assert t["informe"]["autor"] == "Valentina" and t["prediccion_valentina"]["venta"] == 18_000
+
+        # Quien solo ve no publica ni escribe la memoria; sin permiso, nada de nada.
+        assert (await mira.post("/clientes-vip/memoria", json={"tema": "x y", "texto": "algo que no"})).status_code == 403
+        assert (await mira.post("/clientes-vip/informes", json={"mes": "2026-10", "analisis": "x" * 60})).status_code == 403
+        for ruta in ("/clientes-vip/datos", "/clientes-vip/numeros", "/clientes-vip/memoria"):
+            assert (await nadie.get(ruta)).status_code in (403, 404), ruta
+            assert (await Cliente(d.http, d.a1).get(ruta)).status_code in (403, 404), ruta
+    correr(prueba)
+
+
+@_con_base
+def test_el_detalle_comprimido_va_y_vuelve_entero_y_valentina_publica_cada_cliente():
+    import gzip
+
+    async def prueba(d):
+        emi = Cliente(d.http, await _persona(d, "Emi Detalle", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR)))
+        mira = Cliente(d.http, await _persona(d, "Mira Detalle", permisos=(vip.PERMISO_VER,)))
+
+        async def cargar_con_detalle(archivo: str) -> int:
+            r = await emi.post("/clientes-vip/cargas", json={"archivo": archivo, "meses": ["2026-09", "2026-10"], "filas": 2})
+            carga_id = r.json()["id"]
+            await emi.post(f"/clientes-vip/cargas/{carga_id}/filas",
+                           json={"filas": [_fila(1, "2026-09", 9_000), _fila(1, "2026-10", 10_000)]})
+            # Dos partes, cada una un gzip completo: pegadas forman un gzip válido.
+            partes = ["id_cliente;mes;categoria;venta\n1;2026-09;ALMACEN;9000\n", "1;2026-10;BEBIDAS;10000\n"]
+            for i, texto in enumerate(partes):
+                r = await emi.post(f"/clientes-vip/cargas/{carga_id}/detalle",
+                                   params={"nombre": "cliente_mes_categoria", "parte": i, "filas": 1},
+                                   content=gzip.compress(texto.encode()))
+                assert r.status_code == 200, r.text
+            # Sin comprimir, o con un nombre raro, no entra.
+            r = await emi.post(f"/clientes-vip/cargas/{carga_id}/detalle", params={"nombre": "cliente_mes_categoria", "parte": 9},
+                               content=b"texto plano")
+            assert r.status_code == 400
+            r = await emi.post(f"/clientes-vip/cargas/{carga_id}/detalle", params={"nombre": "usuarios", "parte": 0},
+                               content=gzip.compress(b"x"))
+            assert r.status_code == 400
+            assert (await emi.post(f"/clientes-vip/cargas/{carga_id}/terminar", json={"dimensiones": []})).status_code == 200
+            return carga_id
+
+        primera = await cargar_con_detalle("sep-oct.csv")
+        indice = (await mira.get("/clientes-vip/detalle")).json()
+        assert [(x["carga_id"], x["nombre"], x["partes"], x["filas"]) for x in indice] == [(primera, "cliente_mes_categoria", 2, 2)]
+        r = await mira.get(f"/clientes-vip/detalle/{primera}/cliente_mes_categoria")
+        assert r.status_code == 200
+        assert gzip.decompress(r.content).decode() == (
+            "id_cliente;mes;categoria;venta\n1;2026-09;ALMACEN;9000\n1;2026-10;BEBIDAS;10000\n")
+        assert (await mira.get(f"/clientes-vip/detalle/{primera}/productos")).status_code == 404
+
+        # Una carga nueva de los mismos meses reemplaza el detalle viejo: no se acumula.
+        segunda = await cargar_con_detalle("sep-oct-corregido.csv")
+        assert [x["carga_id"] for x in (await mira.get("/clientes-vip/detalle")).json()] == [segunda]
+
+        # Valentina publica lo que ve de cada cliente y aparece en su ficha.
+        r = await emi.post("/clientes-vip/valentina/clientes", json={"mes": "2026-10", "filas": [{
+            "id_cliente": 1, "riesgo_abandono": 0.12, "proxima_categoria": "BEBIDAS", "probabilidad_proxima": 0.64,
+            "potencial_mensual": 2500, "descubrio": "BEBIDAS (octubre)", "dejo": "ALMACEN", "frecuencia": "estable",
+            "mix": "más bebidas, menos almacén", "accion": "Ofrecerle bebidas en el próximo mailing"}]})
+        assert r.status_code == 200, r.text
+        ficha = (await mira.get("/clientes-vip/clientes/1")).json()
+        assert ficha["valentina"]["proxima_categoria"] == "BEBIDAS" and ficha["valentina"]["mes"] == "2026-10"
+        # Republica: se actualiza, no se duplica.
+        await emi.post("/clientes-vip/valentina/clientes", json={"mes": "2026-10", "filas": [{"id_cliente": 1, "riesgo_abandono": 0.3}]})
+        ficha = (await mira.get("/clientes-vip/clientes/1")).json()
+        assert ficha["valentina"]["riesgo_abandono"] == 0.3 and ficha["valentina"]["proxima_categoria"] is None
+        # Quien solo ve no publica nada.
+        r = await mira.post("/clientes-vip/valentina/clientes", json={"mes": "2026-10", "filas": [{"id_cliente": 1}]})
+        assert r.status_code == 403
     correr(prueba)

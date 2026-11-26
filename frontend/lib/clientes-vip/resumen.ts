@@ -41,8 +41,18 @@ export const COLUMNAS = [
 
 type Columna = (typeof COLUMNAS)[number]
 
+/** Columnas que no son obligatorias pero, si están, dan el detalle para
+ *  Valentina (25/11/2026: lo que pidió Emilia). */
+const OPCIONALES = ['sku', 'producto', 'subcategoria', 'marca'] as const
+type Opcional = (typeof OPCIONALES)[number]
+
+/** Las tablas de detalle que van comprimidas a Valentina. */
+export const DETALLES = ['cliente_mes_categoria', 'cliente_subcategoria', 'producto_mes', 'productos'] as const
+export type NombreDetalle = (typeof DETALLES)[number]
+
 const CANALES = ['Tienda Inglesa', 'E-commerce', 'Smart', 'Sin clasificar'] as const
 const MAX_CATEGORIAS = 64
+const MAX_MESES = 31 // los meses de un archivo, como bits
 
 type Acum = {
   cliente: number; mes: string
@@ -51,9 +61,13 @@ type Acum = {
   mp: Float64Array // venta: [marca propia, otras marcas, sin dato]
   sucursal: Map<string, number>
   categoria: Float32Array
+  catUnidades: Float32Array
+  catTickets: Uint16Array // en cuántos tickets del mes compró algo de cada categoría
 }
 
 type AcumDim = { venta: number; margen: number; unidades: number; tickets: number; ultimoTicket: string }
+type AcumSub = { cliente: number; cat: number; sub: string; meses: number; venta: number; unidades: number }
+type AcumSku = { venta: number; unidades: number; tickets: number; ultimoTicket: string }
 
 export class ArchivoInvalido extends Error {}
 
@@ -101,6 +115,14 @@ function marcaPropia(texto: string): 0 | 1 | 2 {
 
 const NOMBRE_MP = ['Marca propia', 'Otras marcas', 'Sin dato']
 
+/** Una copia del texto que no depende del pedazo del archivo de donde salió.
+ *  Los textos que salen de split/slice/trim siguen apuntando al pedazo entero
+ *  (decenas de KB): guardar 700.000 de esos retenía el archivo entero en memoria
+ *  (2 GB con el de 2026). Se copia una sola vez cada texto distinto. */
+function copia(t: string): string {
+  return (' ' + t).slice(1)
+}
+
 export class Resumidor {
   private idx: Record<Columna, number> | null = null
   private resto = ''
@@ -109,6 +131,15 @@ export class Resumidor {
   private dims = new Map<string, AcumDim>()
   private categorias: string[] = []
   private idxCategoria = new Map<string, number>()
+  // El detalle para Valentina (si el archivo trae las columnas opcionales)
+  private opc: Partial<Record<Opcional, number>> = {}
+  private mascaraTicket = [0, 0] // las categorías ya vistas en el ticket actual (64 bits en dos)
+  private meses: string[] = []
+  private idxMes = new Map<string, number>()
+  private porClienteSub = new Map<string, AcumSub>()
+  private porSkuMes = new Map<string, AcumSku>()
+  private productos = new Map<string, [string, string, string, string, string]>()
+  private textos = new Map<string, string>()
   filasArchivo = 0
   descartadas = 0
 
@@ -135,6 +166,27 @@ export class Resumidor {
       )
     }
     this.idx = Object.fromEntries(COLUMNAS.map(c => [c, nombres.indexOf(c)])) as Record<Columna, number>
+    this.opc = {}
+    for (const c of OPCIONALES) if (nombres.includes(c)) this.opc[c] = nombres.indexOf(c)
+  }
+
+  private unico(t: string): string {
+    let u = this.textos.get(t)
+    if (u === undefined) {
+      u = copia(t)
+      this.textos.set(u, u)
+    }
+    return u
+  }
+
+  private indiceMes(mes: string): number {
+    let i = this.idxMes.get(mes)
+    if (i === undefined) {
+      i = this.meses.length
+      this.meses.push(mes)
+      this.idxMes.set(mes, i)
+    }
+    return i
   }
 
   private indiceCategoria(nombre: string): number {
@@ -150,6 +202,81 @@ export class Resumidor {
       this.idxCategoria.set(nombre, i)
     }
     return i
+  }
+
+  /** Subcategoría por cliente (con los meses en que la compró), producto por mes y el catálogo. */
+  private sumarDetalle(c: string[], cliente: number, mes: string, ic: number, ticket: string,
+                       venta: number, unidades: number, mp: 0 | 1 | 2) {
+    const o = this.opc
+    if (o.subcategoria !== undefined) {
+      const sub = this.unico(((c[o.subcategoria] ?? '').trim() || 'Sin subcategoría').slice(0, 120))
+      const clave = `${cliente}|${ic}|${sub}`
+      let s = this.porClienteSub.get(clave)
+      if (!s) {
+        s = { cliente, cat: ic, sub, meses: 0, venta: 0, unidades: 0 }
+        this.porClienteSub.set(clave, s)
+      }
+      const im = this.indiceMes(mes)
+      if (im < MAX_MESES) s.meses |= 1 << im
+      s.venta += venta
+      s.unidades += unidades
+    }
+    if (o.sku !== undefined) {
+      const sku = this.unico((c[o.sku] ?? '').trim())
+      if (!sku) return
+      const clave = `${sku}|${mes}`
+      let k = this.porSkuMes.get(clave)
+      if (!k) {
+        k = { venta: 0, unidades: 0, tickets: 0, ultimoTicket: '' }
+        this.porSkuMes.set(clave, k)
+      }
+      k.venta += venta
+      k.unidades += unidades
+      if (k.ultimoTicket !== ticket) {
+        k.tickets++
+        k.ultimoTicket = ticket
+      }
+      if (!this.productos.has(sku)) {
+        const t = (j: number | undefined) => (j === undefined ? '' : this.unico((c[j] ?? '').trim().slice(0, 160)))
+        this.productos.set(sku, [t(o.producto), this.categorias[ic] ?? '', t(o.subcategoria), t(o.marca), NOMBRE_MP[mp]])
+      }
+    }
+  }
+
+  /** Si esta tabla de detalle tiene algo (depende de las columnas del archivo). */
+  tieneDetalle(nombre: NombreDetalle): boolean {
+    if (nombre === 'cliente_mes_categoria') return this.porClienteMes.size > 0
+    if (nombre === 'cliente_subcategoria') return this.porClienteSub.size > 0
+    return this.porSkuMes.size > 0
+  }
+
+  /** Las filas de una tabla de detalle en CSV (separado por ;), empezando por la cabecera. */
+  *lineasDeDetalle(nombre: NombreDetalle): Generator<string> {
+    const limpio = (t: string) => (/[;"\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t)
+    if (nombre === 'cliente_mes_categoria') {
+      yield 'id_cliente;mes;categoria;venta;unidades;tickets'
+      for (const a of this.porClienteMes.values()) {
+        for (let k = 0; k < a.categoria.length; k++) {
+          if (!a.catTickets[k] && !a.categoria[k]) continue
+          yield `${a.cliente};${a.mes};${limpio(this.categorias[k] ?? 'Otras')};${Math.round(a.categoria[k])};${Math.round(a.catUnidades[k] * 100) / 100};${a.catTickets[k]}`
+        }
+      }
+    } else if (nombre === 'cliente_subcategoria') {
+      yield 'id_cliente;categoria;subcategoria;meses;venta;unidades'
+      for (const s of this.porClienteSub.values()) {
+        const meses = this.meses.filter((_, i) => s.meses & (1 << i)).sort().join('|')
+        yield `${s.cliente};${limpio(this.categorias[s.cat] ?? 'Otras')};${limpio(s.sub)};${meses};${Math.round(s.venta)};${Math.round(s.unidades * 100) / 100}`
+      }
+    } else if (nombre === 'producto_mes') {
+      yield 'sku;mes;venta;unidades;tickets'
+      for (const [clave, k] of this.porSkuMes) {
+        const [sku, mes] = clave.split('|')
+        yield `${limpio(sku)};${mes};${Math.round(k.venta)};${Math.round(k.unidades * 100) / 100};${k.tickets}`
+      }
+    } else {
+      yield 'sku;producto;categoria;subcategoria;marca;marca_propia'
+      for (const [sku, p] of this.productos) yield [sku, ...p].map(limpio).join(';')
+    }
   }
 
   private sumarDim(mes: string, dim: Dimension, valor: string, ticket: string, venta: number, margen: number, unidades: number) {
@@ -177,7 +304,8 @@ export class Resumidor {
     this.filasArchivo++
     const cliente = Number(c[i.id_cliente])
     const fecha = c[i.fecha] ?? ''
-    const mes = mesDe(fecha)
+    const crudo = mesDe(fecha)
+    const mes = crudo === null ? null : this.unico(crudo)
     if (!Number.isInteger(cliente) || cliente <= 0 || !mes) {
       this.descartadas++
       return
@@ -186,8 +314,8 @@ export class Resumidor {
     const venta = numero(c[i.venta_neta_sin_iva])
     const margen = numero(c[i.margen_neto_sin_iva])
     const unidades = numero(c[i.unidades])
-    const sucursal = (c[i.sucursal] ?? '').trim() || 'Sin sucursal'
-    const categoria = ((c[i.categoria] ?? '').trim() || 'Sin categoría').replace(/=/g, '-')
+    const sucursal = this.unico((c[i.sucursal] ?? '').trim() || 'Sin sucursal')
+    const categoria = this.unico(((c[i.categoria] ?? '').trim() || 'Sin categoría').replace(/=/g, '-'))
     const canal = canalDe(c[i.canal] ?? '')
     const mp = marcaPropia(c[i.marca_propia] ?? '')
 
@@ -198,6 +326,7 @@ export class Resumidor {
         cliente, mes, venta: 0, margen: 0, unidades: 0, tickets: 0, dias: 0,
         canal: new Float64Array(CANALES.length), mp: new Float64Array(3),
         sucursal: new Map(), categoria: new Float32Array(MAX_CATEGORIAS),
+        catUnidades: new Float32Array(MAX_CATEGORIAS), catTickets: new Uint16Array(MAX_CATEGORIAS),
       }
       this.porClienteMes.set(clave, a)
     }
@@ -207,13 +336,23 @@ export class Resumidor {
     if (ticket !== this.ultimoTicket) {
       a.tickets++
       this.ultimoTicket = ticket
+      this.mascaraTicket = [0, 0]
     }
     const dia = diaDe(fecha)
     if (dia) a.dias |= 1 << (dia - 1)
     a.canal[canal] += venta
     a.mp[mp] += venta
     a.sucursal.set(sucursal, (a.sucursal.get(sucursal) ?? 0) + venta)
-    a.categoria[this.indiceCategoria(categoria)] += venta
+    const ic = this.indiceCategoria(categoria)
+    a.categoria[ic] += venta
+    a.catUnidades[ic] += unidades
+    const mitad = ic < 32 ? 0 : 1
+    const bit = 1 << (ic % 32)
+    if (!(this.mascaraTicket[mitad] & bit)) {
+      this.mascaraTicket[mitad] |= bit
+      a.catTickets[ic]++
+    }
+    this.sumarDetalle(c, cliente, mes, ic, ticket, venta, unidades, mp)
 
     this.sumarDim(mes, 'categoria', this.categorias[this.indiceCategoria(categoria)], ticket, venta, margen, unidades)
     this.sumarDim(mes, 'sucursal', sucursal, ticket, venta, margen, unidades)

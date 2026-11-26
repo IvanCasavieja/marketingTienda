@@ -7,7 +7,7 @@ Los datos son confidenciales: viven solo acá, en la base, y los ve quien tiene
 """
 from datetime import date, datetime
 
-from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, SmallInteger, String, Text, func
+from sqlalchemy import JSON, BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, SmallInteger, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -91,4 +91,41 @@ class VipInforme(Base):
     prediccion: Mapped[dict] = mapped_column(JSON, nullable=False)
     con_ia: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enviado_a: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    autor: Mapped[str] = mapped_column(String(60), nullable=False, default="la plataforma")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VipDetalle(Base):
+    """El detalle que arma el navegador al cargar, comprimido, para Valentina
+    (0092): cliente×mes×categoría, cliente×subcategoría (con los meses en que
+    la compró), producto×mes y el catálogo de productos. Cada tabla va en
+    partes; cada parte es un gzip completo, así que pegadas en orden forman un
+    gzip válido. No se consulta desde la plataforma: se baja entero."""
+    __tablename__ = "vip_detalle"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    carga_id: Mapped[int] = mapped_column(ForeignKey("vip_cargas.id", ondelete="CASCADE"), nullable=False, index=True)
+    nombre: Mapped[str] = mapped_column(String(40), nullable=False)
+    parte: Mapped[int] = mapped_column(Integer, nullable=False)
+    filas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    datos: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VipClienteValentina(Base):
+    """Lo que Valentina ve y predice de cada cliente (0092), publicado desde la
+    nube después de cada análisis. Se muestra en la ficha del cliente."""
+    __tablename__ = "vip_cliente_valentina"
+
+    id_cliente: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mes: Mapped[date] = mapped_column(Date, nullable=False)  # el último mes que analizó
+    riesgo_abandono: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0 a 1
+    proxima_categoria: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    probabilidad_proxima: Mapped[float | None] = mapped_column(Float, nullable=True)
+    potencial_mensual: Mapped[int | None] = mapped_column(Integer, nullable=True)  # pesos/mes que podría sumar
+    descubrio: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    dejo: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    frecuencia: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    mix: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    accion: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    actualizado: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

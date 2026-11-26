@@ -6,7 +6,7 @@ import { Loader2, Search, X } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { clientesVipApi } from "@/lib/api";
 import { extractErrorDetail } from "@/lib/errors";
-import type { ClienteVip, MesDeCliente, Segmento } from "@/lib/clientes-vip/tipos";
+import type { ClienteVip, LoQueVeValentina, MesDeCliente, Segmento } from "@/lib/clientes-vip/tipos";
 import { QUE_ES, mesCorto, mesLargo, mesesEntre, numero, plata, variacion } from "@/lib/clientes-vip/tipos";
 import { CAJA, Cambio, PuntoSegmento, TITULO } from "./Piezas";
 
@@ -139,7 +139,7 @@ export default function ListaClientes({ segmento, onSegmento, ultimoMes }: {
 }
 
 function FichaCliente({ id, ultimoMes, onCerrar }: { id: number; ultimoMes: string; onCerrar: () => void }) {
-  const [datos, setDatos] = useState<{ cliente: ClienteVip | null; meses: MesDeCliente[] } | null>(null);
+  const [datos, setDatos] = useState<{ cliente: ClienteVip | null; valentina: LoQueVeValentina | null; meses: MesDeCliente[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -201,6 +201,7 @@ function FichaCliente({ id, ultimoMes, onCerrar }: { id: number; ultimoMes: stri
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            {datos.valentina && <LoQueVe v={datos.valentina} />}
             {top.length > 0 && (
               <div className="mt-5">
                 <p className="text-xs text-slate-500 mb-2">Lo que más compra (12 meses)</p>
@@ -214,6 +215,32 @@ function FichaCliente({ id, ultimoMes, onCerrar }: { id: number; ultimoMes: stri
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+
+/** Lo que Valentina (Escuadrón Lechuza) ve y predice de este cliente. */
+function LoQueVe({ v }: { v: LoQueVeValentina }) {
+  const pct = (x: number | null) => (x === null || x === undefined ? "—" : `${Math.round(x * 100)}%`);
+  const filas: [string, string | null][] = [
+    ["Riesgo de abandono", v.riesgo_abandono === null ? null : pct(v.riesgo_abandono)],
+    ["Próxima categoría", v.proxima_categoria ? `${v.proxima_categoria}${v.probabilidad_proxima !== null ? ` (${pct(v.probabilidad_proxima)})` : ""}` : null],
+    ["Potencial por mes", v.potencial_mensual !== null ? plata(v.potencial_mensual) : null],
+    ["Descubrió", v.descubrio],
+    ["Dejó", v.dejo],
+    ["Frecuencia", v.frecuencia],
+    ["Mix", v.mix],
+  ];
+  return (
+    <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+      <p className="text-xs text-slate-500">Lo que ve Valentina · análisis de {mesLargo(v.mes)}</p>
+      <dl className="mt-2 grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        {filas.filter(([, x]) => x).map(([k, x]) => (
+          <div key={k}><dt className="text-xs text-slate-500">{k}</dt><dd className="text-slate-800 dark:text-slate-200">{x}</dd></div>
+        ))}
+      </dl>
+      {v.accion && <p className="mt-3 text-sm text-slate-800 dark:text-slate-200"><span className="text-xs text-slate-500">Qué haría: </span>{v.accion}</p>}
     </div>
   );
 }

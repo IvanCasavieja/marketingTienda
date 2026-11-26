@@ -76,4 +76,40 @@ prueba('un archivo sin las columnas dice cuáles faltan', () => {
   assert.throws(() => new Resumidor().terminar(), ArchivoInvalido)
 })
 
+prueba('arma el detalle para Valentina: categoría por mes, subcategoría con sus meses, productos', () => {
+  const r = new Resumidor()
+  r.agregarTexto(
+    CAB +
+    fila(179, 1, '2026-01-01', 'Carrasco', 'Tienda Inglesa', 'Almacén', 'Si', '1', '100', '25') +
+    fila(179, 1, '2026-01-01', 'Carrasco', 'Tienda Inglesa', 'Almacén', 'Si', '2', '50', '10') +
+    fila(179, 2, '2026-01-15', 'Carrasco', 'Tienda Inglesa', 'Bebidas', 'No', '1', '30', '5') +
+    fila(179, 3, '2026-03-02', 'Carrasco', 'Tienda Inglesa', 'Almacén', 'Si', '1', '40', '9'),
+  )
+  r.terminar()
+  const cat = [...r.lineasDeDetalle('cliente_mes_categoria')]
+  assert.equal(cat[0], 'id_cliente;mes;categoria;venta;unidades;tickets')
+  // Almacén en enero: dos líneas del mismo ticket = un ticket
+  assert.ok(cat.includes('179;2026-01;Almacén;150;3;1'), cat.join(' | '))
+  assert.ok(cat.includes('179;2026-01;Bebidas;30;1;1'))
+  assert.ok(cat.includes('179;2026-03;Almacén;40;1;1'))
+  const sub = [...r.lineasDeDetalle('cliente_subcategoria')]
+  assert.equal(sub[0], 'id_cliente;categoria;subcategoria;meses;venta;unidades')
+  assert.ok(sub.includes('179;Almacén;Sub;2026-01|2026-03;190;4'), sub.join(' | '))
+  const prod = [...r.lineasDeDetalle('producto_mes')]
+  assert.ok(prod.includes('123;2026-01;180;4;2'), prod.join(' | '))
+  const catalogo = [...r.lineasDeDetalle('productos')]
+  assert.equal(catalogo[1], '123;Algo;Almacén;Sub;MARCA;Marca propia')
+  assert.equal(r.tieneDetalle('productos'), true)
+})
+
+prueba('sin las columnas opcionales, no hay detalle de subcategoría ni de productos (y no se rompe)', () => {
+  const r = new Resumidor()
+  r.agregarTexto('id_cliente;id_ticket;fecha;sucursal;canal;categoria;marca_propia;unidades;venta_neta_sin_IVA;margen_neto_sin_IVA\n' +
+                 '1;1;2026-01-01;A;Tienda Inglesa;X;No;1;10;1\n')
+  r.terminar()
+  assert.equal(r.tieneDetalle('cliente_subcategoria'), false)
+  assert.equal(r.tieneDetalle('productos'), false)
+  assert.equal([...r.lineasDeDetalle('cliente_mes_categoria')].length, 2)
+})
+
 console.log(`resumen de Clientes VIP: ${pasaron} pruebas en verde`)

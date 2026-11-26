@@ -168,6 +168,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/campaigns",               label: t("common.campaigns"),  icon: Megaphone,       section: t("sidebar.medios"),         perm: "analytics.view" },
     { href: "/analytics",               label: t("common.aiAnalysis"), icon: Brain,           section: t("sidebar.medios"),         perm: "ai.triada" },
     { href: "/settings",                label: t("common.connections"),icon: Settings,        section: t("sidebar.medios"),         perm: "connections.view" },
+    // Loyalty (Ivan, 26/11/2026: «una subherramienta, así como lo es materiales
+    // o redes sociales»). Datos confidenciales: solo con el permiso propio, que
+    // no trae ningún rol (0091).
+    { href: "/clientes-vip",            label: t("sidebar.clientesVip", "Clientes VIP"), icon: Crown, section: t("sidebar.loyalty", "LOYALTY"), perm: "clientes_vip.view" },
     ...(!planillaArriba
       ? [{ href: "/redexpres/planilla", label: t("sidebar.planillaPedidos"), icon: ClipboardList, section: t("sidebar.redexpres"), perm: "redexpres.view" }]
       : []),
@@ -181,8 +185,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/facturacion/cuentas",     label: t("sidebar.facturacionCuentas"), icon: Landmark, section: t("sidebar.facturacion"),  perm: "facturacion.manage" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,          section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,       section: t("sidebar.comercial"),     perm: "precios.search" },
-    // Datos confidenciales: solo con el permiso propio, que no trae ningún rol (0091).
-    { href: "/clientes-vip",            label: t("sidebar.clientesVip", "Clientes VIP"), icon: Crown, section: t("sidebar.comercial"), perm: "clientes_vip.view" },
     ...(hasPermission(currentUser, "platform.admin")
       ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
       : []),

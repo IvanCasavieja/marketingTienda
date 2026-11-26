@@ -59,7 +59,8 @@ ALL_PERMISSIONS: dict[str, str] = {
     "ai.triada":               "Usar La Triada — debate y análisis automático de campañas",
     "ai.dogti":                "Usar a DogTi — lectura de facturas PDF con IA y chat sobre el presupuesto",
 
-    # Clientes VIP (0091) — datos confidenciales: no vienen con ningún rol,
+    # Loyalty → Clientes VIP (0091; en el menú y en permisos se agrupa como
+    # «Loyalty», Ivan 26/11/2026) — datos confidenciales: no vienen con ningún rol,
     # se tildan a mano a cada persona (Ivan, 25/11/2026: "tengo acceso yo y
     # Emi Perdomo… que tenga permiso para ver la sección así se le da a un usuario").
     "clientes_vip.view":       "Ver el tablero de Clientes VIP: compras, segmentos, riesgo y predicción, y recibir su informe por mail",

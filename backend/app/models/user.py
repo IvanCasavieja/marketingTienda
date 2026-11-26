@@ -60,6 +60,11 @@ class User(Base):
     # Si los avisos de la campanita le llegan también por mail (0079). Lo
     # apaga cada uno en "Mi perfil"; arranca prendido.
     avisos_por_mail: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Cuenta de agente (0092): no se le pide cambiar la contraseña, ni la
+    # primera vez ni cada 60 días. Ivan (25/11/2026): para la cuenta de
+    # Valentina, que entra sola desde la nube y nadie puede cambiarle la
+    # contraseña a mano. Solo el superadmin la crea así.
+    clave_fija: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     # La empresa de la cuenta externa ("Agencia Pampa"): entre los de la misma
     # empresa se ven los nombres; a los de otra, no.
     empresa: Mapped[str | None] = mapped_column(String(120), nullable=True)

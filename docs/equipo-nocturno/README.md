@@ -16,6 +16,10 @@ Cómo hacen el trabajo: los skills `.claude/skills/recorrido-humano/`,
 `.claude/skills/cuaderno-de-hallazgos/` y `.claude/skills/correo-del-equipo/`
 (hablan por mail, sin GitHub).
 
+Cada uno tiene su **biblioteca** (`.claude/skills/biblioteca-<nombre>/`): los
+métodos y estándares más reconocidos de su oficio. Y todos piensan con el
+mismo criterio: [CRITERIO.md](CRITERIO.md).
+
 ## La regla de oro
 
 - **Nada entra a `main` sin que Ivan lo revise y diga OK.** El equipo trabaja en
@@ -41,6 +45,7 @@ Cómo hacen el trabajo: los skills `.claude/skills/recorrido-humano/`,
 | Bruno | Desarrollador: programa con pruebas, textos en 3 idiomas y permisos en el servidor | `.claude/agents/bruno-desarrollo.md` |
 | Ramiro | QA: pruebas con base, punta a punta en el navegador, barrido antes/después, intenta romperla | `.claude/agents/ramiro-tester.md` |
 | Clara | Informe: lo cuenta en criollo, con imágenes | `.claude/agents/clara-informe.md` |
+| Valentina | Economista y estadística de retail, solo para Clientes VIP: el informe del mes (el día después de la carga), las predicciones y la conversación por mail con quienes tienen acceso. Tiene su propia rutina y su propia casilla, y no consulta a nadie: es la especialista | `.claude/agents/valentina-economista.md` |
 
 La sesión de la rutina es la que coordina: lanza a cada uno, les pasa lo que
 hizo el anterior (resumido, con las rutas a capturas y archivos) y sube el
@@ -57,7 +62,8 @@ pasa, cerrala con lo que haya y seguí.
    `TZ=America/Montevideo date +"%F %A"`. Instalá las dependencias (*Cómo
    probar*), levantá la plataforma con sus tres cuentas (*La plataforma
    andando*) y el navegador (skill `recorrido-humano`, *Preparar*). Traé el
-   cuaderno (skill `cuaderno-de-hallazgos`, *Traerlo al empezar la noche*).
+   cuaderno (skill `cuaderno-de-hallazgos`, *Traerlo al empezar la noche*) y
+   leé el cerebro común (`cuaderno/CEREBRO.md`).
 1. **Recorrido — Sofía** (45 min). Le pasás la dirección, el archivo de
    cuentas (`$S/cuentas.env`), el día de la semana, `$S` y dónde está el
    cuaderno. Hace las tareas reales (el ciclo completo con la agencia y la
@@ -83,6 +89,11 @@ pasa, cerrala con lo que haya y seguí.
    a Lucía con el detalle. Máximo 3 vueltas. Si no queda verde, no se sube
    código: noche sin cambios (8b) contando qué se intentó y qué falló.
 8. **Informe y subida** (10 min).
+   - **El cerebro común:** anotá en `cuaderno/CEREBRO.md` qué hizo cada uno
+     esa noche y por qué, con sus palabras (lo que devolvió cada agente):
+     Bruno el cambio técnico, Lucía el diseño, Tomás la decisión, Ramiro lo
+     que probó. Con eso, Clara y cualquiera del equipo lo pueden explicar
+     después.
    - Subí al cuaderno las imágenes del antes/después y la evidencia de los 3
      hallazgos principales, con el historial de la noche. **Push del cuaderno
      antes del informe** (las imágenes del mail salen de ahí).
@@ -109,18 +120,28 @@ Por mail, como con cualquier compañero (Ivan, 25/11/2026: «la idea es que
 empiecen a formar parte de nuestro equipo»). El informe sale de
 `agentes.tienda@tenovastudio.com` con el nombre de quien escribe, y quien
 quiera le responde **a todos**, sumando en copia a quien haga falta. De lunes
-a viernes, de 9 a 19 (hora de Montevideo), una rutina de día lee el correo
+a viernes, de 8 a 18 (hora de Montevideo), una rutina de día lee el correo
 cada hora y contesta en el mismo hilo, a todos los que estén en copia:
 
 - **Ivan responde ok o no** a un informe: si es ok y las pruebas están en
   verde, se mergea y se publica solo; si es no, se cierra el PR. Solo cuenta
   lo de Ivan, verificado (que el mail venga de verdad de su casilla).
-- **Preguntas**: se contestan.
+- **Preguntas**: contesta quien habló en ese hilo (en un mail nuevo, Clara,
+  la comunicadora). Si no es de su oficio, antes le pregunta al compañero que
+  sabe y cuenta lo que le dijo: Clara no explica un cambio técnico con sus
+  palabras, se lo pregunta a Bruno.
 - **Pedidos y correcciones** de alguien de Tienda Inglesa: se anotan en el
   cuaderno (los de Ivan van primero) y se contesta cuándo se hacen.
 
 La noche siguiente, Sofía pasa lo publicado a Hechos y lo descartado a
-Descartados. Cómo se lee y se contesta: skill `correo-del-equipo`.
+Descartados. Lo que el equipo hace, por qué y lo que aprende queda en el
+cerebro común (`cuaderno/CEREBRO.md`): es lo que leen todos antes de
+contestar. Cómo se lee y se contesta: skill `correo-del-equipo`.
+
+Lo de clientes VIP es solo de **Valentina**, con su rutina y su casilla: el
+día después de que se cargan los datos del mes manda el informe a quienes
+tienen acceso, y cada hora de trabajo mira si le respondieron. No consulta a
+nadie (es la especialista) y no contesta otra cosa: eso es de Clara.
 
 ## Cómo probar
 

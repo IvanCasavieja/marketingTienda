@@ -29,13 +29,17 @@ export type SegmentoResumen = {
 }
 
 export type Prediccion = {
-  mes: string; venta: number; desde: number; hasta: number; margen_error: number
-  contra_este_mes: number | null; contra_anio_anterior: number | null; como: string
+  mes: string; venta: number; desde?: number; hasta?: number; margen_error?: number
+  contra_este_mes?: number | null; contra_anio_anterior?: number | null; como?: string
 }
 
 export type Informe = {
   id: number; mes: string; analisis: string; prediccion: Prediccion | Record<string, never>
-  con_ia: boolean; enviado_a: number; fecha: string | null
+  con_ia: boolean; enviado_a: number; autor: string; fecha: string | null
+}
+
+export type NotaDeMemoria = {
+  id: number; tema: string; texto: string; fuente: string; activo: boolean; fecha: string | null; actualizado: string | null
 }
 
 export type Carga = {
@@ -49,6 +53,8 @@ export type Tablero = {
   dimensiones: Record<'categoria' | 'sucursal' | 'canal' | 'marca_propia', FilaDimension[]>
   segmentos: SegmentoResumen[]
   prediccion: Prediccion | null
+  prediccion_valentina: Prediccion | null
+  memoria: number
   informe: Informe | null
   cargas: Carga[]
   clientes: number
@@ -58,6 +64,13 @@ export type ClienteVip = {
   id_cliente: number; segmento: Segmento; riesgo: number; venta_esperada: number; venta_12m: number
   venta_3m: number; venta_3m_antes: number; margen_12m: number; tickets_12m: number; meses_con_compra: number
   ultimo_mes: string | null; sucursal: string | null; categoria: string | null; parte_ecommerce: number
+}
+
+/** Lo que Valentina ve y predice de un cliente (lo publica desde la nube). */
+export type LoQueVeValentina = {
+  mes: string; riesgo_abandono: number | null; proxima_categoria: string | null; probabilidad_proxima: number | null
+  potencial_mensual: number | null; descubrio: string | null; dejo: string | null; frecuencia: string | null
+  mix: string | null; accion: string | null
 }
 
 export type MesDeCliente = {

@@ -7,7 +7,7 @@ import { useCurrentUserStore } from "@/store/currentUser";
 import {
   Users, UserPlus, KeyRound, ShieldAlert, ShieldCheck,
   Loader2, CheckCircle2, XCircle, ChevronDown,
-  Plus, Trash2, Pencil, X, Shield, History, Cpu, Store, Building2,
+  Plus, Trash2, Pencil, X, Shield, History, Cpu, Store, Building2, Bot, Dices, Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ import {
   FILTROS_DE_ROL, alfabetico, alternarTodas, filtrarPorRol, hayQueMirarElPase, preguntaDelPase, seleccionable,
   type FiltroDeRol, type PaseDeAgencia, type PreguntaDelPase,
 } from "@/lib/admin/usuarios";
+import { claveAleatoria } from "@/lib/admin/clave";
 import AuditLogTab from "./AuditLogTab";
 import AiUsageTab from "./AiUsageTab";
 import UserActivityModal from "./UserActivityModal";
@@ -57,6 +58,8 @@ interface AdminUser {
   empresa?: string | null;
   /** Hasta dónde ve el calendario (0070, lib/alcance.ts). */
   calendario_alcance?: Alcance;
+  /** Cuenta de agente (0092): no se le pide cambiar la contraseña. */
+  clave_fija?: boolean;
 }
 
 /** El cartelito de una cuenta externa, en la lista y en el editor. */
@@ -237,7 +240,7 @@ function UserEditorModal({
     "facturacion": t("admin.permGroups.facturacion"),
     "rrss":        t("admin.permGroups.rrss"),
     "ai":          t("admin.permGroups.ai"),
-    "clientes_vip": t("admin.permGroups.clientes_vip", "Clientes VIP"),
+    "clientes_vip": t("admin.permGroups.clientes_vip", "Loyalty"),
   };
 
   function toggle(key: string) {
@@ -601,7 +604,7 @@ function RoleEditorModal({
     "facturacion": t("admin.permGroups.facturacion"),
     "rrss":        t("admin.permGroups.rrss"),
     "ai":          t("admin.permGroups.ai"),
-    "clientes_vip": t("admin.permGroups.clientes_vip", "Clientes VIP"),
+    "clientes_vip": t("admin.permGroups.clientes_vip", "Loyalty"),
   };
   const grouped = groupPermissions(allPerms);
 
@@ -757,6 +760,9 @@ export default function AdminPage() {
     // Cuenta externa (la agencia): sin rol y con su empresa. Sin mundos
     // (25/11/2026, Ivan: "sería al pedo"): ve su trabajo de cualquiera.
     es_externo: false, empresa: "",
+    // Cuenta de agente (0092, Ivan 25/11/2026): sin cambio de contraseña, ni
+    // la primera vez ni cada 60 días. Solo la ve el superadmin.
+    clave_fija: false,
   });
   // Mientras se crea: el botón dice «Creando…» y no se manda dos veces
   // (Ivan, 25/11/2026: "no me muestra que esté cargando ni nada").
@@ -842,13 +848,16 @@ export default function AdminPage() {
         : {
           email: form.email, full_name: form.full_name, password: form.password,
           role_id: form.role_id === "" ? null : Number(form.role_id),
+          clave_fija: form.clave_fija,
         });
       toast.success(form.es_externo
         ? `Listo: ${form.full_name} ya puede entrar a su tablero. La primera vez elige su contraseña.`
-        : t("admin.createForm.created"));
+        : form.clave_fija
+          ? `Listo: ${form.full_name} entra con la contraseña que le pusiste, sin cambiarla.`
+          : t("admin.createForm.created"));
       setShowForm(false);
       if (form.es_externo) setLista("externas");
-      setForm({ email: "", full_name: "", password: "", role_id: "", es_externo: false, empresa: "" });
+      setForm({ email: "", full_name: "", password: "", role_id: "", es_externo: false, empresa: "", clave_fija: false });
       await load();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail ?? t("admin.createForm.createError"));
@@ -1047,7 +1056,7 @@ export default function AdminPage() {
               <Users size={14} aria-hidden /> Del equipo
             </button>
             <button type="button" aria-pressed={form.es_externo}
-              onClick={() => setForm((f) => ({ ...f, es_externo: true, role_id: "" }))}
+              onClick={() => setForm((f) => ({ ...f, es_externo: true, role_id: "", clave_fija: false }))}
               className="segmento !min-h-[40px] !px-3 text-sm">
               <Building2 size={14} aria-hidden /> Externa (agencia)
             </button>
@@ -1064,8 +1073,24 @@ export default function AdminPage() {
               value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))} />
             <input required type="email" className="input text-sm" placeholder={t("admin.createForm.emailPlaceholder")}
               value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-            <input required className="input text-sm" placeholder={t("admin.createForm.passwordPlaceholder")}
-              value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
+            <div className="flex gap-2">
+              <input required className="input text-sm min-w-0 flex-1" placeholder={t("admin.createForm.passwordPlaceholder")}
+                value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                autoComplete="new-password" spellCheck={false} />
+              {/* Una aleatoria para no poner siempre la misma (Ivan, 25/11/2026). */}
+              <button type="button" title="Generar una contraseña aleatoria"
+                onClick={() => setForm((f) => ({ ...f, password: claveAleatoria() }))}
+                className="btn-secondary text-sm px-3 flex items-center gap-1.5 shrink-0">
+                <Dices size={14} aria-hidden /> Generar
+              </button>
+              {form.password && (
+                <button type="button" title="Copiar la contraseña" aria-label="Copiar la contraseña"
+                  onClick={() => navigator.clipboard?.writeText(form.password).then(() => toast.success("Contraseña copiada"))}
+                  className="btn-secondary text-sm px-2.5 flex items-center shrink-0">
+                  <Copy size={14} aria-hidden />
+                </button>
+              )}
+            </div>
             {form.es_externo ? (
               <ElegirAgencia valor={form.empresa} agencias={agencias}
                 onCambiar={(empresa) => setForm((f) => ({ ...f, empresa }))} />
@@ -1080,6 +1105,19 @@ export default function AdminPage() {
             </div>
             )}
           </div>
+          {yo?.is_superuser && !form.es_externo && (
+            <label className="flex items-start gap-2.5 rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700">
+              <input type="checkbox" className="mt-0.5" checked={form.clave_fija}
+                onChange={(e) => setForm((f) => ({ ...f, clave_fija: e.target.checked }))} />
+              <span>
+                <span className="font-medium text-slate-800 dark:text-slate-200">Cuenta de agente: no pedir cambio de contraseña</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                  Ni la primera vez ni cada 60 días. Para cuentas que entran solas, como la de Valentina.
+                  Usá una contraseña aleatoria y guardala bien.
+                </span>
+              </span>
+            </label>
+          )}
           <div className="flex gap-2">
             <button type="submit" disabled={creando} aria-busy={creando}
               className="btn-primary text-sm px-4 py-2 flex items-center gap-2 disabled:cursor-wait disabled:opacity-70">
@@ -1279,6 +1317,12 @@ export default function AdminPage() {
                       </span>
                     )}
                     {u.es_externo && <MarcaExterna empresa={u.empresa} />}
+                    {u.clave_fija && (
+                      <span title="Cuenta de agente: no se le pide cambiar la contraseña"
+                        className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <Bot size={11} aria-hidden /> Agente
+                      </span>
+                    )}
                     {/* Se marca lo que se sale de lo normal: alguien del equipo
                         con el calendario recortado, o una externa que sí lo ve. */}
                     {!u.is_superuser && (u.es_externo ? alcanceDe(u) !== "nada" : alcanceDe(u) !== "todo") && (
