@@ -61,7 +61,7 @@ function FormularioDeLaTarjeta({ detalle, onCerrar, onListo }: {
   const tarea = detalle.tarea
   const mundo = detalle.accion.mundo
   const huboCambios = useVistaEntregas(s => s.huboCambios)
-  const { tableros } = useTableros(mundo)
+  const { tableros, error: sinListaDeAgencias } = useTableros(mundo)
   const [personas, setPersonas] = useState<Persona[] | null>(null)
   const [titulo, setTitulo] = useState(tarea.titulo)
   const [vence, setVence] = useState(tarea.vence ?? '')
@@ -88,7 +88,10 @@ function FormularioDeLaTarjeta({ detalle, onCerrar, onListo }: {
   const personaGuardada = guardado.startsWith('persona:') ? Number(guardado.slice('persona:'.length)) : null
   // El responsable de Tienda va solo si la hace una agencia (0090).
   const deAgencia = quien.startsWith('agencia:') || quien === 'fuera'
-  const cargando = tableros === null || personas === null
+  // Si la lista de agencias no llegó, igual se puede elegir entre la que la
+  // tiene hoy y la gente de Tienda, y se dice por qué faltan las demás: antes
+  // quedaba «Cargando…» para siempre.
+  const cargando = (tableros === null && !sinListaDeAgencias) || personas === null
 
   function nombreDe(id: number): string {
     return equipo.find(p => p.id === id)?.nombre ?? detalle.personas[String(id)] ?? ''
@@ -187,6 +190,9 @@ function FormularioDeLaTarjeta({ detalle, onCerrar, onListo }: {
             )}
           </select>
         </label>
+        {sinListaDeAgencias && (
+          <p role="alert" className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('calendario.quienLaHace.sinLista')}</p>
+        )}
         {avisoDelCambio && (
           <p id={idDelAviso} role="status" className="mt-1 text-xs text-slate-600 dark:text-slate-400">{avisoDelCambio}</p>
         )}

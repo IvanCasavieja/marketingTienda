@@ -1507,7 +1507,8 @@
       "pasaALaAgencia": "Pasa al tablero de {{agencia}} y le avisamos.",
       "pasaALaAgenciaSinUsuarios": "Pasa al tablero de {{agencia}}: la va a ver cuando tenga usuarios.",
       "pasaAPersona": "La hace {{persona}}.",
-      "dejaLaAgencia": "Sale del tablero de {{agencia}}: la hace {{persona}}."
+      "dejaLaAgencia": "Sale del tablero de {{agencia}}: la hace {{persona}}.",
+      "sinLista": "No se pudo traer la lista de agencias. Cerrá y volvé a abrir para probar de nuevo."
     },
     "tarjetaSinAccion": {
       "cambiar": "Cambiar quién la hace, el nombre, la fecha o el responsable"

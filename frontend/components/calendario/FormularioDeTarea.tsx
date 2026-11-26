@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Check, Mic, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { DictarBrief, type BriefListo } from '@/components/ia/DictarBrief'
 import { esFechaGuardable } from './CampoFecha'
 import { ModalDeOpciones } from './OpcionesDelTipo'
@@ -127,7 +128,8 @@ export function FormularioDeTarea({
   const nombreDeLaAccion = accion ?? ''
   const catalogo = useCatalogoDeTipos()
   const tipos = tiposDelMundo(catalogo.tipos, mundo)
-  const { tableros } = useTableros(mundo)
+  const { t } = useTranslation()
+  const { tableros, error: sinListaDeAgencias } = useTableros(mundo)
 
   const [elegidas, setElegidas] = useState<PiezaElegida[]>([])
   const [titulo, setTitulo] = useState('')
@@ -250,6 +252,13 @@ export function FormularioDeTarea({
         {personasEstado === 'error' && (
           <span className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
             No se pudo traer la lista de personas. Se vuelve a intentar sola en unos segundos.
+          </span>
+        )}
+        {/* Sin la lista, «¿Quién la hace?» no tiene agencias: se dice, en vez de
+            parecer que la agencia no existe (H-018). */}
+        {sinListaDeAgencias && (
+          <span role="alert" className="mt-1 block text-xs text-amber-700 dark:text-amber-300">
+            {t('calendario.quienLaHace.sinLista')}
           </span>
         )}
         {deAgencia && (

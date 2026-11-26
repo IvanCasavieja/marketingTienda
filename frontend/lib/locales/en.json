@@ -1420,7 +1420,8 @@
       "pasaALaAgencia": "It moves to {{agencia}}'s board and we'll let them know.",
       "pasaALaAgenciaSinUsuarios": "It moves to {{agencia}}'s board: they'll see it once they have users.",
       "pasaAPersona": "{{persona}} will do it.",
-      "dejaLaAgencia": "It leaves {{agencia}}'s board: {{persona}} will do it."
+      "dejaLaAgencia": "It leaves {{agencia}}'s board: {{persona}} will do it.",
+      "sinLista": "We couldn't load the list of agencies. Close this and open it again to retry."
     },
     "tarjetaSinAccion": {
       "cambiar": "Change who does it, the name, the date or the person in charge"

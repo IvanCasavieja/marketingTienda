@@ -1420,7 +1420,8 @@
       "pasaALaAgencia": "Passa para o quadro de {{agencia}} e nós avisamos.",
       "pasaALaAgenciaSinUsuarios": "Passa para o quadro de {{agencia}}: vão ver quando tiverem usuários.",
       "pasaAPersona": "{{persona}} vai fazer.",
-      "dejaLaAgencia": "Sai do quadro de {{agencia}}: {{persona}} vai fazer."
+      "dejaLaAgencia": "Sai do quadro de {{agencia}}: {{persona}} vai fazer.",
+      "sinLista": "Não foi possível carregar a lista de agências. Feche e abra de novo para tentar outra vez."
     },
     "tarjetaSinAccion": {
       "cambiar": "Mudar quem faz, o nome, a data ou o responsável"
