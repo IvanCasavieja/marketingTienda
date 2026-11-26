@@ -4006,6 +4006,11 @@ def test_si_no_se_pudo_medir_lo_que_falta_no_se_dice_que_esta_todo():
             assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
                 CalendarioVersion.id == sin_medir, CalendarioVersion.faltan.is_(None),
             ))).scalar_one() == 1
+        # Sumarle una imagen sin medir de nuevo no la da por completa: la
+        # respuesta dice null, como el detalle (con `or []` volvía la lista vacía).
+        r = await _sumar(a1, sin_medir)
+        assert r.status_code == 201 and r.json()["faltan"] is None, r.text
+        assert (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][-1]["faltan"] is None
     correr(prueba)
 
 
