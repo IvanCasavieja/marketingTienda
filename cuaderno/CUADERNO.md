@@ -20,6 +20,17 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Clientes VIP** (PR #93): H-083 (CI en rojo, ya arreglado ahí), H-087 y H-088.
 - **Tarjetas por pieza** (rama `feat/tarjetas-por-pieza`): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
 
+### H-111 · La campanita sigue diciendo «Te toca revisarla» de entregas que ya aprobaste
+- **Gravedad:** 🟠 Traba (sube con la prueba a ciegas) · **Quién:** equipo y agencia · **Dónde:** Notificaciones (campanita), notebook y celular
+- **Qué ve una persona:** después de revisar, pedir cambios y aprobar, la campanita del equipo sigue en rojo con «2»: «Agencia de prueba entregó la versión 2… Te toca revisarla» y «…versión 1… Te toca revisarla», como si fueran pendientes. A la agencia le pasa igual: «3» avisos, entre ellos «Te toca entregar la versión 2», cuando la tarjeta ya está Finalizada. Hay que marcarlos a mano uno por uno o con «Marcar todas como leídas».
+- **Por qué importa:** la campanita es lo primero que mira el equipo para saber qué le toca hoy (E4): con avisos viejos que dicen «te toca», el número en rojo deja de servir y se termina ignorando, también cuando llega algo nuevo de verdad.
+- **Cómo repetirlo:** hacer el ciclo completo (pedido → entrega v1 → pedir cambios → v2 → aprobar) abriendo la tarjeta desde Mis tareas, sin tocar la campanita; al final abrir Notificaciones en las dos cuentas.
+- **Evidencia:** ![H-111](recorridos/2026-11-26/H-111.jpg) (izquierda equipo, derecha agencia en el celular)
+- **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
+- **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
+- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
+- **Estado:** En curso desde 26/11 en `nocturno/2026-11-26-campanita-al-dia` (Ramiro VERDE). H-113 queda abierto (choca con «Tarjetas por pieza»).
+
 ## Abiertos (de más a menos importante)
 
 > Ivan (25/11): «esta plataforma la van a usar varias agencias a la vez, así que tiene que adaptarse a su forma de trabajar, no al revés». H-081 (ida y vuelta con versiones) ya está en `main` (#86); H-082 (sugerencias) entra después del flujo de la agencia.
@@ -171,16 +182,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** agencia con el tablero abierto → el equipo pide cambios → mirar la pestaña sin recargar.
 - **Evidencia:** captura 051 de Martina.
 - **Visto:** 26/11 (Martina a ciegas) · proceso P22 · 26/11 noche (**no se repitió**: con la ficha abierta en la pestaña de la agencia y en la del equipo, cada cambio del otro apareció solo al volver a la pestaña, sin recargar; si Martina tampoco lo ve, pasa a Hechos)
-
-### H-111 · La campanita sigue diciendo «Te toca revisarla» de entregas que ya aprobaste
-- **Gravedad:** 🟠 Traba (sube con la prueba a ciegas) · **Quién:** equipo y agencia · **Dónde:** Notificaciones (campanita), notebook y celular
-- **Qué ve una persona:** después de revisar, pedir cambios y aprobar, la campanita del equipo sigue en rojo con «2»: «Agencia de prueba entregó la versión 2… Te toca revisarla» y «…versión 1… Te toca revisarla», como si fueran pendientes. A la agencia le pasa igual: «3» avisos, entre ellos «Te toca entregar la versión 2», cuando la tarjeta ya está Finalizada. Hay que marcarlos a mano uno por uno o con «Marcar todas como leídas».
-- **Por qué importa:** la campanita es lo primero que mira el equipo para saber qué le toca hoy (E4): con avisos viejos que dicen «te toca», el número en rojo deja de servir y se termina ignorando, también cuando llega algo nuevo de verdad.
-- **Cómo repetirlo:** hacer el ciclo completo (pedido → entrega v1 → pedir cambios → v2 → aprobar) abriendo la tarjeta desde Mis tareas, sin tocar la campanita; al final abrir Notificaciones en las dos cuentas.
-- **Evidencia:** ![H-111](recorridos/2026-11-26/H-111.jpg) (izquierda equipo, derecha agencia en el celular)
-- **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
-- **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
-- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
 
 ### H-113 · La versión aprobada dice «Aprobada · Agencia de prueba»: no se sabe quién de Tienda la aprobó
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (y jefatura) · **Dónde:** ficha de la tarjeta → Versiones, notebook
