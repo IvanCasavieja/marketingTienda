@@ -34,6 +34,7 @@
     "analyticsGa4": "Analytics GA4",
     "materiales": "MATERIALS",
     "comercial": "COMMERCIAL",
+    "loyalty": "LOYALTY",
     "guia": "GUIDE",
     "configuracion": "SETTINGS",
     "redexpres": "Redexpres",
@@ -660,7 +661,7 @@
       "facturacion": "Finance",
       "rrss": "Social media",
       "ai": "Artificial Intelligence",
-      "clientes_vip": "VIP customers"
+      "clientes_vip": "Loyalty"
     },
     "tabs": {
       "users": "Users & Roles",
