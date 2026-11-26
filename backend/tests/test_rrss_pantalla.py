@@ -11,6 +11,8 @@ Los cuatro casos que fija:
   - la punta de la cola de CatTi contrasta también sobre fondo claro;
   - el progreso dice el mismo número que marca la barra, y no llega a 100 %
     antes de que el cierre conteste.
+Y desde el 26/11/2026: la lista es «Las de hoy» (no hay historial: cada
+validación se borra sola a las 24 horas) y una que ya se borró dice por qué.
 
 SI UN TEST DE ACÁ FALLA no hay que "arreglar el test": volvió el bug.
 """
@@ -293,3 +295,40 @@ def test_la_pantalla_dice_que_la_fecha_y_la_leyenda_quedaron_sin_revisar():
     assert 't("rrss.legalAlcohol")' in src and "v.config?.legal_alcohol" in src
     for idioma in _IDIOMAS:
         assert _rrss(idioma)["campoFecha"]
+
+
+# ---------------------------------------------------------------- (26/11) sin historial
+
+_PALABRAS_DE_HISTORIAL = ("historial", "history", "histórico", "historico")
+
+
+def test_la_lista_no_promete_un_historial():
+    """Desde el 26/11/2026 cada validación se borra sola a las 24 horas (Ivan:
+    «no tiene sentido que mantengamos historial de validaciones»). La pestaña
+    es «Las de hoy» y un renglón lo dice siempre. Los textos dicen «24» escrito:
+    si cambia el valor por defecto del servidor, hay que cambiarlos también."""
+    from app.core.config import Settings
+
+    assert Settings.model_fields["RRSS_RETENCION_HORAS"].default == 24
+    for idioma in _IDIOMAS:
+        rrss = _rrss(idioma)
+        for clave in ("tabHistorial", "volverHistorial", "errorHistorial", "historialVacio", "deHoyAviso"):
+            texto = rrss[clave].lower()
+            assert not any(p in texto for p in _PALABRAS_DE_HISTORIAL), (idioma, clave, rrss[clave])
+        assert "24" in rrss["deHoyAviso"] and "24" in rrss["yaNoEsta"], idioma
+    assert 't("rrss.deHoyAviso")' in _texto(_RRSS / "Historial.tsx")
+
+
+def test_una_que_ya_se_borro_dice_por_que_no_esta():
+    """Abrir una de la lista (o bajar su Excel) después de que se borró sola
+    daba «No se pudo abrir esa validación» o el detalle crudo del servidor.
+    Ahora dice que se borran a las 24 horas, en el idioma de la persona, y la
+    lista se vuelve a pedir, ya sin ella. Borrarla cuando ya no estaba no
+    reemplaza la lista por un error: se saca y listo."""
+    pagina = _texto(_PAGINA)
+    abrir = pagina.split("async function abrirDelHistorial")[1].split("\n  }\n")[0]
+    assert "yaNoEsta(e)" in abrir and 't("rrss.yaNoEsta")' in abrir and "setListaVersion" in abrir
+    assert "<Historial key={listaVersion}" in pagina
+    assert 'yaNoEsta(e) ? t("rrss.yaNoEsta")' in _texto(_RRSS / "DescargarExcel.tsx")
+    borrar = _texto(_RRSS / "Historial.tsx").split("async function borrar")[1].split("\n  }\n")[0]
+    assert "if (yaNoEsta(e)) quitar(f.id);" in borrar

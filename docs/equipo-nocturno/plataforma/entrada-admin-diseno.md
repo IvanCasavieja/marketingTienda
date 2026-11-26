@@ -483,7 +483,7 @@ Catálogo: `ALL_PERMISSIONS` en `backend/app/models/role.py`. Columnas de roles 
 | `facturacion.view` | Finanzas (presupuesto y canjes). | sí | | puede |
 | `facturacion.upload` | Subir facturas, revisar lo que leyó DogTi y confirmar o descartar. | sí | | |
 | `facturacion.manage` | Cuentas de Finanzas. | sí | | |
-| `rrss.view` | Validación de RRSS y su historial (solo en Tienda Inglesa). | sí | | puede |
+| `rrss.view` | Validación de RRSS y las validaciones de hoy, que se borran solas a las 24 horas (solo en Tienda Inglesa). | sí | | puede |
 | `rrss.validate` | Validar placas de redes contra el mailing (CatTi) y borrar las propias. | sí | | |
 | `calendario.view` | Calendario, Mis tareas, el Tablero y sus avisos; las herramientas de calendario de Don Tino. Es lo único que puede tener una externa. | sí | sí | puede |
 | `calendario.edit` | Crear, editar y borrar acciones y banners, mover el estado de las piezas, configurar avisos; Colocación. | sí | sí | |

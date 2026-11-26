@@ -13,7 +13,7 @@ import { FraseCatTi } from "@/components/rrss/CatTiProgreso";
 import Historial from "@/components/rrss/Historial";
 import ReviewStep, { type ItemPendiente, type Progreso } from "@/components/rrss/ReviewStep";
 import UploadStep, { esPlanilla, type PlacaLocal } from "@/components/rrss/UploadStep";
-import { conReintentos, esTransitorio } from "@/components/rrss/reintentos";
+import { conReintentos, esTransitorio, yaNoEsta } from "@/components/rrss/reintentos";
 
 const PARALELO = 3; // placas validándose a la vez
 
@@ -30,8 +30,10 @@ export default function ValidacionRrssPage() {
   const { user } = useCurrentUser();
   const puedeValidar = hasPermission(user, "rrss.validate");
 
+  // "historial" es la pestaña «Las de hoy»: desde el 26/11/2026 no hay
+  // historial, cada validación se borra sola a las 24 horas (ver Historial.tsx).
   const [tabElegida, setTab] = useState<"nueva" | "historial">("nueva");
-  // Sin permiso para validar solo se ve el historial.
+  // Sin permiso para validar solo se ven las de hoy.
   const tab = user && !puedeValidar ? "historial" : tabElegida;
   const [fase, setFase] = useState<"cargar" | "revisar">("cargar");
 
@@ -50,6 +52,9 @@ export default function ValidacionRrssPage() {
   const [pendientes, setPendientes] = useState<ItemPendiente[]>([]);
   const [progreso, setProgreso] = useState<Progreso | null>(null);
   const [abriendoId, setAbriendoId] = useState<number | null>(null);
+  // Cambia cuando la lista de las de hoy quedó vieja (se abrió una que ya se
+  // había borrado): la lista se vuelve a pedir, ya sin ella.
+  const [listaVersion, setListaVersion] = useState(0);
   const placasRef = useRef<PlacaLocal[]>([]);
   useEffect(() => { placasRef.current = placas; }, [placas]);
 
@@ -171,7 +176,12 @@ export default function ValidacionRrssPage() {
       setProgreso(null);
       setFase("revisar");
     } catch (e) {
-      toast.error(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorAbrir")));
+      if (yaNoEsta(e)) {
+        toast.error(t("rrss.yaNoEsta"));
+        setListaVersion((n) => n + 1);
+      } else {
+        toast.error(sinRespuesta(e) ? t("rrss.errorServidor") : mensajeDeError(e, t("rrss.errorAbrir")));
+      }
     } finally {
       setAbriendoId(null);
     }
@@ -274,7 +284,7 @@ export default function ValidacionRrssPage() {
       )}
 
       {!creando && fase === "cargar" && tab === "historial" && (
-        <Historial puedeBorrar={puedeValidar} onAbrir={abrirDelHistorial} abriendoId={abriendoId} />
+        <Historial key={listaVersion} puedeBorrar={puedeValidar} onAbrir={abrirDelHistorial} abriendoId={abriendoId} />
       )}
 
       {fase === "revisar" && validacion && (

@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2, Trash2 } from "lucide-react";
+import { Clock, Loader2, Trash2 } from "lucide-react";
 import { rrssApi, type RrssValidacionResumen } from "@/lib/api";
+import { yaNoEsta } from "@/components/rrss/reintentos";
 
 interface Props {
   puedeBorrar: boolean;
@@ -10,6 +11,13 @@ interface Props {
   abriendoId: number | null;
 }
 
+/**
+ * La pestaña «Las de hoy»: para retomar una validación si se cerró la pestaña.
+ * No es un historial: desde el 26/11/2026 cada validación se borra sola a las
+ * 24 horas, terminada o no (backend/app/services/rrss/retencion.py). Ivan: «no
+ * tiene sentido que mantengamos historial de validaciones». El renglón de
+ * arriba lo dice siempre, para que nadie cuente con encontrarla mañana.
+ */
 export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
   const { t, i18n } = useTranslation();
   const [filas, setFilas] = useState<RrssValidacionResumen[] | null>(null);
@@ -20,21 +28,35 @@ export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
   }, []);
   useEffect(cargar, [cargar]);
 
+  const quitar = (id: number) => setFilas((prev) => prev?.filter((x) => x.id !== id) ?? null);
+
   async function borrar(f: RrssValidacionResumen) {
     if (!window.confirm(t("rrss.borrarConfirm", { nombre: f.nombre_mailing }))) return;
     try {
       await rrssApi.borrar(f.id);
-      setFilas((prev) => prev?.filter((x) => x.id !== f.id) ?? null);
-    } catch {
-      setError(true);
+      quitar(f.id);
+    } catch (e) {
+      // Si ya no estaba (se borró sola, o la borró otro) quedó como se quería.
+      if (yaNoEsta(e)) quitar(f.id);
+      else setError(true);
     }
   }
 
-  if (error) return <p className="text-sm text-red-600 dark:text-red-400">{t("rrss.errorHistorial")}</p>;
-  if (filas === null) return <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> {t("common.loading")}</p>;
-  if (filas.length === 0) return <div className="card p-10 text-center text-sm text-slate-500">{t("rrss.historialVacio")}</div>;
+  const conAviso = (contenido: ReactNode) => (
+    <div className="space-y-3">
+      <p className="text-sm text-slate-500 dark:text-slate-400 flex items-start gap-2">
+        <Clock size={15} className="shrink-0 mt-0.5" aria-hidden="true" />
+        {t("rrss.deHoyAviso")}
+      </p>
+      {contenido}
+    </div>
+  );
 
-  return (
+  if (error) return conAviso(<p className="text-sm text-red-600 dark:text-red-400">{t("rrss.errorHistorial")}</p>);
+  if (filas === null) return conAviso(<p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> {t("common.loading")}</p>);
+  if (filas.length === 0) return conAviso(<div className="card p-10 text-center text-sm text-slate-500">{t("rrss.historialVacio")}</div>);
+
+  return conAviso(
     <div className="card overflow-hidden">
       <table className="w-full text-sm">
         <thead className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/50">
