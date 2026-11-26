@@ -487,9 +487,12 @@ SECCIONES: tuple[Seccion, ...] = (
             Parte("Qué hay", (
                 "La venta, el margen, cuántos compraron, el ticket promedio y las compras por cliente del último "
                 "mes, contra el anterior y contra el mismo mes del año pasado.",
-                "**Lo que viene**: Valentina calcula la venta esperada del mes que viene, con su rango.",
-                "**El informe del mes**: Sofía lo escribe después de cada carga (qué pasó, qué mirar y qué haría) y "
-                "les llega por mail a quienes tienen acceso.",
+                "**El informe del mes** y **Lo que viene** los hace Valentina, la economista y estadística del "
+                "Escuadrón Lechuza: después de cada carga analiza los datos, investiga el contexto (campañas, "
+                "calendario, Uruguay), proyecta el mes que viene con su margen de error y manda el informe por mail a "
+                "quienes tienen acceso. Hasta que lo hace, «Lo que viene» muestra un cálculo rápido de la plataforma.",
+                "Respondiendo su mail le podés enseñar, preguntar o discutirle: si algo no le cierra con los datos, te lo "
+                "dice. Lo que aprende queda en **Lo que aprendió Valentina**.",
                 "Los **segmentos** (Creciendo, Estable, Nuevo, Bajando, En riesgo, Perdido): tocás uno y la lista "
                 "muestra esos clientes; cada uno tiene su riesgo de dejar de comprar, de 0 a 100, y su ficha mes a mes.",
                 "Es confidencial: lo ve solo quien tiene el permiso, y no se reenvía fuera de Tienda Inglesa.",

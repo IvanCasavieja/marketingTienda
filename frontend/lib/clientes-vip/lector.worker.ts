@@ -4,15 +4,20 @@
 // avance cada tanto y, al final, el resumen (resumen.ts). Un .zip se abre acá
 // mismo (zip.ts + DecompressionStream); un .csv se lee directo.
 // ---------------------------------------------------------------------------
+import { comprimirDetalle, type ParteDetalle } from './detalle'
 import { ArchivoInvalido, Resumidor } from './resumen'
 import { csvsDelZip, ZipInvalido } from './zip'
 
 export type MensajeDelLector =
   | { tipo: 'avance'; leido: number; total: number; filas: number }
-  | { tipo: 'listo'; resumen: ReturnType<Resumidor['terminar']> }
+  | { tipo: 'comprimiendo'; partes: number }
+  | { tipo: 'listo'; resumen: ReturnType<Resumidor['terminar']>; detalle: ParteDetalle[] }
   | { tipo: 'error'; mensaje: string }
 
-const ctx = self as unknown as { postMessage: (m: MensajeDelLector) => void; onmessage: ((e: MessageEvent) => void) | null }
+const ctx = self as unknown as {
+  postMessage: (m: MensajeDelLector, transferir?: Transferable[]) => void
+  onmessage: ((e: MessageEvent) => void) | null
+}
 
 function contador(onBytes: (n: number) => void) {
   return new TransformStream<Uint8Array, Uint8Array>({
@@ -61,7 +66,11 @@ ctx.onmessage = async (e: MessageEvent<{ archivo: File }>) => {
       await leerTexto(archivo.stream().pipeThrough(contador(n => { leido += n })), resumidor, avisar)
     }
     avisar(true)
-    ctx.postMessage({ tipo: 'listo', resumen: resumidor.terminar() })
+    const resumen = resumidor.terminar()
+    // El detalle para Valentina, comprimido (lo que pidió Emilia el 25/11/2026).
+    ctx.postMessage({ tipo: 'comprimiendo', partes: 0 })
+    const detalle = await comprimirDetalle(resumidor, partes => ctx.postMessage({ tipo: 'comprimiendo', partes }))
+    ctx.postMessage({ tipo: 'listo', resumen, detalle }, detalle.map(p => p.datos.buffer as ArrayBuffer))
   } catch (err) {
     const conocido = err instanceof ArchivoInvalido || err instanceof ZipInvalido
     ctx.postMessage({

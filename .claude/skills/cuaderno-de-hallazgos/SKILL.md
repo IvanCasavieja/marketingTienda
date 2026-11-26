@@ -18,6 +18,7 @@ PR; GitHub no le corre pruebas ni Vercel la publica). Adentro:
 ```
 cuaderno/CUADERNO.md                       el backlog (abajo, el formato)
 cuaderno/historial.md                      una línea por noche
+cuaderno/CEREBRO.md                        el cerebro común: qué hicimos, por qué y qué aprendimos
 cuaderno/recorridos/AAAA-MM-DD/resumen.md  el resumen del barrido automático de esa noche
 cuaderno/recorridos/AAAA-MM-DD/*.jpg       las capturas de evidencia (y antes/después)
 ```
@@ -39,7 +40,9 @@ else   # la primera noche: se crea vacío
 fi
 ```
 
-`$S/cuaderno/cuaderno/CUADERNO.md` es lo que se lee y se edita.
+`$S/cuaderno/cuaderno/CUADERNO.md` es lo que se lee y se edita. El cerebro
+común (`cuaderno/CEREBRO.md`) se lee siempre antes de trabajar o contestar;
+si no existe, se crea con el título `# 🧠 El cerebro del Escuadrón`.
 
 ## Qué se hace con él cada noche
 

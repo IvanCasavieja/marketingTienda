@@ -15,7 +15,7 @@ import { mesLargo } from "@/lib/clientes-vip/tipos";
 import CargarArchivo from "@/components/clientes-vip/CargarArchivo";
 import ListaClientes from "@/components/clientes-vip/ListaClientes";
 import {
-  CAJA, Cargas, Dimensiones, GraficoVentas, Indicadores, InformeDelMes, LoQueViene, Segmentos,
+  CAJA, Cargas, Dimensiones, GraficoVentas, Indicadores, InformeDelMes, LoQueViene, MemoriaDeValentina, Segmentos,
 } from "@/components/clientes-vip/Piezas";
 
 export default function ClientesVipPage() {
@@ -26,7 +26,6 @@ export default function ClientesVipPage() {
   const [error, setError] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
   const [segmento, setSegmento] = useState<string | null>(null);
-  const [vuelta, setVuelta] = useState(0);
   const lista = useRef<HTMLDivElement>(null);
 
   const traer = useCallback(() => {
@@ -37,13 +36,6 @@ export default function ClientesVipPage() {
 
   useEffect(() => { if (ve) traer(); }, [ve, traer]);
 
-  // Después de una carga el informe tarda unos minutos: se mira de nuevo cada
-  // 30 segundos hasta que llega el del último mes (10 veces como mucho).
-  useEffect(() => {
-    if (!tablero?.ultimo_mes || tablero.informe?.mes === tablero.ultimo_mes || vuelta >= 10) return;
-    const t = setTimeout(() => { setVuelta((v) => v + 1); traer(); }, 30_000);
-    return () => clearTimeout(t);
-  }, [tablero, vuelta, traer]);
 
   if (user && !ve) {
     return (
@@ -85,7 +77,7 @@ export default function ClientesVipPage() {
         <CargarArchivo
           mesesCargados={tablero?.meses.map((m) => m.mes) ?? []}
           onCerrar={() => setCargando(false)}
-          onCargado={() => { setVuelta(0); traer(); }}
+          onCargado={traer}
         />
       )}
 
@@ -108,9 +100,10 @@ export default function ClientesVipPage() {
           <Indicadores meses={tablero.meses} totalClientes={tablero.clientes} />
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2"><GraficoVentas meses={tablero.meses} prediccion={tablero.prediccion} /></div>
-            <LoQueViene p={tablero.prediccion} ultimo={tablero.meses[tablero.meses.length - 1]} />
+            <LoQueViene suya={tablero.prediccion_valentina} rapida={tablero.prediccion} ultimo={tablero.meses[tablero.meses.length - 1]} />
           </div>
           <InformeDelMes informe={tablero.informe} ultimoMes={tablero.ultimo_mes} />
+          <MemoriaDeValentina cuantas={tablero.memoria} />
           <Segmentos segmentos={tablero.segmentos} elegido={segmento} onElegir={elegirSegmento} />
           <Dimensiones dims={tablero.dimensiones} />
           <div ref={lista} className="scroll-mt-4"><ListaClientes segmento={segmento} onSegmento={setSegmento} ultimoMes={tablero.ultimo_mes} /></div>

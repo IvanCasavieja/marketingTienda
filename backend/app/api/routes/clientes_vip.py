@@ -3,19 +3,31 @@
   GET  /clientes-vip/tablero               — todo lo de la pantalla de una vez
   GET  /clientes-vip/clientes              — la lista (segmento, búsqueda, orden, página)
   GET  /clientes-vip/clientes/{id}         — un cliente, mes a mes
-  GET  /clientes-vip/informes              — los informes de Sofía y Valentina
-  POST /clientes-vip/informes              — rehacer el del último mes (si salió mal); `mandar` lo manda por mail
+  GET  /clientes-vip/informes              — los informes de Valentina
+  POST /clientes-vip/informes              — Valentina publica su informe (con su predicción)
+  GET  /clientes-vip/numeros               — el resumen del último mes para arrancar a analizar
+  GET  /clientes-vip/datos?tabla=…         — una tabla entera en CSV (clientes_mes, dimensiones, clientes)
+  GET  /clientes-vip/memoria               — lo que aprendió Valentina
+  POST /clientes-vip/memoria               — anotar algo nuevo
+  PATCH /clientes-vip/memoria/{id}         — corregir o retirar una nota
   POST /clientes-vip/cargas                — empezar una carga (los meses que trae el archivo)
   POST /clientes-vip/cargas/{id}/filas     — una tanda del resumen (hasta 5.000 filas)
-  POST /clientes-vip/cargas/{id}/terminar  — los totales del mes; rehace la foto y dispara el informe
+  POST /clientes-vip/cargas/{id}/terminar  — los totales del mes; rehace la foto de cada cliente
+  POST /clientes-vip/cargas/{id}/detalle   — una parte (gzip) del detalle para Valentina
+  GET  /clientes-vip/detalle               — qué detalle hay (por carga y tabla)
+  GET  /clientes-vip/detalle/{carga}/{tabla} — bajarlo (gzip)
+  POST /clientes-vip/valentina/clientes    — lo que Valentina predice de cada cliente (tandas)
 
-Ver app/services/clientes_vip.py. Ver: `clientes_vip.view`. Cargar:
-`clientes_vip.cargar` (y ver). Los datos son confidenciales: ninguna ruta
+Ver app/services/clientes_vip.py. Ver: `clientes_vip.view`. Cargar, publicar
+y escribir la memoria: `clientes_vip.cargar` (y ver). Valentina (la
+economista del Escuadrón Lechuza, que corre en la nube) entra con su propia
+cuenta con esos dos permisos. Los datos son confidenciales: ninguna ruta
 devuelve nada a quien no tiene el permiso, ni a las cuentas externas.
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -24,7 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.externos import puede_tener
-from app.models.clientes_vip import VipCarga, VipCliente, VipClienteMes, VipInforme, VipMesDimension
+from app.models.clientes_vip import (
+    VipCarga, VipCliente, VipClienteMes, VipClienteValentina, VipDetalle, VipInforme, VipMesDimension,
+)
 from app.models.user import User
 from app.services import clientes_vip as vip
 from app.services.espacio import hay_lugar
@@ -99,6 +113,14 @@ async def clientes(
             "filas": [_fila_cliente(c) for c in filas.scalars()]}
 
 
+def _fila_valentina(v: VipClienteValentina) -> dict:
+    return {
+        "mes": v.mes.strftime("%Y-%m"), "riesgo_abandono": v.riesgo_abandono, "proxima_categoria": v.proxima_categoria,
+        "probabilidad_proxima": v.probabilidad_proxima, "potencial_mensual": v.potencial_mensual,
+        "descubrio": v.descubrio, "dejo": v.dejo, "frecuencia": v.frecuencia, "mix": v.mix, "accion": v.accion,
+    }
+
+
 @router.get("/clientes/{id_cliente}")
 async def cliente(id_cliente: int, db: AsyncSession = Depends(get_db),
                   _: User = Depends(require_permission(vip.PERMISO_VER))):
@@ -108,8 +130,10 @@ async def cliente(id_cliente: int, db: AsyncSession = Depends(get_db),
     )).scalars().all()
     if not c and not meses:
         raise HTTPException(404, "Ese cliente no está en los datos cargados")
+    suya = await db.get(VipClienteValentina, id_cliente)
     return {
         "cliente": _fila_cliente(c) if c else None,
+        "valentina": _fila_valentina(suya) if suya else None,
         "meses": [
             {"mes": m.mes.strftime("%Y-%m"), "venta": m.venta, "margen": m.margen, "unidades": m.unidades,
              "tickets": m.tickets, "dias": m.dias, "venta_ecommerce": m.venta_ecommerce,
@@ -129,18 +153,197 @@ async def informes(db: AsyncSession = Depends(get_db), _: User = Depends(require
     return [vip.fila_informe(i) for i in filas.scalars()]
 
 
-class Rehacer(BaseModel):
-    mandar: bool = False
+class Publicar(BaseModel):
+    mes: str  # el último mes que analizó, AAAA-MM
+    analisis: str = Field(..., min_length=50, max_length=40_000)  # Markdown
+    prediccion: dict = Field(default_factory=dict)  # mes, venta, desde, hasta, margen_error, como…
+    autor: str = Field("Valentina", min_length=1, max_length=60)
 
 
 @router.post("/informes")
-async def rehacer_informe(body: Rehacer, db: AsyncSession = Depends(get_db), user: User = Depends(puede_cargar)):
-    """Vuelve a escribir el informe del último mes (por ejemplo, si la IA falló
-    o salió cortado). Por defecto no manda mail; con `mandar`, como al cargar."""
-    informe = await vip.armar_informe(db, None, user.id, mandar=body.mandar)
-    if not informe:
-        raise HTTPException(404, "Todavía no hay datos cargados")
+async def publicar_informe(body: Publicar, db: AsyncSession = Depends(get_db), _: User = Depends(puede_cargar)):
+    """Valentina publica su informe: aparece en el tablero (y su predicción en
+    «Lo que viene»). El mail lo manda ella desde la nube."""
+    try:
+        mes = vip.mes_de(body.mes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    informe = await vip.publicar_informe(db, mes, body.analisis.strip(), body.prediccion, body.autor.strip())
     return vip.fila_informe(informe)
+
+
+@router.get("/numeros")
+async def numeros(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission(vip.PERMISO_VER))):
+    datos = await vip.numeros_del_informe(db)
+    if not datos:
+        raise HTTPException(404, "Todavía no hay datos cargados")
+    return datos
+
+
+@router.get("/datos")
+async def datos(tabla: str = Query("clientes_mes"), db: AsyncSession = Depends(get_db),
+                _: User = Depends(require_permission(vip.PERMISO_VER))):
+    if tabla not in vip.TABLAS_CSV:
+        raise HTTPException(400, f"Tabla desconocida. Hay: {', '.join(vip.TABLAS_CSV)}")
+    return StreamingResponse(vip.csv_de(db, tabla), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="vip_{tabla}.csv"',
+                                      "Cache-Control": "no-store"})
+
+
+@router.get("/memoria")
+async def leer_memoria(retiradas: bool = False, db: AsyncSession = Depends(get_db),
+                       _: User = Depends(require_permission(vip.PERMISO_VER))):
+    return await vip.memoria(db, incluir_retiradas=retiradas)
+
+
+class Nota(BaseModel):
+    tema: str = Field(..., min_length=2, max_length=120)
+    texto: str = Field(..., min_length=5, max_length=4000)
+    fuente: str = Field("", max_length=240)
+
+
+@router.post("/memoria")
+async def anotar(body: Nota, db: AsyncSession = Depends(get_db), _: User = Depends(puede_cargar)):
+    from app.models.agente_memoria import AgenteMemoria
+
+    m = AgenteMemoria(agente=vip.AGENTE_VIP, ambito=vip.AMBITO_VIP, tema=body.tema.strip(),
+                      texto=body.texto.strip(), fuente=body.fuente.strip())
+    db.add(m)
+    await db.commit()
+    await db.refresh(m)
+    return vip.fila_memoria(m)
+
+
+# ---------------------------------------------------------------------------
+# El detalle comprimido de cada carga (para Valentina)
+# ---------------------------------------------------------------------------
+
+NOMBRES_DETALLE = ("cliente_mes_categoria", "cliente_subcategoria", "producto_mes", "productos")
+_MAX_PARTE = 8 * 1024 * 1024
+_GZIP = bytes([0x1F, 0x8B])
+
+
+@router.post("/cargas/{carga_id}/detalle")
+async def subir_detalle(carga_id: int, request: Request, nombre: str = Query(...), parte: int = Query(..., ge=0, le=999),
+                        filas: int = Query(0, ge=0), db: AsyncSession = Depends(get_db), _: User = Depends(puede_cargar)):
+    """Una parte (un gzip completo) de una de las tablas de detalle."""
+    if nombre not in NOMBRES_DETALLE:
+        raise HTTPException(400, f"Detalle desconocido. Hay: {', '.join(NOMBRES_DETALLE)}")
+    carga = await _carga_abierta(db, carga_id)
+    datos = await request.body()
+    if not datos or len(datos) > _MAX_PARTE:
+        raise HTTPException(400, "Cada parte tiene que pesar entre 1 byte y 8 MB")
+    if datos[:2] != _GZIP:
+        raise HTTPException(400, "La parte tiene que venir comprimida (gzip)")
+    if not await hay_lugar(db, len(datos)):
+        raise HTTPException(507, "La base está casi llena: el detalle no se guardó. Avisale a quien administra Core Tienda.")
+    await db.execute(delete(VipDetalle).where(VipDetalle.carga_id == carga.id, VipDetalle.nombre == nombre,
+                                              VipDetalle.parte == parte))
+    db.add(VipDetalle(carga_id=carga.id, nombre=nombre, parte=parte, filas=filas, datos=datos))
+    await db.commit()
+    return {"nombre": nombre, "parte": parte, "bytes": len(datos)}
+
+
+@router.get("/detalle")
+async def indice_detalle(db: AsyncSession = Depends(get_db), _: User = Depends(require_permission(vip.PERMISO_VER))):
+    """Qué detalle hay: por carga terminada, cada tabla con sus partes, filas y peso."""
+    filas = (await db.execute(
+        select(VipDetalle.carga_id, VipDetalle.nombre, func.count(), func.sum(VipDetalle.filas),
+               func.sum(func.length(VipDetalle.datos)))
+        .group_by(VipDetalle.carga_id, VipDetalle.nombre)
+        .order_by(VipDetalle.carga_id, VipDetalle.nombre)
+    )).all()
+    cargas = {c.id: c for c in (await db.execute(
+        select(VipCarga).where(VipCarga.id.in_({f[0] for f in filas}), VipCarga.estado == "lista")
+    )).scalars()}
+    return [
+        {"carga_id": i, "archivo": cargas[i].archivo, "meses": cargas[i].meses,
+         "fecha": cargas[i].created_at.isoformat() if cargas[i].created_at else None, "nombre": n,
+         "partes": p, "filas": int(fi or 0), "bytes": int(b or 0)}
+        for i, n, p, fi, b in filas if i in cargas
+    ]
+
+
+@router.get("/detalle/{carga_id}/{nombre}")
+async def bajar_detalle(carga_id: int, nombre: str, db: AsyncSession = Depends(get_db),
+                        _: User = Depends(require_permission(vip.PERMISO_VER))):
+    """La tabla entera: las partes pegadas en orden (un gzip de varios miembros: se lee normal)."""
+    ids = (await db.execute(
+        select(VipDetalle.id).where(VipDetalle.carga_id == carga_id, VipDetalle.nombre == nombre)
+        .order_by(VipDetalle.parte)
+    )).scalars().all()
+    if not ids:
+        raise HTTPException(404, "No hay ese detalle para esa carga")
+
+    async def partes():
+        for i in ids:
+            yield (await db.execute(select(VipDetalle.datos).where(VipDetalle.id == i))).scalar_one()
+
+    return StreamingResponse(partes(), media_type="application/gzip",
+                             headers={"Content-Disposition": f'attachment; filename="{nombre}_{carga_id}.csv.gz"',
+                                      "Cache-Control": "no-store"})
+
+
+# ---------------------------------------------------------------------------
+# Lo que Valentina publica de cada cliente
+# ---------------------------------------------------------------------------
+
+class ClienteDeValentina(BaseModel):
+    id_cliente: int = Field(..., gt=0)
+    riesgo_abandono: float | None = Field(None, ge=0, le=1)
+    proxima_categoria: str | None = Field(None, max_length=120)
+    probabilidad_proxima: float | None = Field(None, ge=0, le=1)
+    potencial_mensual: int | None = Field(None, ge=0, le=2_000_000_000)
+    descubrio: str | None = Field(None, max_length=400)
+    dejo: str | None = Field(None, max_length=400)
+    frecuencia: str | None = Field(None, max_length=240)
+    mix: str | None = Field(None, max_length=400)
+    accion: str | None = Field(None, max_length=400)
+
+
+class TandaDeValentina(BaseModel):
+    mes: str
+    filas: list[ClienteDeValentina] = Field(..., min_length=1, max_length=vip.FILAS_POR_TANDA)
+
+
+@router.post("/valentina/clientes")
+async def publicar_clientes(body: TandaDeValentina, db: AsyncSession = Depends(get_db), _: User = Depends(puede_cargar)):
+    try:
+        mes = vip.mes_de(body.mes)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    filas = [{**f.model_dump(), "mes": mes, "actualizado": vip.ahora()} for f in body.filas]
+    tabla = VipClienteValentina.__table__
+    stmt = pg_insert(tabla)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[tabla.c.id_cliente],
+        set_={c.name: stmt.excluded[c.name] for c in tabla.columns if c.name != "id_cliente"},
+    )
+    await db.execute(stmt, filas)
+    await db.commit()
+    return {"clientes": len(filas)}
+
+
+class Correccion(BaseModel):
+    texto: str | None = Field(None, min_length=5, max_length=4000)
+    activo: bool | None = None
+
+
+@router.patch("/memoria/{nota_id}")
+async def corregir(nota_id: int, body: Correccion, db: AsyncSession = Depends(get_db),
+                   _: User = Depends(puede_cargar)):
+    from app.models.agente_memoria import AgenteMemoria
+
+    m = await db.get(AgenteMemoria, nota_id)
+    if not m or m.ambito != vip.AMBITO_VIP:
+        raise HTTPException(404, "Esa nota no existe")
+    if body.texto is not None:
+        m.texto = body.texto.strip()
+    if body.activo is not None:
+        m.activo = body.activo
+    await db.commit()
+    await db.refresh(m)
+    return vip.fila_memoria(m)
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +456,12 @@ async def terminar_carga(carga_id: int, body: Cierre, db: AsyncSession = Depends
         dims.append({"mes": meses[d.mes], "dimension": d.dimension, "valor": d.valor.strip()[:120],
                      "venta": round(d.venta), "margen": round(d.margen), "unidades": round(d.unidades),
                      "tickets": d.tickets, "clientes": d.clientes})
+    # El detalle de las cargas anteriores cuyos meses están todos en esta se va
+    # (ocupa lugar y ya no vale): el de esta carga los reemplaza.
+    viejas = (await db.execute(select(VipCarga.id, VipCarga.meses).where(VipCarga.id != carga.id))).all()
+    tapadas = [i for i, ms in viejas if ms and set(ms) <= set(carga.meses)]
+    if tapadas:
+        await db.execute(delete(VipDetalle).where(VipDetalle.carga_id.in_(tapadas)))
     # Lo de estos meses que no vino en esta carga (de una carga anterior) se va.
     await db.execute(delete(VipClienteMes).where(VipClienteMes.mes.in_(list(meses.values())),
                                                  VipClienteMes.carga_id != carga.id))
@@ -271,5 +480,5 @@ async def terminar_carga(carga_id: int, body: Cierre, db: AsyncSession = Depends
     carga.venta = round(body.venta)
     carga.terminada_at = vip.ahora()
     await db.commit()
-    vip.informe_en_segundo_plano(carga.id, user.id)
+    # El informe lo escribe Valentina desde la nube: en su próxima vuelta ve la carga nueva.
     return {"id": carga.id, "clientes": clientes, "filas": carga.filas, "segmentos": await vip.segmentos(db)}

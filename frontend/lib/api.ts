@@ -11,9 +11,10 @@ import { esperaDeEntrega, pesoDelFormulario } from "@/lib/calendario/zip";
 import { loginVolviendoA } from "@/lib/volver";
 import type { Adjunto } from "@/lib/calendario/adjuntos";
 import type {
-  ClienteVip, MesDeCliente as MesDeClienteVip, SegmentoResumen as SegmentoVip, Tablero as TableroVip,
+  ClienteVip, LoQueVeValentina, MesDeCliente as MesDeClienteVip, NotaDeMemoria, SegmentoResumen as SegmentoVip, Tablero as TableroVip,
 } from "@/lib/clientes-vip/tipos";
 import type { FilaResumen as FilaResumenVip, TotalDelMes as TotalDelMesVip } from "@/lib/clientes-vip/resumen";
+import type { ParteDetalle } from "@/lib/clientes-vip/detalle";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -2492,11 +2493,20 @@ export const clientesVipApi = {
     api.get<{ total: number; pagina: number; por_pagina: number; filas: ClienteVip[] }>(
       "/clientes-vip/clientes", { params, timeout: 30_000 }),
   cliente: (id: number) =>
-    api.get<{ cliente: ClienteVip | null; meses: MesDeClienteVip[] }>(`/clientes-vip/clientes/${id}`, { timeout: 30_000 }),
+    api.get<{ cliente: ClienteVip | null; valentina: LoQueVeValentina | null; meses: MesDeClienteVip[] }>(
+      `/clientes-vip/clientes/${id}`, { timeout: 30_000 }),
+  /** Lo que aprendió Valentina (su memoria, en la base de la plataforma). */
+  memoria: () => api.get<NotaDeMemoria[]>("/clientes-vip/memoria", { timeout: 30_000 }),
   empezar: (body: { archivo: string; meses: string[]; filas_archivo: number; filas: number }) =>
     api.post<{ id: number; meses: string[] }>("/clientes-vip/cargas", body, { timeout: 60_000 }),
   tanda: (cargaId: number, filas: FilaResumenVip[]) =>
     api.post<{ filas: number }>(`/clientes-vip/cargas/${cargaId}/filas`, { filas }, { timeout: 120_000 }),
+  /** Una parte comprimida del detalle para Valentina. */
+  detalle: (cargaId: number, p: ParteDetalle) =>
+    api.post<{ bytes: number }>(`/clientes-vip/cargas/${cargaId}/detalle`, p.datos, {
+      params: { nombre: p.nombre, parte: p.parte, filas: p.filas },
+      headers: { "Content-Type": "application/gzip" }, timeout: 120_000,
+    }),
   terminar: (cargaId: number, body: { dimensiones: TotalDelMesVip[]; clientes: number; venta: number }) =>
     api.post<{ id: number; clientes: number; filas: number; segmentos: SegmentoVip[] }>(
       `/clientes-vip/cargas/${cargaId}/terminar`, body, { timeout: 180_000 }),

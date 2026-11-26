@@ -1,4 +1,4 @@
-"""Clientes VIP: el tablero, el análisis de Sofía y la predicción de Valentina.
+"""Clientes VIP: el tablero y lo que necesita Valentina, la economista del Escuadrón Lechuza.
 
 Ivan (25/11/2026): "vamos a hacer nosotros el dashboard… voy a pasarte un
 montón de excels que vamos a ir actualizando todos los meses… un agente que
@@ -17,20 +17,19 @@ Cómo anda:
    cliente se le calcula el segmento, el riesgo de dejar de comprar (0 a 100)
    y lo que se espera que compre el mes que viene (`perfil`). Es estadística
    simple y explicable, sin IA: los números tienen que dar siempre lo mismo.
-3. **Informe** (`armar_informe`, en segundo plano después de cada carga):
-   Valentina proyecta la venta del mes que viene (`prediccion_global`) y Sofía
-   lee los números del mes y escribe qué pasó, qué mirar y qué haría
-   (Claude, solo con los números agregados; sin IA, un texto con reglas). Se
-   guarda y se manda por mail a quien tiene `clientes_vip.view`.
+3. **Informe**: lo escribe Valentina, la economista y estadística del
+   Escuadrón Lechuza, que corre en la nube (no acá). Baja los datos con su
+   cuenta (`/clientes-vip/datos`, `/numeros`), investiga, modela, publica el
+   informe (`POST /clientes-vip/informes`), guarda lo que aprende en su
+   memoria (`/clientes-vip/memoria`) y manda el mail. La plataforma no escribe
+   informes ni manda mails de Clientes VIP. `prediccion_global` queda como el
+   cálculo rápido que se ve hasta que ella publica el suyo.
 
-Los datos son confidenciales: en el mail van totales y hasta 10 números de
-cliente, nunca el detalle.
+Los datos son confidenciales: viven acá, los ve quien tiene el permiso y
+nunca van al repo.
 """
 from __future__ import annotations
 
-import asyncio
-import html as _html
-import json
 import logging
 import re
 from collections import defaultdict
@@ -39,7 +38,6 @@ from datetime import date, datetime, timezone
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.clientes_vip import VipCarga, VipCliente, VipClienteMes, VipInforme, VipMesDimension
 from app.models.user import User
 
@@ -375,7 +373,7 @@ def fila_informe(i: VipInforme | None) -> dict | None:
     if not i:
         return None
     return {"id": i.id, "mes": i.mes.strftime("%Y-%m"), "analisis": i.analisis, "prediccion": i.prediccion,
-            "con_ia": i.con_ia, "enviado_a": i.enviado_a,
+            "con_ia": i.con_ia, "enviado_a": i.enviado_a, "autor": i.autor,
             "fecha": i.created_at.isoformat() if i.created_at else None}
 
 
@@ -389,16 +387,21 @@ async def tablero(db: AsyncSession) -> dict:
     lista_cargas = [fila_carga(c, n) for c, n in cargas.all()]
     if not ultimo:
         return {"ultimo_mes": None, "meses": [], "dimensiones": {d: [] for d in DIMENSIONES}, "segmentos": [],
-                "prediccion": None, "informe": None, "cargas": lista_cargas, "clientes": 0}
+                "prediccion": None, "prediccion_valentina": None, "informe": None, "cargas": lista_cargas,
+                "clientes": 0, "memoria": 0}
     segs = await segmentos(db)
     serie = await serie_mensual(db)
     informe = await db.scalar(select(VipInforme).order_by(VipInforme.id.desc()).limit(1))
+    # La predicción de Valentina, si ya analizó el último mes cargado.
+    suya = informe.prediccion if informe and informe.mes == ultimo and (informe.prediccion or {}).get("venta") else None
     return {
         "ultimo_mes": ultimo.strftime("%Y-%m"),
         "meses": await kpis_por_mes(db),
         "dimensiones": await dimensiones(db, ultimo),
         "segmentos": segs,
         "prediccion": prediccion_global(serie, ultimo, sum(s["venta_esperada"] for s in segs)),
+        "prediccion_valentina": suya,
+        "memoria": sum(1 for m in await memoria(db) if not m["tema"].startswith("_")),
         "informe": fila_informe(informe),
         "cargas": lista_cargas,
         "clientes": sum(s["clientes"] for s in segs),
@@ -406,7 +409,7 @@ async def tablero(db: AsyncSession) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# El informe: Sofía (análisis) y Valentina (predicción)
+# El informe del mes: lo escribe Valentina (análisis y predicción)
 # ---------------------------------------------------------------------------
 
 def _kpi(meses: dict[str, dict], clave: date) -> dict | None:
@@ -424,7 +427,7 @@ def _kpi(meses: dict[str, dict], clave: date) -> dict | None:
 
 
 async def numeros_del_informe(db: AsyncSession) -> dict | None:
-    """Los números que leen Sofía y Valentina. Solo agregados y hasta 10
+    """Los números que lee Valentina. Solo agregados y hasta 10
     números de cliente (sin nombres: la base no los tiene)."""
     datos = await tablero(db)
     if not datos["ultimo_mes"]:
@@ -470,228 +473,84 @@ async def numeros_del_informe(db: AsyncSession) -> dict | None:
     }
 
 
-SISTEMA = """Sos Sofía, analista del equipo de Core Tienda (Tienda Inglesa, Uruguay), y escribís junto con Valentina, que hace las predicciones. Te pasan los números de las compras de los clientes VIP (montos en pesos uruguayos sin IVA) y escribís el informe del mes para el equipo comercial.
-
-Reglas:
-- Castellano rioplatense, claro, como se lo contarías a un compañero. Frases cortas.
-- Usá SOLO los números que te pasan; no inventes ni estimes otros. Montos redondeados ($ 280 millones, $ 1,2 millones, $ 45.000) y variaciones con un decimal.
-- Nada de jerga estadística. "Segmento" se puede decir; explicá qué significa si hace falta.
-- Formato Markdown, exactamente estas partes y en este orden:
-### 📊 Cómo cerró <mes>
-(3 a 5 viñetas: venta, margen, cuántos compraron, ticket promedio y frecuencia, contra el mes anterior y contra el mismo mes del año anterior si está)
-### 🔎 Lo que hay que mirar
-(3 a 5 viñetas: categorías, sucursales o canales que se movieron fuerte, y los clientes en riesgo con la plata que representan; podés nombrar hasta 3 números de cliente de "clientes_a_mirar")
-### 🔮 Lo que viene, por Valentina
-(2 o 3 frases: la venta esperada del mes que viene con su rango, contra qué se compara, y cuántos clientes podrían dejar de comprar)
-### ✅ Qué haríamos
-(2 o 3 acciones concretas para el equipo comercial, que salgan de los números)
-- Hasta 2.200 caracteres en total. Sin tablas."""
-
-
-def informe_con_reglas(n: dict) -> str:
-    """El informe sin IA (no hay clave o la IA falló): los mismos números,
-    con frases armadas."""
-    def plata(v: float | None) -> str:
-        if v is None:
-            return "—"
-        if abs(v) >= 1_000_000:
-            return f"$ {v / 1_000_000:,.1f} millones".replace(",", "X").replace(".", ",").replace("X", ".")
-        return f"$ {v:,.0f}".replace(",", ".")
-
-    def var(a: float | None, b: float | None) -> str:
-        if not a or not b:
-            return ""
-        x = 100 * (a / b - 1)
-        return f" ({'+' if x >= 0 else ''}{x:.1f}%)".replace(".", ",")
-
-    m, ma, ly = n["el_mes"] or {}, n["el_mes_anterior"] or {}, n["el_mismo_mes_del_anio_anterior"] or {}
-    lineas = [f"### 📊 Cómo cerró {n['ultimo_mes']}",
-              f"- Venta: {plata(m.get('venta'))}{var(m.get('venta'), ma.get('venta'))} contra el mes anterior"
-              + (f"; {var(m.get('venta'), ly.get('venta')).strip()} contra el año pasado." if ly else "."),
-              f"- Margen: {str(m.get('margen_pct', '—')).replace('.', ',')}%.",
-              f"- Compraron {m.get('clientes_que_compraron', 0):,} de {n['clientes_vip']:,} clientes VIP".replace(",", ".")
-              + f", con un ticket promedio de {plata(m.get('ticket_promedio'))}.",
-              "### 🔎 Lo que hay que mirar"]
-    for cat in n["categorias_movimientos"]["los_que_mas_bajan"][:2]:
-        lineas.append(f"- {cat['valor']}: {str(cat['contra_3m_antes']).replace('.', ',')}% en los últimos 3 meses.")
-    riesgo = next((s for s in n["segmentos"] if s["segmento"] == "En riesgo"), None)
-    if riesgo:
-        lineas.append(f"- {riesgo['clientes']} clientes en riesgo: compraban {plata(riesgo['venta_3m_antes'])} "
-                      f"en 3 meses y ahora {plata(riesgo['venta_3m'])}.")
-    p = n["prediccion_de_valentina"] or {}
-    if p.get("venta"):
-        lineas += ["### 🔮 Lo que viene, por Valentina",
-                   f"Para {nombre_mes(mes_de(p['mes']))} esperamos {plata(p['venta'])} "
-                   f"(entre {plata(p['desde'])} y {plata(p['hasta'])}), según {p['como']}."]
-    lineas += ["### ✅ Qué haríamos", "- Llamar o escribirles primero a los clientes en riesgo que más compraban."]
-    return "\n".join(lineas)
-
-
-MAX_TOKENS_INFORME = 16_000
-
-
-async def escribir_analisis(numeros: dict) -> tuple[str, bool, object | None]:
-    """El texto de Sofía y Valentina: (markdown, con_ia, usage)."""
-    if not settings.ANTHROPIC_API_KEY:
-        return informe_con_reglas(numeros), False, None
-    from app.core.llm_retry import llm_call_with_retry
-    from app.services.ia_cliente import cliente_anthropic
-
-    try:
-        cliente = cliente_anthropic()
-        respuesta = await llm_call_with_retry(
-            lambda: cliente.messages.create(
-                model=settings.MODELO_IA,
-                # Los modelos 5 piensan antes de escribir y ese razonamiento
-                # cuenta dentro de max_tokens: con 2.000 el informe de octubre
-                # 2026 salió cortado a la mitad (25/11/2026). Lugar de sobra y
-                # esfuerzo medio: es redactar con números ya hechos.
-                max_tokens=MAX_TOKENS_INFORME,
-                output_config={"effort": "medium"},
-                system=SISTEMA,
-                messages=[{"role": "user", "content": json.dumps(numeros, ensure_ascii=False, default=str)}],
-            ),
-            label="clientes_vip_informe",
-        )
-        texto = "".join(b.text for b in respuesta.content if getattr(b, "type", "") == "text").strip()
-        # Cortado o rechazado no se guarda ni se manda: va el de reglas, entero.
-        if respuesta.stop_reason != "end_turn" or not texto:
-            raise ValueError(f"la respuesta no terminó bien ({respuesta.stop_reason})")
-        return texto, True, respuesta.usage
-    except Exception as exc:  # la IA no frena el informe
-        logger.warning("clientes_vip: el informe va sin IA (%s)", exc)
-        return informe_con_reglas(numeros), False, None
-
-
 # ---------------------------------------------------------------------------
-# El mail
+# Lo que necesita Valentina, que trabaja desde la nube del Escuadrón Lechuza
 # ---------------------------------------------------------------------------
+#
+# Ivan (25/11/2026): "los agentes no deben de estar alojados dentro de nuestra
+# plataforma… necesito que sean agentes reales… que cuestionen nuestras
+# decisiones… que investiguen". La plataforma no escribe informes ni manda
+# mails: guarda los datos, se los da a Valentina (con su propia cuenta y el
+# permiso de Clientes VIP), guarda lo que ella aprende (su memoria: datos de
+# clientes y del negocio, por eso acá y no en el repo público) y muestra lo
+# que publica. Ella: .claude/agents/valentina-economista.md.
 
-def _en_linea(t: str) -> str:
-    t = _html.escape(t, quote=False)
-    return re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", t)
-
-
-def markdown_a_html(md: str) -> str:
-    partes, en_lista = [], False
-    for linea in md.splitlines():
-        s = linea.strip()
-        if s.startswith(("- ", "* ")):
-            if not en_lista:
-                partes.append('<ul style="padding-left:20px;margin:6px 0 12px">')
-                en_lista = True
-            partes.append(f'<li style="margin:4px 0;line-height:1.5">{_en_linea(s[2:])}</li>')
-            continue
-        if en_lista:
-            partes.append("</ul>")
-            en_lista = False
-        if s.startswith("#"):
-            partes.append(f'<h3 style="font-size:17px;margin:22px 0 6px;color:#0f172a">{_en_linea(s.lstrip("#").strip())}</h3>')
-        elif s:
-            partes.append(f'<p style="margin:8px 0;line-height:1.5">{_en_linea(s)}</p>')
-    if en_lista:
-        partes.append("</ul>")
-    return "\n".join(partes)
+AGENTE_VIP = "valentina"
+AMBITO_VIP = "clientes_vip"
 
 
-def armar_mail(informe: VipInforme, url: str) -> tuple[str, str, str]:
-    """(asunto, html, texto) del informe del mes."""
-    mes = nombre_mes(informe.mes)
-    asunto = f"⭐ Clientes VIP · {mes}"
-    cuerpo = markdown_a_html(informe.analisis)
-    html = (
-        '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1"></head>'
-        '<body style="margin:0;padding:0;background:#f8fafc">'
-        '<div style="max-width:620px;margin:0 auto;padding:24px 16px;font-family:-apple-system,Segoe UI,Roboto,'
-        'Helvetica,Arial,sans-serif;font-size:15px;color:#1e293b">'
-        f'<p style="margin:0 0 4px;font-size:13px;color:#64748b">Clientes VIP · {_html.escape(mes)}</p>'
-        f"{cuerpo}"
-        f'<p style="margin:24px 0 0"><a href="{_html.escape(url, quote=True)}" style="display:inline-block;'
-        'background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:14px">'
-        "Ver el tablero</a></p>"
-        '<p style="margin-top:28px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:10px">'
-        "Sofía y Valentina, del Escuadrón Lechuza de Core Tienda. Te llega porque tenés acceso a Clientes VIP. "
-        "La información es confidencial: no la reenvíes fuera de Tienda Inglesa.</p>"
-        "</div></body></html>"
-    )
-    texto = f"{asunto}\n\n{informe.analisis}\n\nVer el tablero: {url}\n"
-    return asunto, html, texto
+def fila_memoria(m) -> dict:
+    return {"id": m.id, "tema": m.tema, "texto": m.texto, "fuente": m.fuente, "activo": m.activo,
+            "fecha": m.created_at.isoformat() if m.created_at else None,
+            "actualizado": m.updated_at.isoformat() if m.updated_at else None}
 
 
-def destinatario_real(email: str | None) -> bool:
-    """Las cuentas internas y las de prueba no reciben mails."""
-    e = (email or "").lower()
-    return "@" in e and not e.endswith((".marketingtienda", "@example.com", ".invalid", ".local", ".test"))
+async def memoria(db: AsyncSession, incluir_retiradas: bool = False) -> list[dict]:
+    from app.models.agente_memoria import AgenteMemoria
+
+    q = select(AgenteMemoria).where(AgenteMemoria.ambito == AMBITO_VIP)
+    if not incluir_retiradas:
+        q = q.where(AgenteMemoria.activo.is_(True))
+    filas = await db.execute(q.order_by(AgenteMemoria.tema, AgenteMemoria.id))
+    return [fila_memoria(m) for m in filas.scalars()]
 
 
-async def destinatarios(db: AsyncSession) -> list[User]:
-    from app.core.externos import puede_tener
-
-    usuarios = (await db.execute(select(User).where(User.is_active.is_(True)))).scalars().all()
-    return [u for u in usuarios if puede_tener(u, PERMISO_VER) and destinatario_real(u.email)]
-
-
-def es_reciente(ultimo: date | None, hoy: date) -> bool:
-    """Si los datos llegan hasta hace 3 meses o menos: solo entonces el informe
-    sale por mail. Cargar un año viejo (2025, el 25/11/2026) rehace el informe
-    pero no le manda a nadie un mail sobre diciembre del año pasado."""
-    return bool(ultimo) and meses_entre(ultimo, date(hoy.year, hoy.month, 1)) <= 3
-
-
-async def armar_informe(db: AsyncSession, carga_id: int | None, user_id: int | None, mandar: bool = True) -> VipInforme | None:
-    """Escribe el informe del último mes, lo guarda y lo manda. Commitea."""
-    from app.services import email_service
-    from app.services.ai_usage_service import log_ai_usage
-
-    numeros = await numeros_del_informe(db)
-    if not numeros:
-        return None
-    texto, con_ia, usage = await escribir_analisis(numeros)
-    if usage is not None:
-        await log_ai_usage(db, user_id, "clientes_vip_informe", "anthropic", settings.MODELO_IA,
-                           getattr(usage, "input_tokens", 0) or 0, getattr(usage, "output_tokens", 0) or 0)
-    ultimo = await db.scalar(select(func.max(VipClienteMes.mes)))
-    informe = VipInforme(carga_id=carga_id, mes=ultimo, analisis=texto,
-                         prediccion=numeros["prediccion_de_valentina"] or {}, con_ia=con_ia)
+async def publicar_informe(db: AsyncSession, mes: date, analisis: str, prediccion: dict, autor: str) -> VipInforme:
+    """Guarda el informe que escribió Valentina (o quien sea del Escuadrón). Commitea."""
+    informe = VipInforme(mes=mes, analisis=analisis, prediccion=prediccion or {}, con_ia=True, autor=autor)
     db.add(informe)
     await db.commit()
-
-    if mandar and es_reciente(ultimo, ahora().date()) and email_service.email_configurado():
-        url = f"{(settings.FRONTEND_URL or '').rstrip('/')}/clientes-vip"
-        asunto, html, plano = armar_mail(informe, url)
-        de = email_service.remitente_con_nombre("Sofía y Valentina")
-        enviados = 0
-        for u in await destinatarios(db):
-            try:
-                await email_service.send_email(u.email, asunto, html, plano, de=de)
-                enviados += 1
-            except Exception as exc:
-                logger.warning("clientes_vip: no salió el mail a %s (%s)", u.id, exc)
-            await asyncio.sleep(0.6)  # Resend gratis: 2 por segundo
-        informe.enviado_a = enviados
-        await db.commit()
+    await db.refresh(informe)
     return informe
 
 
-_TAREAS: set[asyncio.Task] = set()
+COLUMNAS_CLIENTES_MES = ("id_cliente", "mes", "venta", "margen", "unidades", "tickets", "dias", "venta_ecommerce",
+                         "venta_smart", "venta_marca_propia", "sucursal", "categorias")
+COLUMNAS_DIMENSIONES = ("mes", "dimension", "valor", "venta", "margen", "unidades", "tickets", "clientes")
+COLUMNAS_CLIENTES = ("id_cliente", "segmento", "riesgo", "venta_esperada", "venta_12m", "venta_3m", "venta_3m_antes",
+                     "margen_12m", "tickets_12m", "meses_con_compra", "ultimo_mes", "sucursal", "categoria",
+                     "parte_ecommerce")
+TABLAS_CSV = {
+    "clientes_mes": (VipClienteMes, COLUMNAS_CLIENTES_MES, (VipClienteMes.mes, VipClienteMes.id_cliente)),
+    "dimensiones": (VipMesDimension, COLUMNAS_DIMENSIONES, (VipMesDimension.mes, VipMesDimension.dimension)),
+    "clientes": (VipCliente, COLUMNAS_CLIENTES, (VipCliente.id_cliente,)),
+}
 
 
-def informe_en_segundo_plano(carga_id: int, user_id: int | None) -> None:
-    """Después de una carga: el informe y los mails, sin hacer esperar a quien
-    cargó (la IA tarda medio minuto)."""
-    from app.core.database import AsyncSessionLocal
+def _celda(v) -> str:
+    if v is None:
+        return ""
+    if isinstance(v, date):
+        return v.strftime("%Y-%m") if v.day == 1 else v.isoformat()
+    t = str(v)
+    return '"' + t.replace('"', '""') + '"' if any(c in t for c in (";", '"', "\n")) else t
 
-    async def correr() -> None:
-        try:
-            async with AsyncSessionLocal() as db:
-                await armar_informe(db, carga_id, user_id)
-        except Exception:
-            logger.exception("clientes_vip: falló el informe de la carga %s", carga_id)
 
-    tarea = asyncio.create_task(correr())
-    _TAREAS.add(tarea)
-    tarea.add_done_callback(_TAREAS.discard)
+async def csv_de(db: AsyncSession, tabla: str):
+    """Una tabla entera en CSV (separado por ;), de a pedazos para no llenar la memoria."""
+    modelo, columnas, orden = TABLAS_CSV[tabla]
+    salto = "\n"
+    yield ";".join(columnas) + salto
+    cols = [getattr(modelo, c) for c in columnas]
+    resultado = await db.stream(select(*cols).order_by(*orden).execution_options(yield_per=5000))
+    lote = []
+    async for fila in resultado:
+        lote.append(";".join(_celda(v) for v in fila))
+        if len(lote) >= 5000:
+            yield salto.join(lote) + salto
+            lote = []
+    if lote:
+        yield salto.join(lote) + salto
 
 
 def ahora() -> datetime:

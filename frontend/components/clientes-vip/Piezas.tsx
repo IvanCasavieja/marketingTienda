@@ -3,9 +3,10 @@
 // 25/11/2026 pidió menos "hecho con IA"): fondo blanco, un solo color para los
 // datos y el texto en grises.
 import { useState } from "react";
+import { clientesVipApi } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { FilaDimension, Informe, KpiMes, Prediccion, SegmentoResumen, Segmento, Carga } from "@/lib/clientes-vip/tipos";
+import type { FilaDimension, Informe, KpiMes, NotaDeMemoria, Prediccion, SegmentoResumen, Segmento, Carga } from "@/lib/clientes-vip/tipos";
 import { QUE_ES, mesCorto, mesLargo, numero, plata, variacion } from "@/lib/clientes-vip/tipos";
 
 export const CAJA = "rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900";
@@ -116,21 +117,30 @@ export function GraficoVentas({ meses, prediccion }: { meses: KpiMes[]; predicci
   );
 }
 
-export function LoQueViene({ p, ultimo }: { p: Prediccion | null; ultimo: KpiMes }) {
+/** «Lo que viene»: la predicción de Valentina si ya analizó el último mes;
+ *  si no, el cálculo rápido de la plataforma, dicho como tal. */
+export function LoQueViene({ suya, rapida, ultimo }: { suya: Prediccion | null; rapida: Prediccion | null; ultimo: KpiMes }) {
+  const p = suya?.venta ? suya : rapida;
   return (
     <div className={`${CAJA} p-5 flex flex-col`}>
       <h2 className={TITULO}>Lo que viene</h2>
-      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Por Valentina, que hace las predicciones</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+        {suya?.venta ? "Por Valentina, economista del Escuadrón Lechuza" : "Cálculo rápido de la plataforma: Valentina todavía no analizó este mes"}
+      </p>
       {p?.venta ? (
         <>
           <p className="mt-4 text-xs text-slate-500">Venta esperada de {mesLargo(p.mes)}</p>
           <p className="text-3xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{plata(p.venta)}</p>
-          <p className="text-sm text-slate-500 tabular-nums">entre {plata(p.desde)} y {plata(p.hasta)}</p>
+          {p.desde && p.hasta ? <p className="text-sm text-slate-500 tabular-nums">entre {plata(p.desde)} y {plata(p.hasta)}</p> : null}
           <div className="mt-3 flex flex-col gap-1">
-            <Cambio v={p.contra_este_mes} contra={`vs ${mesCorto(ultimo.mes)}`} />
-            <Cambio v={p.contra_anio_anterior} contra="vs el mismo mes del año pasado" />
+            <Cambio v={variacion(p.venta, ultimo.venta)} contra={`vs ${mesCorto(ultimo.mes)}`} />
+            {p.contra_anio_anterior !== undefined && <Cambio v={p.contra_anio_anterior} contra="vs el mismo mes del año pasado" />}
           </div>
-          <p className="mt-auto pt-4 text-xs text-slate-400">Cómo: {p.como}. Se equivoca en promedio un {numero(p.margen_error, 1)}%.</p>
+          {p.como && (
+            <p className="mt-auto pt-4 text-xs text-slate-400">
+              Cómo: {p.como}.{p.margen_error ? ` Se equivoca en promedio un ${numero(p.margen_error, 1)}%.` : ""}
+            </p>
+          )}
         </>
       ) : (
         <p className="mt-4 text-sm text-slate-500">Hace falta al menos un mes cargado.</p>
@@ -140,7 +150,7 @@ export function LoQueViene({ p, ultimo }: { p: Prediccion | null; ultimo: KpiMes
 }
 
 // ---------------------------------------------------------------------------
-// El informe de Sofía y Valentina
+// El informe de Valentina (Escuadrón Lechuza, desde la nube)
 // ---------------------------------------------------------------------------
 
 export function InformeDelMes({ informe, ultimoMes }: { informe: Informe | null; ultimoMes: string }) {
@@ -150,14 +160,14 @@ export function InformeDelMes({ informe, ultimoMes }: { informe: Informe | null;
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <h2 className={TITULO}>El informe del mes</h2>
         <span className="text-xs text-slate-400">
-          Sofía (análisis) y Valentina (predicción)
+          {informe ? informe.autor : "Valentina, economista del Escuadrón Lechuza"}
           {informe?.fecha ? ` · ${new Date(informe.fecha).toLocaleDateString("es-UY", { day: "numeric", month: "long" })}` : ""}
-          {informe && !informe.con_ia ? " · sin IA" : ""}
         </span>
       </div>
       {!informe || viejo ? (
         <p className="mt-3 text-sm text-slate-500">
-          {viejo ? `Este es el de ${mesLargo(informe!.mes)}. ` : ""}El de {mesLargo(ultimoMes)} se está escribiendo: aparece acá en unos minutos.
+          {viejo ? `Este es el de ${mesLargo(informe!.mes)}. ` : ""}Valentina analiza {mesLargo(ultimoMes)} en su próxima vuelta
+          (de lunes a viernes, cada hora de 8 a 18) y lo manda por mail.
         </p>
       ) : null}
       {informe && (
@@ -168,6 +178,42 @@ export function InformeDelMes({ informe, ultimoMes }: { informe: Informe | null;
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lo que aprendió Valentina: su memoria, para ver qué sabe y qué le enseñaron
+// ---------------------------------------------------------------------------
+
+export function MemoriaDeValentina({ cuantas }: { cuantas: number }) {
+  const [notas, setNotas] = useState<NotaDeMemoria[] | null>(null);
+  const [error, setError] = useState(false);
+  function abrir(e: React.SyntheticEvent<HTMLDetailsElement>) {
+    if (!e.currentTarget.open || notas) return;
+    clientesVipApi.memoria().then(({ data }) => setNotas(data.filter((n) => !n.tema.startsWith("_")))).catch(() => setError(true));
+  }
+  return (
+    <details className={`${CAJA} p-5`} onToggle={abrir}>
+      <summary className={`${TITULO} cursor-pointer`}>
+        Lo que aprendió Valentina <span className="font-normal text-slate-400">· {cuantas} {cuantas === 1 ? "cosa" : "cosas"}</span>
+      </summary>
+      <p className="mt-2 text-xs text-slate-500">
+        Lo que le enseñaron por mail y lo que sacó de sus análisis e investigaciones. Lo lee antes de cada informe.
+        Para enseñarle algo (o discutirle), respondé su mail.
+      </p>
+      {error && <p className="mt-3 text-sm text-red-700 dark:text-red-400">No se pudo traer su memoria.</p>}
+      {notas && !notas.length && <p className="mt-3 text-sm text-slate-500">Todavía no anotó nada.</p>}
+      {notas && notas.length > 0 && (
+        <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
+          {notas.map((n) => (
+            <li key={n.id} className="py-2.5">
+              <p className="text-xs text-slate-400">{n.tema}{n.fuente ? ` · ${n.fuente}` : ""}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-300">{n.texto}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </details>
   );
 }
 

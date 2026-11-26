@@ -7,6 +7,7 @@ import { FileUp, Loader2, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { clientesVipApi } from "@/lib/api";
 import { extractErrorDetail } from "@/lib/errors";
 import type { Resumen } from "@/lib/clientes-vip/resumen";
+import type { ParteDetalle } from "@/lib/clientes-vip/detalle";
 import type { MensajeDelLector } from "@/lib/clientes-vip/lector.worker";
 import { mesLargo, numero, plata } from "@/lib/clientes-vip/tipos";
 
@@ -15,7 +16,8 @@ const POR_TANDA = 5000;
 type Paso =
   | { tipo: "elegir" }
   | { tipo: "leyendo"; nombre: string; leido: number; total: number; filas: number }
-  | { tipo: "revisar"; archivo: File; resumen: Resumen }
+  | { tipo: "comprimiendo"; nombre: string; partes: number }
+  | { tipo: "revisar"; archivo: File; resumen: Resumen; detalle: ParteDetalle[] }
   | { tipo: "subiendo"; hecho: number; total: number }
   | { tipo: "listo"; clientes: number; meses: string[] }
   | { tipo: "error"; mensaje: string };
@@ -55,15 +57,16 @@ export default function CargarArchivo({
     w.onmessage = (e: MessageEvent<MensajeDelLector>) => {
       const m = e.data;
       if (m.tipo === "avance") setPaso({ tipo: "leyendo", nombre: archivo.name, leido: m.leido, total: m.total, filas: m.filas });
-      else if (m.tipo === "listo") { setPaso({ tipo: "revisar", archivo, resumen: m.resumen }); w.terminate(); }
+      else if (m.tipo === "comprimiendo") setPaso({ tipo: "comprimiendo", nombre: archivo.name, partes: m.partes });
+      else if (m.tipo === "listo") { setPaso({ tipo: "revisar", archivo, resumen: m.resumen, detalle: m.detalle }); w.terminate(); }
       else { setPaso({ tipo: "error", mensaje: m.mensaje }); w.terminate(); }
     };
     w.onerror = () => setPaso({ tipo: "error", mensaje: "El navegador no pudo leer el archivo. Probá de nuevo con Chrome o Edge actualizados." });
     w.postMessage({ archivo });
   }
 
-  async function subir(archivo: File, r: Resumen) {
-    const total = Math.ceil(r.filas.length / POR_TANDA) + 1;
+  async function subir(archivo: File, r: Resumen, detalle: ParteDetalle[]) {
+    const total = Math.ceil(r.filas.length / POR_TANDA) + detalle.length + 1;
     setPaso({ tipo: "subiendo", hecho: 0, total });
     try {
       const { data: carga } = await conReintento(() => clientesVipApi.empezar({
@@ -73,6 +76,12 @@ export default function CargarArchivo({
         const tanda = r.filas.slice(i, i + POR_TANDA);
         await conReintento(() => clientesVipApi.tanda(carga.id, tanda));
         setPaso({ tipo: "subiendo", hecho: n + 1, total });
+      }
+      // El detalle para Valentina (lo que pidió Emilia), en partes comprimidas.
+      const base = Math.ceil(r.filas.length / POR_TANDA);
+      for (let i = 0; i < detalle.length; i++) {
+        await conReintento(() => clientesVipApi.detalle(carga.id, detalle[i]));
+        setPaso({ tipo: "subiendo", hecho: base + i + 1, total });
       }
       const { data } = await conReintento(() => clientesVipApi.terminar(carga.id, {
         dimensiones: r.dimensiones, clientes: r.clientes, venta: r.venta,
@@ -126,6 +135,12 @@ export default function CargarArchivo({
         </div>
       )}
 
+      {paso.tipo === "comprimiendo" && (
+        <div className="py-4 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+          <Loader2 size={15} className="animate-spin" /> Preparando el detalle para Valentina… {paso.partes > 0 ? `(${paso.partes} partes)` : ""}
+        </div>
+      )}
+
       {paso.tipo === "revisar" && (() => {
         const r = paso.resumen;
         const pisa = r.meses.filter((m) => mesesCargados.includes(m));
@@ -146,7 +161,7 @@ export default function CargarArchivo({
               </p>
             )}
             <div className="mt-5 flex gap-2">
-              <button onClick={() => subir(paso.archivo, r)} className="btn-primary text-sm">Cargar {r.meses.length === 1 ? "el mes" : `los ${r.meses.length} meses`}</button>
+              <button onClick={() => subir(paso.archivo, r, paso.detalle)} className="btn-primary text-sm">Cargar {r.meses.length === 1 ? "el mes" : `los ${r.meses.length} meses`}</button>
               <button onClick={() => setPaso({ tipo: "elegir" })} className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Elegir otro</button>
             </div>
           </div>
@@ -170,7 +185,7 @@ export default function CargarArchivo({
           <CheckCircle2 size={18} className="text-emerald-600 mt-0.5 shrink-0" />
           <div className="text-sm text-slate-700 dark:text-slate-200">
             <p className="font-medium">Listo: {numero(paso.clientes)} clientes con datos hasta {mesLargo(paso.meses[paso.meses.length - 1])}.</p>
-            <p className="text-slate-500 dark:text-slate-400 mt-0.5">Sofía y Valentina están escribiendo el informe: en unos minutos aparece acá y les llega por mail a quienes tienen acceso.</p>
+            <p className="text-slate-500 dark:text-slate-400 mt-0.5">Valentina, la economista del Escuadrón Lechuza, los analiza en su próxima vuelta (de lunes a viernes, cada hora de 8 a 18): su informe aparece acá y les llega por mail a quienes tienen acceso.</p>
             <button onClick={onCerrar} className="mt-3 btn-primary text-sm">Ver el tablero</button>
           </div>
         </div>

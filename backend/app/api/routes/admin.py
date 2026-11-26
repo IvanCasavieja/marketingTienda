@@ -289,6 +289,9 @@ class CreateUserRequest(BaseModel):
     # Hasta dónde ve el calendario (0070). Sin decirlo: una externa, "No lo
     # ve"; una del equipo, "Todo" (ver app/core/alcance.py).
     calendario_alcance: str | None = None
+    # Cuenta de agente (0092): no se le pide cambiar la contraseña. Solo el
+    # superadmin, y nunca para una cuenta externa.
+    clave_fija: bool = False
 
 
 class UpdateAlcanceRequest(BaseModel):
@@ -383,6 +386,7 @@ async def list_users(
             "es_externo":   bool(u.es_externo),
             "empresa":      u.empresa,
             "calendario_alcance": alcance.alcance_de(u),
+            "clave_fija":   bool(getattr(u, "clave_fija", False)),
             "created_at":   u.created_at.isoformat() if u.created_at else None,
             "sucursales":   sorted(sucursales.get(u.id, [])),
             "sucursal_tipo": tipo_sucursal.get(u.id),
@@ -408,6 +412,10 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email ya registrado")
 
+    if payload.clave_fija and not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo el superadmin puede crear una cuenta de agente")
+    if payload.clave_fija and payload.es_externo:
+        raise HTTPException(status_code=422, detail="Una cuenta externa no puede ser cuenta de agente")
     if payload.es_externo:
         return await _crear_externo(payload, request, current_user, db)
 
@@ -439,15 +447,17 @@ async def create_user(
         is_superuser=False,
         calendario_alcance=_alcance_pedido(current_user, payload.calendario_alcance, es_externo=False),
         # La contraseña la eligió quien está creando la cuenta, no su dueño —
-        # se lo obliga a poner una propia en el primer login.
-        must_change_password=True,
+        # se lo obliga a poner una propia en el primer login. Salvo una cuenta
+        # de agente (0092), que entra sola y nadie la cambiaría a mano.
+        must_change_password=not payload.clave_fija,
+        clave_fija=payload.clave_fija,
         password_changed_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.flush()
     db.add(AuditLog(
         user_id=current_user.id, action="admin.user.create", resource="user", resource_id=str(user.id),
-        details={"email": user.email, "role_id": user.role_id}, ip_address=_client_ip(request),
+        details={"email": user.email, "role_id": user.role_id, "clave_fija": user.clave_fija}, ip_address=_client_ip(request),
     ))
     return {"id": user.id, "email": user.email, "full_name": user.full_name}
 

@@ -56,6 +56,10 @@ async def _needs_password_change(user: User, db: AsyncSession, es_sucursal: bool
         )).scalar_one_or_none() is not None
     if es_sucursal:
         return False
+    # Cuenta de agente (0092): entra sola desde la nube; nadie le cambiaría la
+    # contraseña a mano. Solo el superadmin la crea así.
+    if getattr(user, "clave_fija", False):
+        return False
 
     if user.must_change_password:
         return True
