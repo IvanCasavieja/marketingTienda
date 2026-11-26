@@ -46,10 +46,9 @@ chico inventado con las columnas de `frontend/lib/clientes-vip/resumen.ts`.
 - **No hay una cuenta interna común:** para ver la plataforma como alguien
   del equipo sin superadmin (o para probar aprobaciones entre dos), creala
   desde `/admin` (Nuevo usuario → Del equipo → rol «Usuario»).
-- **«Agencia de prueba» no aparece en «¿Quién la hace?»** (solo Publicis,
-  Another Monday y «Diseñadores»). Para pedirle algo: crear la tarea para
-  Publicis y después cambiarla a «Agencia de prueba» desde la tarea, o usar
-  una plantilla.
+- **«Agencia de prueba» está en «¿Quién la hace?»** desde el 26/11/2026
+  (antes solo Publicis, Another Monday y «Diseñadores»): se le pide directo,
+  y en Tableros tiene su pestaña.
 - **No bloquees ni desactives la cuenta Equipo nocturno** (te deja afuera
   hasta reiniciar el servidor). Para probar bloqueos, una cuenta descartable.
 - **La IA está simulada.** Don Tino y la revisión de piezas contestan con

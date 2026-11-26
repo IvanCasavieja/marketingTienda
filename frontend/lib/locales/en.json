@@ -1407,6 +1407,23 @@
   },
   "calendario": {
     "accessDenied": "You don't have access to the calendar",
-    "loading": "Loading the calendar…"
+    "loading": "Loading the calendar…",
+    "quienLaHace": {
+      "titulo": "Who does it?",
+      "agencias": "Agencies",
+      "tienda": "Tienda Inglesa",
+      "cargando": "Loading…",
+      "elegir": "Choose who does it",
+      "sinUsuarios": "{{agencia}} (no users yet)",
+      "deAfuera": "{{agencia}} (outside agency)",
+      "quienLaHaceHoy": "Whoever does it now",
+      "pasaALaAgencia": "It moves to {{agencia}}'s board and we'll let them know.",
+      "pasaALaAgenciaSinUsuarios": "It moves to {{agencia}}'s board: they'll see it once they have users.",
+      "pasaAPersona": "{{persona}} will do it.",
+      "dejaLaAgencia": "It leaves {{agencia}}'s board: {{persona}} will do it."
+    },
+    "tarjetaSinAccion": {
+      "cambiar": "Change who does it, the name, the date or the person in charge"
+    }
   }
 }

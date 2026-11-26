@@ -3084,7 +3084,9 @@ def test_los_tres_tableros_y_los_comentarios_de_la_tarjeta():
         lucia = Cliente(d.http, d.lucia)
         r = await lucia.get("/calendario/tableros", params={"mundo": MUNDO})
         assert r.status_code == 200, r.text
-        assert [t["nombre"] for t in r.json()] == ["Publicis", "Another Monday", "Diseñadores"]
+        # Los tres primero; después, las demás agencias con cuentas (desde el
+        # 26/11/2026: test_pedirle_a_cualquier_agencia.py).
+        assert [t["nombre"] for t in r.json()][:3] == ["Publicis", "Another Monday", "Diseñadores"]
 
         # La tarea para Publicis, con su responsable de Tienda (0090: en la
         # misma tarea, ya no en una tarea de afuera). Aprob2 la lleva.
