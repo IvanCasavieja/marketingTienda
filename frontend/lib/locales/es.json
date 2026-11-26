@@ -420,6 +420,7 @@
       "borrado": "Tipo de cenefa eliminado",
       "vacio": "Todavía no hay ningún tipo de cenefa creado en este mundo.",
       "errorCargar": "No se pudieron cargar los tipos de cenefa",
+      "reintentar": "Reintentar",
       "nombrePlaceholder": "Nombre (ej. Mega Rompe Precios)",
       "descripcionPlaceholder": "Descripción corta (opcional)"
     },

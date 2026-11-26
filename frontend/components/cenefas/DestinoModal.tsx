@@ -40,6 +40,9 @@ const ICONO_KEYS = Object.keys(ICONOS);
 interface DestinoModalProps {
   destinos: CenefaDestino[];
   loading: boolean;
+  /** La lista no cargó: se dice y se ofrece reintentar, no «no hay ninguno». */
+  error?: boolean;
+  onReintentar?: () => void;
   /** El mundo de la plataforma en el que se está: ahí nace un tipo nuevo. */
   mundo?: string;
   puedeEditar: boolean;
@@ -49,7 +52,7 @@ interface DestinoModalProps {
 }
 
 export default function DestinoModal({
-  destinos, loading, mundo, puedeEditar, onSelect, onCreated, onDeleted,
+  destinos, loading, error = false, onReintentar, mundo, puedeEditar, onSelect, onCreated, onDeleted,
 }: DestinoModalProps) {
   const { t } = useTranslation();
   const [creando, setCreando] = useState(false);
@@ -108,7 +111,9 @@ export default function DestinoModal({
             <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">{t("cenefas.destino.title")}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{t("cenefas.destino.subtitle")}</p>
           </div>
-          {puedeEditar && !creando && (
+          {/* Sin la lista no se sabe qué tipos hay: crear uno ahí podía
+              duplicar el que no se vio (Redexpres). */}
+          {puedeEditar && !creando && !error && (
             <button
               onClick={() => setCreando(true)}
               className="shrink-0 flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
@@ -212,6 +217,15 @@ export default function DestinoModal({
         {loading ? (
           <div className="flex justify-center py-10">
             <Loader2 size={22} className="animate-spin text-slate-400" />
+          </div>
+        ) : error ? (
+          <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
+            <p className="text-sm text-slate-600 dark:text-slate-300">{t("cenefas.destino.errorCargar")}</p>
+            {onReintentar && (
+              <button onClick={onReintentar} className="btn-secondary text-xs px-3 py-1.5">
+                {t("cenefas.destino.reintentar")}
+              </button>
+            )}
           </div>
         ) : destinos.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-10">{t("cenefas.destino.vacio")}</p>

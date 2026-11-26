@@ -420,6 +420,7 @@
       "borrado": "Tag type deleted",
       "vacio": "There are no tag types in this world yet.",
       "errorCargar": "Could not load the tag types",
+      "reintentar": "Try again",
       "nombrePlaceholder": "Name (e.g. Mega Rompe Precios)",
       "descripcionPlaceholder": "Short description (optional)"
     },
