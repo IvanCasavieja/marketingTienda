@@ -6,3 +6,5 @@
 - 26/11/2026 · Tomás (código): el responsable de una tarea es quien entrega, no quien aprueba. Aprueba una cadena aparte (puede ser de varias personas en orden), y cualquiera con permiso de tareas puede decidir como respaldo. El dato de quién aprobó ya se guarda.
 - 26/11/2026 · Sofía (código): en Cenefas, el «Se van a generar N» cuenta Excel × plantilla, no productos (error real). La Vigencia se usa sin tocar «Guardar» y la fecha del Excel manda sobre ese campo. Propone bajar H-115 a 🟡.
 - 26/11/2026 · A Ivan se le explica sin jerga: qué hizo la persona, qué vio y por qué la traba, con la captura. Los puntos cortos del informe no le alcanzaron.
+- 26/11/2026 · Ivan: las imágenes de los mails le llegan sin cargar. Bruno: van como links a GitHub y Outlook bloquea las imágenes externas de un remitente nuevo (o el firewall de la oficina bloquea GitHub). Propuesta: mandarlas dentro del mail con `cid` y un link de respaldo. Mientras tanto, debajo de cada imagen va su link.
+- 26/11/2026 · Ivan: en Cenefas la vigencia no es obligatoria, muchas cenefas la traen en el diseño.

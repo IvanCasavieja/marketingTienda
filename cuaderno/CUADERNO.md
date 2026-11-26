@@ -37,7 +37,9 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 >
 > Orden del 26/11 (corrida de procesos): 1) que se le pueda pedir trabajo a cualquier agencia (H-018 + H-090) y lo que bloquea (CI en rojo, borrar entregas, cenefas v2); 2) revisar y entregar sin sorpresas; 3) Sugerencias (Ivan); 4) local y Redexpres; 5) Clientes VIP; 6) trabas de herramientas; 7) lo visual y los detalles; 8) lo que falta confirmar.
 >
-> **Pedido de Ivan (26/11, por mail), primero en la lista:** H-113, que se vea quién de Tienda aprobó la entrega («súmenlo también, está bueno saber quién aprueba la tarea de la agencia»). Va la noche después de que entre «Tarjetas por pieza» a `main` (Tomás: rehace ese bloque; hoy no está subida). Y su aviso: «estamos trabajando en el repo en este momento»: la noche no toca archivos de nada «En curso», aunque no haya rama visible.
+> **Pedido de Ivan (26/11, mail): las imágenes de los mails le llegan sin cargar** («fíjense por qué»). Bruno: van como links a GitHub y Outlook bloquea imágenes externas de remitentes nuevos (o el firewall bloquea GitHub). Se le pidieron dos pruebas. Arreglo propuesto: mandarlas dentro del mail (adjunto inline con `cid` por Resend, en `correo.py`), con un link «ver captura» de respaldo. Por PR, como siempre.
+>
+> **Pedido de Ivan (26/11, por mail), primero en la lista (Ivan lo confirmó: «implementenlo cuando hagan las siguientes mejoras»):** H-113, que se vea quién de Tienda aprobó la entrega («súmenlo también, está bueno saber quién aprueba la tarea de la agencia»). Va la noche después de que entre «Tarjetas por pieza» a `main` (Tomás: rehace ese bloque; hoy no está subida). Y su aviso: «estamos trabajando en el repo en este momento»: la noche no toca archivos de nada «En curso», aunque no haya rama visible.
 >
 > Orden del 26/11 noche (lo que no está en curso ni en el PR #93): 1) la campanita y la ficha dicen lo mismo que pasó (H-111, H-113); 2) Cenefas sin dudas al cargar (H-115, H-112); 3) local y Redexpres (H-085, H-099, H-086, H-084); 4) palabras de las versiones (H-097) y miniaturas (H-114) después de «Tarjetas por pieza»; 5) lo visual (H-116, H-069, H-003…).
 
@@ -331,12 +333,12 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Visto:** 26/11 (Sofía) · proceso P48
 
 ### H-115 · Cenefas: la Vigencia obligatoria no dice qué escribir ni si hay que tocar «Guardar»
-- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Cenefas → Rompe Precios, «Configuración», notebook
+- **Gravedad:** 🟡 Traba · **Quién:** equipo · **Dónde:** Cenefas → Rompe Precios, «Configuración», notebook
 - **Qué ve una persona:** «Vigencia *» es un campo vacío con una flechita. Al abrirla: «Sin opciones guardadas — escribí un valor y hacé clic en "Guardar"». No hay ejemplo de formato (¿«del 27 al 29/11»?, ¿fechas?) y no se sabe si el valor se usa sin tocar «Guardar». El título pide «el Excel de productos y la plantilla PPTX», pero lugar para la plantilla recién aparece después de cargar el Excel. Y a pesar del asterisco, se puede seguir sin vigencia (H-112).
 - **Por qué importa:** la vigencia sale impresa en cada cenefa del fin de semana: si se escribe mal o queda vacía, hay que reimprimir todo.
 - **Cómo repetirlo:** Cenefas → Rompe Precios → tocar la flechita de Vigencia.
 - **Evidencia:** ![H-115](recorridos/2026-11-26/H-115.jpg)
-- **Idea de arreglo:** ejemplo en el campo («Ej.: Válido del 27/11 al 29/11»), que lo escrito valga sin «Guardar» (guardar = recordarlo para la próxima), y no dejar seguir sin vigencia. Va en paquete con H-112.
+- **Idea de arreglo:** ~~no dejar seguir sin vigencia~~ → **Ivan (26/11, mail): «La vigencia no debería ser obligatoria, bajemos la importancia ya que muchas cenefas lo traen implícito en su diseño».** Sacar el asterisco, ejemplo en el campo («Ej.: Válido del 27/11 al 29/11») y aclarar que «Guardar» es solo para recordarlo. Baja de 🟠 a 🟡. Va en paquete con H-112.
 - **Visto:** 26/11 noche (Martina a ciegas)
 
 ### H-043 · Una plantilla armada en el editor no aparece al hacer cenefas
