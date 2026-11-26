@@ -332,3 +332,16 @@ def test_una_que_ya_se_borro_dice_por_que_no_esta():
     assert 'yaNoEsta(e) ? t("rrss.yaNoEsta")' in _texto(_RRSS / "DescargarExcel.tsx")
     borrar = _texto(_RRSS / "Historial.tsx").split("async function borrar")[1].split("\n  }\n")[0]
     assert "if (yaNoEsta(e)) quitar(f.id);" in borrar
+
+
+def test_en_el_celular_se_llega_a_abrir_una_de_hoy():
+    """En el celular (390 px) la tabla de «Las de hoy» no entra entera y la
+    tarjeta la cortaba (overflow-hidden): el resultado, «Abrir» y el tacho
+    quedaban fuera de la pantalla y no había cómo deslizarla. Justo en la
+    lista que dice «Acá podés volver a abrir una». Lo vio Ramiro en el
+    navegador el 26/11/2026: «Abrir» en x=499 con la pantalla de 390."""
+    src = _texto(_RRSS / "Historial.tsx")
+    # El contenedor más cercano a la tabla es el que la deja deslizar.
+    contenedor = src.split("<table")[0].rsplit("<div", 1)[1]
+    assert "overflow-x-auto" in contenedor, contenedor
+    assert "overflow-hidden" not in contenedor, contenedor

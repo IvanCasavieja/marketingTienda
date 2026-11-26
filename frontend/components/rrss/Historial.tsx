@@ -56,8 +56,12 @@ export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
   if (filas === null) return conAviso(<p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> {t("common.loading")}</p>);
   if (filas.length === 0) return conAviso(<div className="card p-10 text-center text-sm text-slate-500">{t("rrss.historialVacio")}</div>);
 
+  // La tabla se desliza de costado (overflow-x-auto, que igual recorta las
+  // esquinas redondeadas): en el celular (390 px) no entra entera, y con la
+  // tarjeta en overflow-hidden el resultado y «Abrir» quedaban fuera de la
+  // pantalla, sin forma de llegar a ellos (Ramiro, 26/11/2026).
   return conAviso(
-    <div className="card overflow-hidden">
+    <div className="card overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/50">
           <tr>
