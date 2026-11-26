@@ -319,3 +319,35 @@ def test_compactar_en_la_migracion_nunca_la_hace_fallar(monkeypatch):
             assert migracion.compactar_lo_que_vale_la_pena(conn, xid) == ["vip_mes_dimension"]
     finally:
         motor.dispose()
+
+
+def test_volver_a_crear_un_tipo_borrado_conserva_su_nombre():
+    """Un tipo que se vuelve a crear continúa al borrado (mismo slug) y el
+    informe muestra sus corridas con el nombre del vivo. Escrito de otra forma
+    —«GRAN BRETANA» por «Gran Bretaña», que da el mismo slug— le cambiaba el
+    nombre a lo ya facturado (Ramiro, 26/11/2026). Nace con el que tenía."""
+    from app.services.cenefas import informe
+    from test_tablero_agencia_api import Cliente, _persona, correr
+
+    async def prueba(d):
+        jefa = Cliente(d.http, await _persona(d, "Jefa Cenefas", permisos=("cenefas.view", "cenefas.edit")))
+        nombre = f"Gran Bretaña {d.sufijo}"
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "mundo": "tienda_inglesa"})
+        assert r.status_code == 201, r.text
+        slug = r.json()["slug"]
+        async with d.Sesion() as s:
+            s.add(_corrida(slug, None, datetime(2026, 9, 3, 10, tzinfo=timezone.utc), 25, excel="g.xlsx"))
+            await s.commit()
+        assert (await jefa.delete(f"/tools/cenefas/v2/destinos/{slug}")).status_code == 204
+        async with d.Sesion() as s:
+            antes = await informe.resumen(s)
+        assert next(m for m in antes["por_mundo"] if m["mundo"] == slug)["nombre"] == nombre
+
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": f"GRAN BRETANA {d.sufijo}",
+                                                                 "mundo": "tienda_inglesa"})
+        assert r.status_code == 201, r.text
+        assert (r.json()["slug"], r.json()["nombre"]) == (slug, nombre)
+        async with d.Sesion() as s:
+            assert await informe.resumen(s) == antes
+
+    correr(prueba)

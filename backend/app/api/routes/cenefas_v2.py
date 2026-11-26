@@ -1442,6 +1442,11 @@ async def create_destino(
             f"así. Para volver a crearlo, {hacer} «No suma al informe de producción»; si es otro, "
             "elegí otro nombre."
         ))
+    if borrado is not None:
+        # Y con el nombre que tenía: el informe muestra el del mundo vivo, y
+        # «GRAN BRETANA» (el mismo slug) les cambiaba el nombre a las corridas
+        # facturadas de «Gran Bretaña».
+        nombre = borrado.nombre
 
     icono = str(payload.get("icono") or "Store")
     color = str(payload.get("color") or "emerald")
