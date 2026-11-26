@@ -115,6 +115,18 @@ async def lifespan(app: FastAPI):
             logger.info("purga_cenefas: loop iniciado (cada hora, retencion %dh)",
                         settings.CENEFAS_RETENCION_HORAS)
 
+        # La de las validaciones de RRSS, por lo mismo y en su propio loop (así
+        # apagar una no apaga la otra): cada validación dura
+        # RRSS_RETENCION_HORAS horas y después se borra entera. La primera
+        # pasada se lleva todo el historial viejo. Ivan (26/11/2026): «no tiene
+        # sentido que mantengamos historial de validaciones». Ver
+        # services/rrss/retencion.py.
+        if settings.RRSS_RETENCION_HORAS > 0:
+            from app.services.rrss.retencion import run_purga_rrss_loop
+            tareas_post_migracion.append(asyncio.create_task(run_purga_rrss_loop()))
+            logger.info("purga_rrss: loop iniciado (cada hora, retencion %dh)",
+                        settings.RRSS_RETENCION_HORAS)
+
         # Los avisos del calendario, por lo mismo: revisan apenas arrancan, y en
         # una base nueva la tabla calendario_avisos todavia no existe. Visto en
         # CI el 23/09/2026 -- el backend levantaba bien igual, pero dejaba un
@@ -199,8 +211,9 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("despierto: sin RENDER_EXTERNAL_URL ni URL_PUBLICA, el servidor se puede dormir")
 
-    # La retención de archivos de cenefas (purga) NO arranca acá: la lanza
-    # _run_migrations cuando la base ya está migrada. Ver el comentario ahí.
+    # Las purgas (archivos de cenefas, validaciones de RRSS, fotos de
+    # colocación) NO arrancan acá: las lanza _run_migrations cuando la base ya
+    # está migrada. Ver el comentario ahí.
 
     yield
 

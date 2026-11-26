@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Resp
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.core.rate_limit import limiter
@@ -38,17 +39,27 @@ _MAX_IMAGENES_POR_VALIDACION = 150
 # (GET /rrss/config). Ver archivos.py.
 
 
+def _ya_no_esta() -> str:
+    """Lo que se dice cuando se pide una validación que no existe. Casi
+    siempre es una que se borró sola (duran RRSS_RETENCION_HORAS horas, ver
+    services/rrss/retencion.py): un «no se encontró» pelado parece una falla."""
+    horas = settings.RRSS_RETENCION_HORAS
+    if horas <= 0:
+        return "No se encontró esa validación"
+    return f"Esa validación ya no está: las validaciones se borran solas a las {horas} horas."
+
+
 async def _get_validacion_or_404(db: AsyncSession, validacion_id: int) -> RrssValidacion:
     v = await db.get(RrssValidacion, validacion_id)
     if v is None:
-        raise HTTPException(status_code=404, detail="No se encontró esa validación")
+        raise HTTPException(status_code=404, detail=_ya_no_esta())
     return v
 
 
 def _exigir_dueno(v: RrssValidacion, user: User) -> None:
-    """Cualquiera con rrss.view puede MIRAR una validación (el historial es del
-    equipo), pero solo quien la creó -o un superusuario- puede modificarla o
-    borrarla."""
+    """Cualquiera con rrss.view puede MIRAR una validación (las de hoy son
+    del equipo), pero solo quien la creó -o un superusuario- puede
+    modificarla o borrarla."""
     if not user.is_superuser and v.creado_por_id != user.id:
         raise HTTPException(status_code=403, detail="Solo quien creó la validación puede modificarla")
 
@@ -356,7 +367,9 @@ async def listar_validaciones(
     _: User = Depends(require_permission("rrss.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """El historial: una fila por validación, con sus contadores."""
+    """Las validaciones de hoy, una fila por validación con sus contadores:
+    para retomar una si se cerró la pestaña. No es un historial: cada una se
+    borra sola a las RRSS_RETENCION_HORAS horas (services/rrss/retencion.py)."""
     I = RrssValidacionImagen
     res = await db.execute(
         select(

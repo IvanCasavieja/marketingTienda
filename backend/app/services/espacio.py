@@ -59,8 +59,12 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
 
 
 # Las tablas que se pueden compactar: solo las que la plataforma vacía sola
-# (la purga de cenefas). Por nombre fijo, nunca algo que venga de afuera.
-TABLAS_COMPACTABLES = frozenset({"cenefa_jobs"})
+# (la purga de cenefas y la de las validaciones de RRSS). Por nombre fijo,
+# nunca algo que venga de afuera.
+TABLAS_COMPACTABLES = frozenset({
+    "cenefa_jobs",
+    "rrss_validaciones", "rrss_validacion_paginas", "rrss_validacion_imagenes",
+})
 
 
 async def compactar(tabla: str) -> tuple[int, int]:
