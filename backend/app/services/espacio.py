@@ -58,6 +58,33 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
     return int((await db.execute(text("SELECT pg_database_size(current_database())"))).scalar_one())
 
 
+# Las tablas que se pueden compactar: solo las que la plataforma vacía sola
+# (la purga de cenefas). Por nombre fijo, nunca algo que venga de afuera.
+TABLAS_COMPACTABLES = frozenset({"cenefa_jobs"})
+
+
+async def compactar(tabla: str) -> tuple[int, int]:
+    """Devuelve a la base el lugar que dejaron los archivos borrados de
+    `tabla` (VACUUM FULL) y dice cuánto ocupaba antes y después, en bytes.
+
+    Postgres no achica una tabla al borrar: se guarda el lugar para sí, y
+    pg_database_size (lo que mira el freno y lo que cuenta Supabase) sigue
+    igual. VACUUM FULL la reescribe solo con lo vivo: necesita lugar libre del
+    tamaño de lo vivo (chico, si se borraron los archivos) y traba la tabla
+    el rato que tarda (segundos). No puede ir dentro de una transacción: va
+    en AUTOCOMMIT."""
+    if tabla not in TABLAS_COMPACTABLES:
+        raise ValueError(f"No se compacta {tabla!r}")
+    from app.core.database import engine  # acá: evita importar la base al cargar el módulo
+    tamano = text("SELECT pg_total_relation_size(CAST(:t AS regclass))")
+    async with engine.connect() as conn:
+        conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
+        antes = int((await conn.execute(tamano, {"t": tabla})).scalar_one())
+        await conn.execute(text(f'VACUUM FULL "{tabla}"'))
+        despues = int((await conn.execute(tamano, {"t": tabla})).scalar_one())
+    return antes, despues
+
+
 async def hay_lugar(db: AsyncSession, bytes_nuevos: int) -> bool:
     """Si se pueden guardar `bytes_nuevos` sin pasar el tope. Si no, deja un
     error en el log (con cuánto ocupa) y devuelve False."""

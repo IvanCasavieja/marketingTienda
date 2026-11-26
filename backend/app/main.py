@@ -109,11 +109,11 @@ async def lifespan(app: FastAPI):
         # migraciones y fallaba con 'relation "cenefa_jobs" does not exist'.
         # Visto el 10/09/2026 al levantar la plataforma desde cero en Docker:
         # inofensivo, pero es lo primero que ve IT en el log del primer deploy.
-        if settings.CENEFAS_RETENCION_DIAS > 0:
+        if settings.CENEFAS_RETENCION_HORAS > 0:
             from app.services.cenefas.jobs import run_purga_cenefas_loop
             tareas_post_migracion.append(asyncio.create_task(run_purga_cenefas_loop()))
-            logger.info("purga_cenefas: loop iniciado (diario, retencion %dd)",
-                        settings.CENEFAS_RETENCION_DIAS)
+            logger.info("purga_cenefas: loop iniciado (cada hora, retencion %dh)",
+                        settings.CENEFAS_RETENCION_HORAS)
 
         # Los avisos del calendario, por lo mismo: revisan apenas arrancan, y en
         # una base nueva la tabla calendario_avisos todavia no existe. Visto en
