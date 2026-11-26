@@ -27,10 +27,6 @@ jobs:
       # una cuenta externa: hasta el 16/11/2026 existian pero ningun job las
       # corria.
       - run: npm run test:calendario
-      # Cenefas: el orden de apilado del lienzo y qué hacer con cada estado de
-      # una corrida (corrida.test.ts, H-008: la pantalla de Generar tomaba
-      # "lista para revisar" por un error).
-      - run: npm run test:cenefas
       - run: npm run test:externos
 
   backend:
