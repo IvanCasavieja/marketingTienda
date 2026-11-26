@@ -24,10 +24,12 @@ import { useCalendario } from "@/lib/calendario/store";
 import { useAvisos } from "@/store/avisos";
 import { useMenuLateral } from "@/store/menuLateral";
 import { useLocalesDelMundo, usePendientesDeFotos } from "@/lib/colocacion/store";
+import { borrarTodosLosBorradores } from "@/components/calendario/entregas/borradores";
 
 /** Al cerrar sesión, lo de esta persona no queda en el navegador: la copia del
- *  calendario (con sus tareas) y el mundo que eligió. Antes quien entraba
- *  después en la misma computadora veía "el último que usaste" de otro. */
+ *  calendario (con sus tareas), el mundo que eligió y lo que dejó a medio
+ *  cargar para entregar. Antes quien entraba después en la misma computadora
+ *  veía "el último que usaste" de otro. */
 function olvidarDatosDelNavegador() {
   try {
     void useCalendario.persist.clearStorage();
@@ -35,6 +37,7 @@ function olvidarDatosDelNavegador() {
   } catch {
     // Sin acceso al almacenamiento no hay nada guardado que borrar.
   }
+  borrarTodosLosBorradores();
 }
 
 // Los flags de country-flag-icons devuelven emoji de bandera regional, que

@@ -13,7 +13,7 @@ import {
   type Persona,
 } from './calendario/tipos'
 import type { CurrentUser } from '../types'
-import { loginVolviendoA, volverA, volverDeLaBusqueda } from './volver'
+import { direccionConTarjeta, loginVolviendoA, volverA, volverDeLaBusqueda } from './volver'
 
 let fallos = 0
 function ok(nombre: string, cond: boolean, detalle = '') {
@@ -140,6 +140,17 @@ igual('desde el inicio, el login a secas', [loginVolviendoA('/'), loginVolviendo
 igual('ya en el login, no pierde su ?volver', loginVolviendoA('/login?volver=%2Fentregas'), '/login?volver=%2Fentregas')
 igual('se lee de la búsqueda', volverDeLaBusqueda('?volver=%2Fentregas%3Ftarea%3Dta-1'), '/entregas?tarea=ta-1')
 igual('y si apunta afuera, nada', [volverDeLaBusqueda('?volver=https%3A%2F%2Fotro.com'), volverDeLaBusqueda('')], [null, null])
+
+// La tarjeta abierta va en la dirección del tablero (H-039 y H-040, 26/11/2026):
+// abierta tocándola en el tablero, la dirección quedaba «/entregas», y recargar
+// o entrar de nuevo cuando vencía la sesión caía en el tablero sin la tarjeta.
+igual('abrir una tarjeta la pone en la dirección', direccionConTarjeta('/entregas', '', 'ta-1'), '/entregas?tarea=ta-1')
+igual('cerrarla la saca (recargar no la vuelve a abrir)', direccionConTarjeta('/entregas', '?tarea=ta-1', null), '/entregas')
+igual('abrir otra la cambia', direccionConTarjeta('/entregas', '?tarea=ta-1', 'ta-2'), '/entregas?tarea=ta-2')
+igual('lo demás de la búsqueda queda', direccionConTarjeta('/entregas', '?x=1', 'ta-1'), '/entregas?x=1&tarea=ta-1')
+igual('fuera del tablero no se toca', direccionConTarjeta('/calendario', '?accion=br-1', 'ta-1'), '/calendario?accion=br-1')
+igual('al vencer la sesión con la tarjeta abierta, el login vuelve a ella',
+  loginVolviendoA(direccionConTarjeta('/entregas', '', 'ta-1')), '/login?volver=%2Fentregas%3Ftarea%3Dta-1')
 
 if (fallos) {
   console.log(`\n${fallos} prueba(s) fallaron`)

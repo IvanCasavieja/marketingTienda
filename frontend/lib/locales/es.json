@@ -1520,6 +1520,11 @@
       "accionConEntregas_one": "«{{nombre}}» no se puede eliminar: una de sus tareas ya tiene entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas la puede dar por hecha: su tarjeta pasa a Archivado con todo lo entregado.",
       "accionConEntregas_other": "«{{nombre}}» no se puede eliminar: {{count}} de sus tareas ya tienen entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas las puede dar por hechas: sus tarjetas pasan a Archivado con todo lo entregado.",
       "entendido": "Entendido"
+    },
+    "entrega": {
+      "recuperado": "Recuperamos lo que estabas cargando para entregar.",
+      "recuperadoSinZip": "Recuperamos lo que estabas cargando. El ZIP «{{zip}}» no queda guardado: volvé a elegirlo.",
+      "descartar": "Descartar"
     }
   }
 }

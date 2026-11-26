@@ -1433,6 +1433,11 @@
       "accionConEntregas_one": "“{{nombre}}” can't be deleted: one of its tasks already has deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark it as done: its card goes to Archived with everything delivered.",
       "accionConEntregas_other": "“{{nombre}}” can't be deleted: {{count}} of its tasks already have deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark them as done: their cards go to Archived with everything delivered.",
       "entendido": "Got it"
+    },
+    "entrega": {
+      "recuperado": "We brought back what you were getting ready to deliver.",
+      "recuperadoSinZip": "We brought back what you were getting ready to deliver. The ZIP “{{zip}}” is not kept: choose it again.",
+      "descartar": "Discard"
     }
   }
 }
