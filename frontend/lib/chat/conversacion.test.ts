@@ -3,7 +3,10 @@
  *
  *     npm run test:chat
  */
-import { historialParaEnviar, muestraBurbuja, type MensajeDonTino } from './conversacion'
+import {
+  LUGAR_DE_DON_TINO, LUGAR_PARA_LA_BURBUJA, LUGAR_SIN_BURBUJA, historialParaEnviar, lugarDeAbajo, muestraBurbuja,
+  type MensajeDonTino,
+} from './conversacion'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -35,6 +38,34 @@ for (const p of ['/precios', '/materiales/cenefas', '/materiales/convertidor', '
 igual('en una subpantalla sin ayudante, Don Tino sí', muestraBurbuja('/materiales/cenefas/v2/generar', equipo), true)
 igual('la agencia, no', muestraBurbuja('/entregas', { ...equipo, es_externo: true }), false)
 igual('sin usuario, no', muestraBurbuja('/calendario', null), false)
+
+// H-025 (26/11/2026): la burbuja tapaba «Confirmar pedido» del local,
+// «Validar placas» y el «Enviar» de La Triada. Donde hay un botón flotante,
+// la pantalla deja lugar abajo para que lo último quede arriba de él.
+console.log('La pantalla le deja lugar a la burbuja')
+const local = { is_superuser: false, permissions: ['ai.don_tino'] }
+const enMiPedido = lugarDeAbajo('/redexpres/mi-pedido', local)
+igual('en Mi pedido del local (Don Tino), deja lugar', enMiPedido, LUGAR_PARA_LA_BURBUJA)
+igual('en Validación de RRSS, también', lugarDeAbajo('/redes-sociales/validacion', equipo), LUGAR_PARA_LA_BURBUJA)
+igual('en La Triada, con el ayudante de la pantalla, también', lugarDeAbajo('/analytics', equipo), LUGAR_PARA_LA_BURBUJA)
+igual('en Inicio, sin burbuja, lo de siempre', lugarDeAbajo('/home', equipo), LUGAR_SIN_BURBUJA)
+igual('la agencia, sin burbuja, lo de siempre', lugarDeAbajo('/entregas', { ...equipo, es_externo: true }), LUGAR_SIN_BURBUJA)
+
+// Y que alcance: lo que queda libre abajo tiene que llegar más arriba que el
+// botón flotante más alto (los ayudantes miden 4rem, w-16; Don Tino, 3,5rem).
+// Si alguien sube la burbuja sin agrandar el lugar, esto avisa.
+/** Lo que dice una clase de Tailwind, en rem: «pb-24» → 6, «md:bottom-5» → 1.25,
+ *  «bottom-[calc(5.75rem+env(safe-area-inset-bottom))]» → 5.75. */
+function rem(clases: string, prefijo: string): number {
+  const valor = clases.split(' ').find(c => c.startsWith(prefijo))?.slice(prefijo.length) ?? ''
+  const aMano = /^\[calc\(([\d.]+)rem\+env\(safe-area-inset-bottom\)\)\]$/.exec(valor)
+  return aMano ? Number(aMano[1]) : Number(valor) / 4
+}
+const ALTO_DEL_AYUDANTE = 4
+const aireArriba = (enPantalla: string, enBurbuja: string) =>
+  rem(enMiPedido, enPantalla) - (rem(LUGAR_DE_DON_TINO, enBurbuja) + ALTO_DEL_AYUDANTE)
+igual('en el celular, «Confirmar pedido» puede quedar arriba de la burbuja', aireArriba('pb-', 'bottom-') >= 0.5, true)
+igual('en la notebook, también', aireArriba('md:pb-', 'md:bottom-') >= 0.5, true)
 
 if (fallos) { console.log(`\n${fallos} prueba(s) fallaron`); process.exit(1) }
 console.log('\nconversacion: todo bien')
