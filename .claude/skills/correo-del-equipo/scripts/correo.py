@@ -35,6 +35,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+from email.utils import getaddresses
 from pathlib import Path
 
 API = "https://api.resend.com"
@@ -77,7 +78,7 @@ def pedir(metodo: str, ruta: str, cuerpo: dict | None = None) -> dict:
 def _en_linea(t: str) -> str:
     t = html.escape(t, quote=False)
     t = re.sub(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)",
-               r'<img src="\2" alt="\1" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:12px 0">', t)
+               r'<img src="\2" alt="\1" width="600" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:12px 0">', t)
     t = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2" style="color:#1d4ed8">\1</a>', t)
     t = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", t)
     t = re.sub(r"(?<![\w*])_([^_]+)_(?![\w*])", r"<em>\1</em>", t)
@@ -173,22 +174,36 @@ def _marcar(ruta: str, ids: list[str]) -> None:
                 f.write(i + "\n")
 
 
+def _destinatarios(cabecera, respaldo) -> list[str]:
+    """Las direcciones de una cabecera To/Cc («Ana <a@x>, b@y»).
+
+    Resend, en `to` y `cc`, deja solo las direcciones de su propio dominio de
+    recepción: el 25/11/2026 Ivan respondió con Emilia en «Para» y Resend
+    anotó solo nuestra casilla. Las de verdad están en las cabeceras."""
+    if isinstance(cabecera, str) and cabecera.strip():
+        return [a for _, a in getaddresses([cabecera]) if "@" in a]
+    return list(respaldo or [])
+
+
 def detalle(id_: str) -> dict:
     d = pedir("GET", f"/emails/receiving/{id_}")
     h = d.get("headers") or {}
+    if not isinstance(h, dict):
+        h = {}
     auth = d.get("authentication") or {}
     de = _direccion(d.get("from") or "")
     verificado = str(auth.get("dmarc", "")).lower() == "pass"
     return {
         "id": d.get("id"),
         "de": de,
-        "para": d.get("to") or [],
-        "cc": d.get("cc") or [],
+        "para": _destinatarios(h.get("to"), d.get("to")),
+        "cc": _destinatarios(h.get("cc"), d.get("cc")),
+        "recibido_en": [x.lower() for x in (d.get("received_for") or d.get("to") or [])],
         "asunto": d.get("subject") or "",
         "fecha": d.get("created_at"),
         "message_id": d.get("message_id"),
-        "references": h.get("references", "") if isinstance(h, dict) else "",
-        "en_respuesta_a": h.get("in-reply-to", "") if isinstance(h, dict) else "",
+        "references": h.get("references", ""),
+        "en_respuesta_a": h.get("in-reply-to", ""),
         "pr_citado": _pr_citado(d.get("text") or "", d.get("subject") or ""),
         "texto_nuevo": texto_nuevo(d.get("text") or ""),
         "verificado": verificado,
@@ -207,6 +222,10 @@ def leer(procesados: str, dias: int) -> list[dict]:
             continue
         fecha = dt.datetime.fromisoformat((m.get("created_at") or "").replace("Z", "+00:00"))
         if fecha < desde or _direccion(m.get("from") or "") in PROPIAS:
+            continue
+        # Cada agente lee lo que le escribieron a él: el Escuadrón, a su
+        # casilla; Valentina, a la suya (CORREO_RESPONDER_A de cada rutina).
+        if AGENTES_RESPONDER_A.lower() not in [x.lower() for x in (m.get("to") or [])]:
             continue
         nuevos.append(detalle(m["id"]))
     return sorted(nuevos, key=lambda x: x["fecha"] or "")
@@ -241,15 +260,27 @@ def enviar(para: list[str], cc: list[str], asunto: str, md: str, cabeceras: dict
     return pedir("POST", "/emails", cuerpo).get("id", "")
 
 
-def responder(id_: str, md: str, nombre: str | None = None) -> str:
-    """Contesta a todos los del mail recibido, en el mismo hilo."""
-    m = detalle(id_)
+def a_quienes(m: dict, permitidos: list[str] | None = None) -> list[str]:
+    """A quiénes va la respuesta: el que escribió primero y después todos los
+    que estaban en el hilo, sin nuestras casillas ni repetidos. Con
+    `permitidos` (datos confidenciales, como los de Clientes VIP), solo esas
+    direcciones: el resto queda afuera."""
     todos = [m["de"]] + [_direccion(x) for x in m["para"] + m["cc"]]
+    solo = {p.lower() for p in permitidos} if permitidos else None
     vistos, destino = set(), []
     for d in todos:
-        if d and d not in PROPIAS and d not in vistos:
+        if d and d not in PROPIAS and d not in vistos and (solo is None or d in solo):
             vistos.add(d)
             destino.append(d)
+    return destino
+
+
+def responder(id_: str, md: str, nombre: str | None = None, permitidos: list[str] | None = None) -> str:
+    """Contesta a todos los del mail recibido, en el mismo hilo."""
+    m = detalle(id_)
+    destino = a_quienes(m, permitidos)
+    if not destino:
+        raise SystemExit("Nadie del hilo puede recibir esta respuesta (ver --permitidos): no se mandó.")
     asunto = m["asunto"] if m["asunto"].lower().startswith(("re:", "rv:")) else f"Re: {m['asunto']}"
     cabeceras = {}
     if m["message_id"]:
@@ -274,6 +305,7 @@ def main() -> None:
     r.add_argument("--a", required=True, help="id del mail recibido")
     r.add_argument("--cuerpo", required=True)
     r.add_argument("--nombre", help="quién contesta, p. ej. Sofía")
+    r.add_argument("--permitidos", help="solo a estas direcciones (coma); el resto del hilo queda afuera")
     r.add_argument("--procesados", default="procesados.txt")
     k = sub.add_parser("marcar")
     k.add_argument("ids", nargs="+")
@@ -287,7 +319,7 @@ def main() -> None:
         json.dump(leer(a.procesados, a.dias), sys.stdout, ensure_ascii=False, indent=1)
         print()
     elif a.cmd == "responder":
-        print(responder(a.a, Path(a.cuerpo).read_text(encoding="utf-8"), a.nombre))
+        print(responder(a.a, Path(a.cuerpo).read_text(encoding="utf-8"), a.nombre, _lista(a.permitidos) or None))
         _marcar(a.procesados, [a.a])
     elif a.cmd == "marcar":
         _marcar(a.procesados, a.ids)

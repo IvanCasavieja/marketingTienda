@@ -47,7 +47,8 @@ python3 $C leer --procesados $P
 ```
 
 Devuelve en JSON los mails que todavía no se atendieron, del más viejo al más
-nuevo. Lo que importa de cada uno:
+nuevo. Cada agente lee solo los que le escribieron a **su** casilla (la de
+`CORREO_RESPONDER_A`): el Escuadrón la suya, Valentina la suya. Lo que importa de cada uno:
 
 | Campo | Qué es |
 |---|---|
@@ -69,7 +70,8 @@ python3 $C responder --a <id> --cuerpo $S/respuesta.md --nombre Sofía --procesa
 ```
 
 Contesta **a todos** (el que escribió va en «para», el resto en copia, sin
-sumar ni sacar a nadie), en el mismo hilo (`Re:` y las cabeceras de hilo), y
+sumar ni sacar a nadie; con datos confidenciales, `--permitidos` deja solo a
+quienes pueden leerlos), en el mismo hilo (`Re:` y las cabeceras de hilo), y
 lo marca como atendido. Después, subí el cuaderno (`procesados.txt` cambió).
 
 Cómo escribir: castellano rioplatense, corto, como un compañero; cada uno
@@ -100,8 +102,16 @@ cuaderno.
 Para cada mail de `leer`:
 
 1. **ok / no de Ivan a un informe.** Solo si `de` es la dirección de Ivan,
-   `verificado` es true, el texto nuevo empieza con ok, okay, dale, sí, si o
-   no, y hay `pr_citado` (o el asunto coincide con uno de `informes.tsv`).
+   `verificado` es true, hay `pr_citado` (o el asunto coincide con uno de
+   `informes.tsv`) y **la primera palabra** del texto nuevo es:
+   - para publicar: ok, okay, dale o publicar;
+   - para descartar: no o descartar.
+   «Sí» solo **no** publica: es la respuesta típica a cualquier pregunta. Si
+   hay dudas de qué quiso decir, no hagas nada y preguntale qué hacer con el
+   PR (con palabras, no con sí/no).
+   **Nunca le hagas a Ivan una pregunta de sí o no en el hilo de un informe**:
+   su respuesta podría leerse como publicar o descartar. Si hace falta
+   preguntar algo, pedí que lo conteste con palabras («¿cuál preferís, A o B?»).
    - **ok:** `gh pr checks <N>`. Si todo está en verde, `gh pr merge <N>
      --merge` y contestá «Publicado: en unos minutos está en la plataforma».
      Si hay pruebas rotas o corriendo, no lo mergees y contestá eso.
