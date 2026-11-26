@@ -29,7 +29,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
 - **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
 - **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
-- **Estado:** En curso desde 26/11 en `nocturno/2026-11-26-campanita-al-dia` (Ramiro VERDE). H-113 queda abierto (choca con «Tarjetas por pieza»).
+- **Estado:** En curso desde 26/11 en `nocturno/2026-11-26-campanita-al-dia`, PR #94 (Ramiro VERDE). H-113 queda abierto (choca con «Tarjetas por pieza»).
 
 ## Abiertos (de más a menos importante)
 
