@@ -839,8 +839,10 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   placa: "No pude validar esta placa"; ninguna de hoy: "Hoy no hay
   validaciones."; abrir o bajar el Excel de una que ya se borró: "Esa
   validación ya no está: las validaciones se borran solas a las 24 horas…"
-  (y la lista se vuelve a pedir, ya sin ella); borrar una que el servidor
-  rechaza: "Solo quien creó la validación puede borrarla." (la lista queda).
+  (y la lista se vuelve a pedir, ya sin ella); si se borra mientras se valida
+  (o al "Reintentar" al otro día): el mismo aviso, una sola vez, y vuelve a
+  la carga con los mismos archivos; borrar una que el servidor rechaza: "Solo
+  quien creó la validación puede borrarla." (la lista queda).
 - **Celular:** pocas clases responsive (algunas en carga y revisión).
 - **Datos para probarla:** `backend/tests/data/planilla_rrss.xlsx` como fuente
   (leer la planilla no usa IA) + cualquier imagen como placa. En pruebas, la
@@ -854,8 +856,10 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   - Arreglado el 26/11/2026 (Ramiro, visto en el navegador): el tacho aparecía
     en las validaciones de todas las personas y, al tocarlo en una ajena, el
     403 reemplazaba la lista entera por "No se pudieron cargar las validaciones
-    de hoy" (H-016). Y en el celular (390 px) la tarjeta cortaba la tabla:
-    "Abrir" quedaba fuera de la pantalla, sin forma de llegar.
+    de hoy" (H-016). En el celular (390 px) la tarjeta cortaba la tabla:
+    "Abrir" quedaba fuera de la pantalla, sin forma de llegar. Y si la
+    validación se borraba mientras se validaba, terminaba en "El servidor dejó
+    de responder… Lo que ya se revisó quedó guardado. Apretá Reintentar".
   - Una validación que se abandona a mitad de camino queda sin cerrar hasta
     que se borra sola, a las 24 horas.
 
