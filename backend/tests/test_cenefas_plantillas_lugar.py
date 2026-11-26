@@ -75,8 +75,11 @@ def test_la_purga_compacta_las_plantillas_que_la_migracion_no_pudo(monkeypatch):
 
             # Sin lugar de sobra, la purga no la vuelve a trabar.
             llamadas = []
-            monkeypatch.setattr(jobs, "compactar_en_segundo_plano",
-                                lambda tablas, xid=None: llamadas.append(tablas))
+
+            async def anotar(tablas, xid=None):
+                llamadas.append(tablas)
+
+            monkeypatch.setattr(jobs, "compactar_en_segundo_plano", anotar)
             await jobs.purgar_archivos_vencidos(24)
             assert ["cenefa_templates_v2"] not in llamadas
         finally:

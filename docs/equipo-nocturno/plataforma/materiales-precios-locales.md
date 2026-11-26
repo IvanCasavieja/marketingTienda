@@ -943,7 +943,8 @@ Quién: `cenefas.edit`, en Tienda Inglesa o Redexpres.
    Con el nombre de un tipo borrado (los 12 de Tienda Inglesa, 0094) lo
    continúa: sus corridas viejas pasan a leerse del nuevo. Por eso, si se
    cobraría distinto que el borrado, el servidor no lo crea (409) y dice qué
-   casilla tocar: si no, cambiaría lo ya facturado.
+   casilla tocar: si no, cambiaría lo ya facturado. Y nace con el nombre que
+   tenía: "GRAN BRETANA" sobre "Gran Bretaña" borrado queda "Gran Bretaña".
 3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena. Sus
    corridas siguen en el informe igual que antes (nombre, cobrable o sin
    costo): lo que necesita de él queda en `cenefa_destinos_borrados`.
