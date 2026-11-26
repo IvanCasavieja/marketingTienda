@@ -112,6 +112,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/calendario", tags=["calendario-entregas"])
 
 _NO_LLEVA = "Esta tarea no lleva entregas"
+# «Avanzar» es seguir con lo que falta: si la plataforma midió que ya vino
+# todo, la agencia tiene que saber qué mandar (H-036 de la auditoría del
+# 25/11/2026: le llegaba «entregá lo que falta» y no faltaba nada).
+_AVANZAR_CON_TODO = (
+    "Ya están todas las piezas del pedido: para «Avanzar», escribí en el comentario qué falta, "
+    "así la agencia sabe qué mandar. Si está todo, aprobala."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -597,8 +604,10 @@ async def ver_entregas(
             "decididaEl": v.decidida_at.isoformat() if v.decidida_at else None,
             "comentario": v.comentario, "link": v.link, "corregidas": list(v.corregidas or []),
             # Las piezas del pedido que no venían en esta ronda y por qué
-            # (0087, 21/11/2026): lo ven quien aprueba y la agencia.
-            "faltan": list(v.faltan or []), "porQueFaltan": v.por_que_faltan,
+            # (0087, 21/11/2026): lo ven quien aprueba y la agencia. La lista
+            # vacía es que se midió y no faltaba nada; null, que no se pudo
+            # medir (o es de antes): no se sabe (H-035).
+            "faltan": list(v.faltan) if v.faltan is not None else None, "porQueFaltan": v.por_que_faltan,
             "imagenes": [
                 {"id": im.id, "orden": im.orden, "purgada": im.purgada_at is not None}
                 for im in imagenes.get(v.id, [])
@@ -1153,7 +1162,7 @@ async def entregar(
     miniaturas: list[UploadFile] | None = File(None),
     archivo_zip: UploadFile | None = File(None, alias="zip"),
     zipYaSubidas: str = Form("[]", max_length=2000),
-    faltan: str = Form("[]", max_length=20_000),
+    faltan: str | None = Form(None, max_length=20_000),
     porQueFaltan: str = Form("", max_length=5000),
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
@@ -1188,7 +1197,10 @@ async def entregar(
     piezas del pedido que la pantalla vio que no venían, por las medidas) y
     `porQueFaltan` (lo que escribió quien entrega: "Es el KV, para aprobarlo
     antes"). Se guardan con la ronda tal cual, con sus topes
-    (reglas.faltan_validas): no traban la entrega."""
+    (reglas.faltan_validas): no traban la entrega. Si la pantalla pudo
+    medir, `faltan` viene siempre, también vacía (no falta nada); si no
+    vino, no se pudo medir y queda NULL: al revisar no se dice que está
+    todo (H-035, 26/11/2026)."""
     imagenes, miniaturas = imagenes or [], miniaturas or []
     tarea, barra = await _tarea_y_barra(db, tarea_id, current_user, bloquear=True)
     entrega = await _entrega_bloqueada(db, tarea_id)
@@ -1460,7 +1472,7 @@ async def sumar_archivos(
     if not imagenes:
         raise HTTPException(status_code=422, detail="Elegí al menos una imagen para sumar")
     try:
-        quedan = (reglas.faltan_validas(faltan) or []) if faltan is not None else None
+        quedan = reglas.faltan_validas(faltan)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if len(miniaturas) != len(imagenes):
@@ -1486,7 +1498,8 @@ async def sumar_archivos(
         leidas.append((datos, tipo, datos_mini, tipo_mini))
     await exigir_lugar(db, sum(len(g) + len(m) for g, _, m, _ in leidas))
     if quedan is not None and version.faltan:
-        version.faltan = [p for p in version.faltan if p in quedan] or None
+        # Si ya no falta ninguna, la lista queda vacía: se midió y está todo (H-035).
+        version.faltan = [p for p in version.faltan if p in quedan]
         if not version.faltan:
             version.por_que_faltan = None
     orden = (ultimo_orden if ultimo_orden is not None else -1) + 1
@@ -1528,7 +1541,11 @@ async def sumar_archivos(
         background_tasks.add_task(revision_ia.revisar_version, version.id)
     return {
         "id": version.id, "ronda": version.ronda, "sumadas": len(leidas), "rev": _rev_para(current_user, rev),
-        "entrega": resumen, "avisados": avisados, "faltan": list(version.faltan or []),
+        "entrega": resumen, "avisados": avisados,
+        # Como en el detalle: la lista vacía es «se midió y no falta nada»;
+        # null, que no se pudo medir (H-035). Con `or []` una versión sin
+        # medir volvía como si estuviera todo.
+        "faltan": list(version.faltan) if version.faltan is not None else None,
     }
 
 
@@ -1738,6 +1755,12 @@ async def _aplicar_decision(
     }
     if any(m.imagenId not in ids_imagenes for m in marcas):
         raise HTTPException(status_code=422, detail="Una marca está sobre una imagen que no es de esta versión")
+    if decision == reglas.AVANZAR and not comentario and reglas.vinieron_todas(
+        len(tipos_de_tarea.piezas_del_pedido(tarea.tipo, list(tarea.opciones or []))), len(ids_imagenes),
+        version.faltan,
+    ):
+        # La nota interna no cuenta: la agencia no la ve (como al pedir cambios).
+        raise HTTPException(status_code=422, detail=_AVANZAR_CON_TODO)
 
     ahora = datetime.now(timezone.utc)
     db.add(CalendarioDecision(

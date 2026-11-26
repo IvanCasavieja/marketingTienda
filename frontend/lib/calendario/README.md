@@ -77,7 +77,7 @@ más subtareas ni piezas adentro de otra tarea (el servidor lo rechaza).
 **¿Qué se pide?** (cada tipo abre su modal con todas las opciones del catálogo
 de `tipos_de_tarea.py`: Banners con sus medidas, Redes sociales, Mailing, EMM,
 Push, WhatsApp, Cartelería... u **Otra cosa**, sin tipo), **¿Quién la hace?**
-(Publicis, Another Monday, Diseñadores o alguien de Tienda), el detalle, los
+(cualquier agencia o alguien de Tienda), el detalle, los
 archivos, el **responsable de Tienda** (si la hace una agencia: quien la
 sigue, `responsable_id`) y para cuándo. Se crea UNA tarea; si la hace una
 agencia, esa misma tarea es su tarjeta en el tablero. Con un tipo, el nombre
@@ -94,8 +94,10 @@ la hace; sin tipo ("Otra cosa") va como "Otro", así siempre es tarjeta. La
 crean los mismos que crean tareas, nunca la agencia. Cuelgan de una acción de
 sistema por mundo, `sin-accion-<mundo>`, que no se ve en el calendario ni se
 abre (`backend/app/services/sin_accion.py` explica por qué así y no con
-`barra_id` vacío); donde va el nombre de la acción dice "Sin acción". Su
-nombre, fecha y responsable se cambian en la tarjeta (`EditarTarjetaSinAccion`).
+`barra_id` vacío); donde va el nombre de la acción dice "Sin acción". Quién
+la hace (otra agencia, o alguien de Tienda), su nombre, fecha y responsable se
+cambian en la tarjeta (`EditarTarjetaSinAccion`; el servidor la pasa a una
+agencia entera con `agencia` en `PATCH /calendario/tareas/{id}`, 26/11/2026).
 
 **Los tres tableros (17/11/2026).** En «¿Quién la hace?» se elige **a qué
 tablero va**: Publicis, Another Monday o Diseñadores
@@ -106,9 +108,15 @@ elige de una lista en el panel, y se compara sin tildes ni mayúsculas:
 «Disenadores» es Diseñadores), entran directo a su tablero y ven solo lo suyo.
 En una tarea de Tienda, el responsable es siempre alguien de Tienda: las
 cuentas de las agencias se ofrecen solo en sus piezas. Se puede mandar una
-pieza a uno de los tres aunque todavía no tenga usuarios: espera ahí. El
-equipo ve los tres en pestañas en **Tableros** (y "Otras", si hay tarjetas de
-antes que no son de ninguno).
+pieza a uno de los tres aunque todavía no tenga usuarios: espera ahí.
+
+**Cualquier agencia (26/11/2026).** Ivan: «la van a usar varias agencias a la
+vez». «¿Quién la hace?» ofrece, además de los tres, cualquier otra agencia con
+cuentas, también la recién dada de alta (`GET /calendario/tableros`, lo mismo
+que acepta el servidor al crear la tarea; `useTableros` la vuelve a pedir cada
+vez que una pantalla la necesita). El equipo ve una pestaña por agencia en
+**Tableros**, recuerda la última que eligió (`useTableroElegido`) y "Otras"
+queda para lo de Tienda y lo de agencias de afuera (`pestanasDeTableros`).
 
 **Comentarios (0073).** Cada tarjeta tiene comentarios al costado, como en
 Trello: los escribe cualquiera que la ve (el equipo y su tablero), y a los
@@ -512,6 +520,14 @@ respuesta vieja no lo haga "desaparecer".
 Si se edita algo que otra persona acaba de borrar, el servidor contesta 404 con
 "la borró otra persona" y se recarga. Borrar queda en el registro de auditoría
 (`calendario.borrar`), con qué era.
+
+**Lo entregado no se borra** (H-001, 26/11/2026). Una tarea en la que ya se
+entregó algo (una ronda en cualquier fase, aunque sea solo un link), o una
+acción con una tarea así, no se borra: se llevaría en cascada las imágenes y
+los ZIP de la agencia, que son el histórico de las piezas. El servidor
+contesta 409 diciendo cuántos archivos hay y qué hacer (darla por hecha: la
+tarjeta pasa a Archivado con todo); la pantalla ni ofrece el «Sí, borrar» y
+dice lo mismo antes (`borrar.ts`).
 
 `localStorage` (clave `calendario-mktg-v2`) queda solo como caché para pintar al
 instante. La revisión no se guarda ahí a propósito: al abrir siempre se trae

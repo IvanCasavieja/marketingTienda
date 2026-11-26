@@ -174,15 +174,29 @@ export function rutaEnMundo(pathname: string, mundo: string): boolean {
   return !herramienta || herramienta.mundos.includes(mundo)
 }
 
+const MI_PEDIDO = '/redexpres/mi-pedido'
+
 /** A dónde va la persona al entrar: una cuenta externa (la agencia), a su
- *  trabajo (lib/externos.ts); al calendario si lo puede ver; si no, a donde
- *  entraba antes (los logins de sucursal, por ejemplo). */
-export function inicioDe(user: CurrentUser | null | undefined): string {
+ *  trabajo (lib/externos.ts); al calendario si lo puede ver; un local (login
+ *  de sucursal), a lo suyo; si no, a Don Tino.
+ *
+ *  `mundo` es el mundo donde está parada, cuando ya se sabe (el que acaba de
+ *  elegir, el del menú): el inicio de un local depende de lo que hay en él. */
+export function inicioDe(user: CurrentUser | null | undefined, mundo?: string | null): string {
   if (user?.es_externo) return INICIO_DE_EXTERNOS
   const ve = !!user && (user.is_superuser || (user.permissions ?? []).includes('calendario.view'))
   // Quien tiene el calendario pero su alcance es "No lo ve" (0070) entra a su tablero.
   if (ve && !veCalendario(user)) return INICIO_DE_EXTERNOS
-  return ve ? '/calendario' : '/home'
+  if (ve) return '/calendario'
+  // El local entraba al chat de Don Tino (H-010): el encargado viene con poco
+  // tiempo a hacer una cosa, y lo primero que veía era un chat. Ahora entra a
+  // «Mi pedido» si su mundo lo tiene (Redexpres); si no, a las fotos que le
+  // piden. Don Tino le queda en la burbuja de abajo a la derecha.
+  if ((user?.assigned_locales?.length ?? 0) > 0) {
+    const suyos = mundo ? [mundo] : mundosDe(user).map(m => m.clave)
+    return suyos.some(clave => rutaEnMundo(MI_PEDIDO, clave)) ? MI_PEDIDO : '/fotos'
+  }
+  return '/home'
 }
 
 type EstadoMundo = {

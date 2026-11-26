@@ -1,9 +1,11 @@
 'use client'
 
 import { createContext, useContext, useId, useRef, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   CalendarClock, Check, ChevronDown, FileText, GripVertical, LayoutTemplate, Link2, ListChecks, MoreHorizontal, Paperclip, Pencil, Plus, ShieldCheck, Sparkles, Trash2, UserRound, X,
 } from 'lucide-react'
+import { tieneEntregas } from '@/lib/calendario/borrar'
 import { correrUnLugar, moverEntreHermanas } from '@/lib/calendario/orden'
 import { toast } from 'sonner'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -658,12 +660,16 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
   onRenombrar: () => void
   onCerrar: () => void
 }) {
+  const { t } = useTranslation()
   const cambiar = useCalendario(s => s.cambiarTarea)
   const borrar = useCalendario(s => s.borrarTarea)
   const personasEstado = useCalendario(s => s.personasEstado)
   const [editandoDetalle, setEditandoDetalle] = useState(false)
   const [confirmando, setConfirmando] = useState(false)
   const conTarjeta = Boolean(tarea.entrega)
+  // Con algo entregado no se borra: se llevaría lo que mandó la agencia, que
+  // no se borra nunca (H-001). «Borrar» dice por qué en vez de confirmar.
+  const conEntregas = tieneEntregas(tarea)
   const hecha = tarea.estado === 'hecha'
   const vencida = !hecha && !!tarea.vence && tarea.vence < hoyIso()
   const anclada = !hecha && !!tarea.ancla && tarea.anclaDias != null
@@ -812,7 +818,7 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
             <Check className="h-4 w-4" /> {hecha ? 'Volver a abrir' : 'Darla por hecha'}
           </button>
         )}
-        {gestiona && (confirmando ? (
+        {gestiona && (confirmando && !conEntregas ? (
           <button
             type="button"
             autoFocus
@@ -821,7 +827,7 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
             className="min-h-[40px] animate-scale-in rounded-xl bg-rose-600 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 active:scale-95"
           >
             {/* Borrar se lleva su tarjeta: que se lea antes de confirmar. */}
-            {conTarjeta ? 'Sí, borrar con sus entregas' : 'Sí, borrar'}
+            {conTarjeta ? t('calendario.borrar.siConTarjeta') : t('calendario.borrar.si')}
           </button>
         ) : (
           <button
@@ -840,6 +846,14 @@ function MasDeLaTarea({ tarea, personas, usuarioId, gestiona, onRenombrar, onCer
           Listo
         </button>
       </div>
+      {/* Tocó «Borrar» y ya tiene entregas: el porqué, y qué hacer si ya no
+          va («Darla por hecha» está ahí arriba). El foco queda en «Borrar». */}
+      {gestiona && confirmando && conEntregas && (
+        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          {t('calendario.borrar.tareaConEntregas')}
+          {!hecha && ` ${t('calendario.borrar.tareaSiYaNoVa')}`}
+        </p>
+      )}
     </div>
   )
 }

@@ -49,6 +49,17 @@ def test_meses():
             vip.mes_de(malo)
 
 
+def test_un_archivo_con_un_mes_que_todavia_no_llego_no_se_carga():
+    # H-088 (26/11/2026): un año mal tipeado (2062) pasaba a ser «el último mes» y
+    # cambiaba el segmento de todos los clientes.
+    hoy = date(2026, 11, 26)
+    assert vip.meses_de_carga(["2026-11", "2019-01", "2026-11"], hoy) == [date(2019, 1, 1), date(2026, 11, 1)]
+    with pytest.raises(ValueError, match="enero 2062, un mes que todavía no llegó"):
+        vip.meses_de_carga(["2026-10", "2062-01"], hoy)
+    with pytest.raises(ValueError, match="diciembre 2026"):
+        vip.meses_de_carga(["2026-12"], hoy)
+
+
 # ---------------------------------------------------------------------------
 # La foto de cada cliente
 # ---------------------------------------------------------------------------
@@ -224,6 +235,15 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
         assert r.status_code == 400
         async with d.Sesion() as s:
             assert (await s.get(VipCarga, carga_id)).estado == "cargando"
+
+        # Un mes que todavía no llegó no empieza ninguna carga (no pisa «el último mes»).
+        async with d.Sesion() as s:
+            cargas = await s.scalar(select(func.count()).select_from(VipCarga))
+        futuro = vip.sumar_meses(date.today().replace(day=1), 2).strftime("%Y-%m")
+        r = await emi.post("/clientes-vip/cargas", json={"archivo": "x.csv", "meses": ["2025-12", futuro], "filas": 1})
+        assert r.status_code == 400 and "todavía no llegó" in r.json()["detail"]
+        async with d.Sesion() as s:
+            assert (await s.scalar(select(func.count()).select_from(VipCarga))) == cargas
     correr(prueba)
 
 

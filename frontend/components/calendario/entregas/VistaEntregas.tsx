@@ -10,7 +10,7 @@ import { Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import { calendarioApi, entregasApi } from '@/lib/api'
 import {
-  camposDe, etiquetaDecision, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
+  camposDe, conOk, etiquetaDecision, fechaYHora, pasoEnLaVista, proximoPaso, tipoDePieza, versionAnterior,
   type DetalleEntregas, type FaseDetalle, type Marca, type Version,
 } from '@/lib/calendario/entregas'
 import { fechaCorta, hoyIso } from '@/lib/calendario/fechas'
@@ -393,6 +393,13 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
   const comentariosDeVuelta = resumen.momento === 'cambios' && ultimaDeFase
     ? ultimaDeFase.decisiones.filter(d => d.decision === 'cambios' && d.comentario)
     : []
+  // Con el OK para avanzar, lo que escribió quien lo dio, a la vista: si ya
+  // vinieron todas las piezas, «Avanzar» pide decir qué falta (H-036 de la
+  // auditoría del 25/11/2026), y la agencia lo tiene que leer acá, no solo
+  // en el aviso o adentro de la versión cerrada.
+  const comentariosDelOk = conOk(resumen) && ultimaDeFase
+    ? ultimaDeFase.decisiones.filter(d => d.decision === 'avanzar' && d.comentario)
+    : []
   const unaFase = resumen.fases.length === 1
   // El renglón chico arriba del estado, solo si suma algo: con varias fases
   // la línea de fases ya dice fase, estado y ronda; en revisión y en
@@ -511,6 +518,11 @@ function Resumen({ detalle, usuarioId, puedeConfigurar, onRecargar }: {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             v{ultimaDeFase.ronda} · {fechaYHora(ultimaDeFase.fecha)} · la subió {nombreDe(ultimaDeFase.subidaPor)}
           </p>
+          {comentariosDelOk.map((d, i) => (
+            <p key={i} className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{nombreDe(d.decididoPor ?? d.aprobador)}:</span> «{d.comentario}»
+            </p>
+          ))}
           <VersionGrande key={ultimaDeFase.id} detalle={detalle} version={ultimaDeFase} />
           {ultimaDeFase.comentario && (
             <p className="whitespace-pre-line text-sm text-slate-700 dark:text-slate-300">

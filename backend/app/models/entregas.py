@@ -193,9 +193,12 @@ class CalendarioVersion(Base):
     # Las piezas del pedido que no venían en la ronda (0087, 21/11/2026): la
     # lista de nombres ("Header (mobile)", "Checkout") que vio la plataforma
     # por las medidas, y lo que escribió quien entrega en «¿Por qué no va
-    # todo?» ("Es el KV, para aprobarlo antes"). NULL: no faltaba nada, o es
-    # de antes. Lo ven quien aprueba y la agencia. `none_as_null`: un None se
-    # guarda como NULL de la base y no como el `null` de JSON.
+    # todo?» ("Es el KV, para aprobarlo antes"). La lista vacía: se midió y
+    # no faltaba nada. NULL: no se pudo medir (un ZIP que el navegador no
+    # lee, un PDF), o es de antes del 26/11/2026; no se sabe (H-035: hasta
+    # ahí NULL era también "no faltaba nada"). Lo ven quien aprueba y la
+    # agencia. `none_as_null`: un None se guarda como NULL de la base y no
+    # como el `null` de JSON.
     faltan: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
     por_que_faltan: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -244,8 +247,9 @@ class CalendarioVersionZip(Base):
     la base: app/services/espacio.py), la entrega se hace igual y la fila
     queda SIN los bytes (`datos` en NULL):
     así la ficha dice que el ZIP no se guardó y por qué. Nunca se borra nada
-    para hacerle lugar. Como el resto de la versión, se va solo si alguien
-    borra la tarea (o la acción) entera."""
+    para hacerle lugar. Las claves son ON DELETE CASCADE, pero una tarea (o
+    una acción) con algo entregado no se deja borrar: ver
+    `_exigir_que_no_haya_entregas` en las rutas del calendario (H-001)."""
 
     __tablename__ = "calendario_version_zips"
 

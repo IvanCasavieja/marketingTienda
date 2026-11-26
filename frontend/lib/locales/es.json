@@ -500,7 +500,9 @@
       "generateError": "Error al generar el archivo",
       "downloaded": "Cenefa generada y descargada",
       "confirmError": "Error al confirmar",
-      "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos."
+      "confirmTimeout": "La generación está tardando demasiado. Probá de nuevo o con menos productos.",
+      "noResponse": "No pudimos saber cómo va la generación porque el servidor no contesta. Revisá tu conexión y volvé a probar.",
+      "downloadError": "La cenefa se generó, pero no se pudo descargar. Probá con «Descargar de nuevo»."
     },
     "usarLegales": "Usar legales",
     "usarLegalesHint": "Dejalo apagado si la plantilla ya trae los legales impresos en el diseño.",
@@ -1102,9 +1104,18 @@
     "laPlanilla": "La planilla",
     "sinParejaNinguna": "No encontré esta placa {{fuente}}: no hay ninguna fila que se le parezca lo suficiente.",
     "sinParejaAmbiguo": "Hay más de una fila {{fuente}} que se le parece igual. No elijo yo cuál es: miralo vos.",
-    "fuenteNombre": { "mailing": "el mailing", "planilla": "la planilla" },
-    "fuenteDe": { "mailing": "del mailing", "planilla": "de la planilla" },
-    "fuenteEn": { "mailing": "en el mailing", "planilla": "en la planilla" },
+    "fuenteNombre": {
+      "mailing": "el mailing",
+      "planilla": "la planilla"
+    },
+    "fuenteDe": {
+      "mailing": "del mailing",
+      "planilla": "de la planilla"
+    },
+    "fuenteEn": {
+      "mailing": "en el mailing",
+      "planilla": "en la planilla"
+    },
     "campoFecha": "Fecha de la campaña",
     "planillaColumnasNombres": "CatTi busca, con el nombre que tengan: {{columnas}}.",
     "planillaEntendio": "Así leyó CatTi la planilla:",
@@ -1494,6 +1505,68 @@
   },
   "calendario": {
     "accessDenied": "No tenés acceso al calendario",
-    "loading": "Cargando el calendario…"
+    "loading": "Cargando el calendario…",
+    "quienLaHace": {
+      "titulo": "¿Quién la hace?",
+      "agencias": "Agencias",
+      "tienda": "Tienda Inglesa",
+      "cargando": "Cargando…",
+      "elegir": "Elegí quién la hace",
+      "sinUsuarios": "{{agencia}} (todavía sin usuarios)",
+      "deAfuera": "{{agencia}} (agencia de afuera)",
+      "quienLaHaceHoy": "Quien la hace hoy",
+      "pasaALaAgencia": "Pasa al tablero de {{agencia}} y le avisamos.",
+      "pasaALaAgenciaSinUsuarios": "Pasa al tablero de {{agencia}}: la va a ver cuando tenga usuarios.",
+      "pasaAPersona": "La hace {{persona}}.",
+      "dejaLaAgencia": "Sale del tablero de {{agencia}}: la hace {{persona}}.",
+      "sinLista": "No se pudo traer la lista de agencias. Cerrá y volvé a abrir para probar de nuevo."
+    },
+    "tarjetaSinAccion": {
+      "cambiar": "Cambiar quién la hace, el nombre, la fecha o el responsable"
+    },
+    "borrar": {
+      "si": "Sí, borrar",
+      "siConTarjeta": "Sí, borrar con su tarjeta",
+      "tareaConEntregas": "No se puede borrar: ya tiene entregas, y lo entregado no se borra nunca porque es el histórico de las piezas.",
+      "tareaSiYaNoVa": "Si ya no va, dala por hecha: su tarjeta pasa a Archivado con todo lo entregado.",
+      "accionConEntregas_one": "«{{nombre}}» no se puede eliminar: una de sus tareas ya tiene entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas la puede dar por hecha: su tarjeta pasa a Archivado con todo lo entregado.",
+      "accionConEntregas_other": "«{{nombre}}» no se puede eliminar: {{count}} de sus tareas ya tienen entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas las puede dar por hechas: sus tarjetas pasan a Archivado con todo lo entregado.",
+      "entendido": "Entendido"
+    },
+    "entrega": {
+      "recuperado": "Recuperamos lo que estabas cargando para entregar.",
+      "recuperadoSinZip": "Recuperamos lo que estabas cargando. El ZIP «{{zip}}» no queda guardado: volvé a elegirlo.",
+      "descartar": "Descartar"
+    },
+    "revisar": {
+      "faltanAlAprobar_one": "Falta 1 pieza del pedido: {{piezas}}. ¿Aprobar igual?",
+      "faltanAlAprobar_other": "Faltan {{count}} piezas del pedido: {{piezas}}. ¿Aprobar igual?",
+      "faltanAlAprobarYOtras_other": "Faltan {{count}} piezas del pedido: {{piezas}} y {{otras}} más. ¿Aprobar igual?",
+      "aprobarIgual": "Aprobar igual",
+      "seguirRevisando": "Seguir revisando",
+      "seAproboSin_one": "Se aprobó sin 1 pieza del pedido",
+      "seAproboSin_other": "Se aprobó sin {{count}} piezas del pedido",
+      "avanzarConTodo": "Ya están todas las piezas del pedido: si falta algo, escribí qué en el comentario, así la agencia sabe qué mandar. Si está todo, aprobala."
+    }
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} fila no se va a cargar:",
+      "noEntran_other": "{{n}} filas no se van a cargar:",
+      "fila": "Fila {{fila}}",
+      "filaDe": "Fila {{fila}} de {{archivo}}",
+      "motivo": {
+        "sinCliente": "no tiene número de cliente.",
+        "sinFecha": "no tiene fecha.",
+        "fechaIlegible": "la fecha «{{dato}}» no se entiende.",
+        "mesInexistente": "la fecha «{{dato}}» tiene un mes que no existe.",
+        "fechaVieja": "la fecha «{{dato}}» es de antes del 2000: revisá el año.",
+        "fechaFutura": "la fecha «{{dato}}» todavía no llegó."
+      },
+      "yMas_one": "Y {{n}} fila más.",
+      "yMas_other": "Y {{n}} filas más.",
+      "queHacer": "Si querés que entren, corregilas en el archivo y cargalo de nuevo. Si no, cargá el resto.",
+      "ningunaSirve": "No queda ninguna fila para cargar: corregí el archivo y cargalo de nuevo."
+    }
   }
 }

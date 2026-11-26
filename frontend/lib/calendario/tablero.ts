@@ -148,16 +148,15 @@ export function opcionesDeQuien(tarjetas: Pick<Tarjeta, 'hace'>[]): { clave: str
   return [...por.values()].sort((a, b) => b.cuantas - a.cuantas || a.nombre.localeCompare(b.nombre, 'es'))
 }
 
-/** La pestaña de las tarjetas que no son de ninguno de los tres tableros
- *  (las de antes del 17/11/2026: de Tienda, o de otra agencia). */
+/** La pestaña de las tarjetas que no hace una agencia de la plataforma: las
+ *  de Tienda y las de una agencia de afuera (que no entra a la plataforma). */
 export const OTRAS = '__otras__'
 
 /**
- * A cuál de los tableros (Publicis, Another Monday, Diseñadores: los manda el
- * servidor) va una tarjeta, o null si a ninguno. Una tarjeta "es" de un
- * tablero cuando la hace esa agencia, escrita como sea: sin mirar
- * mayúsculas, espacios ni tildes (19/11/2026: una guardada para
- * «Disenadores» va a la pestaña de Diseñadores, no a «Otras»).
+ * A cuál de los tableros (los nombres de las agencias) va una tarjeta, o null
+ * si a ninguno. Una tarjeta "es" de un tablero cuando la hace esa agencia,
+ * escrita como sea: sin mirar mayúsculas, espacios ni tildes (19/11/2026: una
+ * guardada para «Disenadores» va a la pestaña de Diseñadores, no a «Otras»).
  */
 export function tableroDeTarjeta(t: Pick<Tarjeta, 'hace'>, tableros: string[]): string | null {
   if (!t.hace || t.hace.tipo !== 'agencia' || !t.hace.nombre) return null
@@ -165,19 +164,74 @@ export function tableroDeTarjeta(t: Pick<Tarjeta, 'hace'>, tableros: string[]): 
   return tableros.find(x => mismaEmpresa(x, nombre)) ?? null
 }
 
-/** Las pestañas del tablero para el equipo: los tres siempre, con cuántas
- *  tarjetas tiene cada uno, y "Otras" solo si hay alguna. */
+/**
+ * Las pestañas del tablero para el equipo, una por agencia (26/11/2026, H-090
+ * del cuaderno: las tarjetas de «Agencia de prueba» caían en «Otras»):
+ * primero las de `tableros`, la lista del servidor (los tres de siempre y las
+ * demás agencias con cuentas), aunque no tengan tarjetas; después cualquier
+ * otra agencia que tenga tarjetas (una que se quedó sin cuentas, por
+ * ejemplo), con su nombre; y "Otras" solo si hay alguna de Tienda o de una
+ * agencia de afuera.
+ */
 export function pestanasDeTableros(
   tarjetas: Pick<Tarjeta, 'hace'>[], tableros: string[],
 ): { clave: string; nombre: string; cuantas: number }[] {
+  const nombres = [...tableros]
   const cuenta = new Map<string, number>()
   for (const t of tarjetas) {
-    const clave = tableroDeTarjeta(t, tableros) ?? OTRAS
-    cuenta.set(clave, (cuenta.get(clave) ?? 0) + 1)
+    let clave = tableroDeTarjeta(t, nombres)
+    if (clave == null && t.hace?.tipo === 'agencia' && claveDeEmpresa(t.hace.nombre)) {
+      clave = (t.hace.nombre ?? '').split(/\s+/).filter(Boolean).join(' ')
+      nombres.push(clave)
+    }
+    cuenta.set(clave ?? OTRAS, (cuenta.get(clave ?? OTRAS) ?? 0) + 1)
   }
-  const out = tableros.map(n => ({ clave: n, nombre: n, cuantas: cuenta.get(n) ?? 0 }))
+  const sinLista = nombres.slice(tableros.length).sort((a, b) => a.localeCompare(b, 'es'))
+  const out = [...tableros, ...sinLista].map(n => ({ clave: n, nombre: n, cuantas: cuenta.get(n) ?? 0 }))
   if (cuenta.get(OTRAS)) out.push({ clave: OTRAS, nombre: 'Otras', cuantas: cuenta.get(OTRAS)! })
   return out
+}
+
+/** Si una tarjeta va en la pestaña `clave`, una de las de `pestanas`
+ *  (pestanasDeTableros). */
+export function enLaPestana(t: Pick<Tarjeta, 'hace'>, clave: string, pestanas: { clave: string }[]): boolean {
+  const agencias = pestanas.map(p => p.clave).filter(c => c !== OTRAS)
+  return (tableroDeTarjeta(t, agencias) ?? OTRAS) === clave
+}
+
+/**
+ * «¿Quién la hace?» de una tarjeta ya creada, como valor del selector
+ * (26/11/2026, H-018: la de una «Nueva tarjeta» no se podía pasar a otra
+ * agencia): "agencia:<nombre>", escrito como en `agencias` si es una de
+ * ellas; "persona:<id>" si la hace alguien de Tienda; "fuera" si es de una
+ * agencia de afuera; "" si no hay nadie.
+ */
+export function quienDeLaTarjeta(
+  hace: QuienLaHace | null | undefined, asignadoA: number | null, agencias: string[],
+): string {
+  const nombre = hace?.nombre ?? ''
+  if (hace?.tipo === 'agencia' && claveDeEmpresa(nombre)) {
+    return `agencia:${agencias.find(a => mismaEmpresa(a, nombre)) ?? nombre}`
+  }
+  if (hace?.tipo === 'fuera') return 'fuera'
+  return asignadoA != null ? `persona:${asignadoA}` : ''
+}
+
+/**
+ * Lo que se le manda al servidor (PATCH /calendario/tareas/{id}) para pasar
+ * la tarjeta de `antes` a `ahora` (valores de quienDeLaTarjeta): `{ agencia }`
+ * para dársela a una agencia entera, `{ asignadoA }` para dársela a alguien
+ * de Tienda, o null si no cambia (la misma agencia escrita de otra forma
+ * tampoco es un cambio).
+ */
+export function cambioDeQuien(antes: string, ahora: string): { agencia: string } | { asignadoA: number } | null {
+  if (ahora.startsWith('agencia:')) {
+    const agencia = ahora.slice('agencia:'.length)
+    const misma = antes.startsWith('agencia:') && mismaEmpresa(antes.slice('agencia:'.length), agencia)
+    return misma ? null : { agencia }
+  }
+  const id = ahora.startsWith('persona:') ? Number(ahora.slice('persona:'.length)) : NaN
+  return ahora !== antes && Number.isInteger(id) && id > 0 ? { asignadoA: id } : null
 }
 
 export function deQuien(t: Pick<Tarjeta, 'hace'>, clave: string | null): boolean {

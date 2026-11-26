@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
-import type { DetalleEntregas, Version } from '@/lib/calendario/entregas'
+import { useTranslation } from 'react-i18next'
+import { AlertTriangle, Info } from 'lucide-react'
+import { seAproboSinEllas, type DetalleEntregas, type Version } from '@/lib/calendario/entregas'
 import { loQueFaltaba, primeras } from '@/lib/calendario/piezas'
 
 /**
@@ -25,6 +26,11 @@ import { loQueFaltaba, primeras } from '@/lib/calendario/piezas'
  * costado del Revisor, junto con lo de la IA, sin borde propio (Ivan:
  * "aparece un cartel arriba y lo otro en el costado: debería aparecer todo
  * en el costado").
+ *
+ * Si la versión se aprobó, ya no falta: se aprobó sin esas piezas, y se dice
+ * así, en gris («Se aprobó sin 1 pieza del pedido»). H-023 de la auditoría
+ * del 25/11/2026: arriba decía «Finalizada: se aprobó la entrega» y abajo,
+ * en rojo, «Falta 1 pieza del pedido».
  */
 export function LoQueFalta({ detalle, version, className = '', enPanel = false }: {
   detalle: DetalleEntregas
@@ -32,28 +38,41 @@ export function LoQueFalta({ detalle, version, className = '', enPanel = false }
   className?: string
   enPanel?: boolean
 }) {
+  const { t } = useTranslation()
   const [todas, setTodas] = useState(false)
   // Si la hace alguien de Tienda, lo dice esa persona; si no, la agencia.
   const hace = detalle.tarea.quienLaHace
   const deTienda = hace?.tipo === 'tienda' && version.subidaPor != null ? detalle.personas[String(version.subidaPor)] : null
   const falta = loQueFaltaba(version.faltan, version.porQueFaltan, deTienda || 'La agencia')
   if (!falta) return null
+  const seAprobo = seAproboSinEllas(version.estado)
+  const titulo = seAprobo ? t('calendario.revisar.seAproboSin', { count: falta.piezas.length }) : falta.titulo
   const { vistas, resto } = primeras(falta.piezas)
   const piezas = todas ? falta.piezas : vistas
   return (
     <section
-      aria-label={falta.titulo}
-      className={`min-w-0 ${enPanel ? '' : 'rounded-xl border border-rose-300 px-3 py-2.5 dark:border-rose-500/40'} ${className}`}
+      aria-label={titulo}
+      className={`min-w-0 ${enPanel ? '' : `rounded-xl border px-3 py-2.5 ${
+        seAprobo ? 'border-slate-300 dark:border-slate-700' : 'border-rose-300 dark:border-rose-500/40'
+      }`} ${className}`}
     >
-      <p className="flex items-center gap-1.5 text-sm font-bold text-rose-800 dark:text-rose-200">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />
-        {falta.titulo}
+      <p className={`flex items-center gap-1.5 text-sm ${
+        seAprobo ? 'font-semibold text-slate-700 dark:text-slate-300' : 'font-bold text-rose-800 dark:text-rose-200'
+      }`}>
+        {seAprobo
+          ? <Info className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" aria-hidden />
+          : <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" aria-hidden />}
+        {titulo}
       </p>
       <ul className="mt-2 flex flex-wrap items-center gap-1.5">
         {piezas.map((p, i) => (
           <li
             key={`${i}-${p}`}
-            className="max-w-full break-words rounded-md border border-rose-300 bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-100"
+            className={`max-w-full break-words rounded-md border px-2 py-0.5 text-xs font-medium ${
+              seAprobo
+                ? 'border-slate-300 bg-slate-50 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'
+                : 'border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-100'
+            }`}
           >
             {p}
           </li>

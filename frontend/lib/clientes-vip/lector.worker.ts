@@ -56,7 +56,7 @@ ctx.onmessage = async (e: MessageEvent<{ archivo: File }>) => {
         throw new ZipInvalido('Este navegador no puede abrir zips. Usá Chrome o Edge actualizados, o descomprimilo y cargá el CSV.')
       }
       for (const entrada of await csvsDelZip(archivo)) {
-        resumidor.nuevoArchivo()
+        resumidor.nuevoArchivo(entrada.nombre)
         let flujo = archivo.slice(entrada.inicio, entrada.inicio + entrada.tamano).stream()
           .pipeThrough(contador(n => { leido += n }))
         if (entrada.metodo === 8) flujo = flujo.pipeThrough(new DecompressionStream('deflate-raw') as unknown as TransformStream<Uint8Array, Uint8Array>)

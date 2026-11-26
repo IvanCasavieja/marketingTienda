@@ -40,8 +40,7 @@ export default function LoginPage() {
       await authApi.login(emailVal, passwordVal);
       // Quien entra a más de un mundo primero elige en cuál va a trabajar.
       // Quien entra a uno solo va derecho: al calendario, que es el centro de
-      // la plataforma, o a donde entraba antes si no lo puede ver (los logins
-      // de sucursal, por ejemplo).
+      // la plataforma, o a lo suyo si no lo puede ver (un local, a su pedido).
       // Una cuenta externa (la agencia) va directo a su trabajo: su tablero.
       // Si vino de un link (el del mail: «/entregas?tarea=…»), vuelve ahí
       // (H-040 de la auditoría del 25/11/2026); quien elige mundo, después de elegirlo.

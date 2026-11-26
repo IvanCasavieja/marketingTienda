@@ -146,12 +146,16 @@ console.log('\nLa entrega: las sueltas y las del ZIP')
 // las que no entran en las 4 de la ronda), leídas del encabezado.
 const delZip = [im(1920, 416), im(640, 260), im(412, 157), im(1200, 900), im(1200, 900)]
 igual('el ZIP con todo', faltanEnLaEntrega([...banners, receta, producto], delZip), [])
-igual('el ZIP con el KV solo', nombres(faltanEnLaEntrega([...banners, receta], [im(3840, 832)])),
+igual('el ZIP con el KV solo', nombres(faltanEnLaEntrega([...banners, receta], [im(3840, 832)]) ?? []),
   ['Header (mobile)', 'Checkout', 'Foto receta'])
-igual('alguna del ZIP sin medir (con contraseña, dañada): no se dice nada', faltanEnLaEntrega(banners, [im(1920, 416), null]), [])
-igual('un ZIP que acá no se lee: no se dice nada', faltanEnLaEntrega(banners, null), [])
-igual('sin imágenes (solo el link o un PDF): no se dice nada', faltanEnLaEntrega(banners, []), [])
-igual('un servidor de antes (sin piezas): nada', [faltanEnLaEntrega(undefined, [im(1, 1)]), faltanEnLaEntrega(null, [im(1, 1)])], [[], []])
+// Si no se puede saber, null: ni que falta algo ni que está todo (H-035 del
+// 25/11/2026: las dos cosas eran la lista vacía y al revisar se leía «Ya
+// están todas las piezas del pedido»).
+igual('alguna del ZIP sin medir (con contraseña, dañada): no se sabe', faltanEnLaEntrega(banners, [im(1920, 416), null]), null)
+igual('un ZIP que acá no se lee: no se sabe', faltanEnLaEntrega(banners, null), null)
+igual('sin imágenes (solo el link o un PDF): no se sabe', faltanEnLaEntrega(banners, []), null)
+igual('un servidor de antes (sin piezas): no se sabe', [faltanEnLaEntrega(undefined, [im(1, 1)]), faltanEnLaEntrega(null, [im(1, 1)])], [null, null])
+igual('un pedido sin piezas con medida (a mano, una cenefa): no se sabe', faltanEnLaEntrega([], [im(1920, 416)]), null)
 
 console.log('\nLo que se dice (los chips, 21/11/2026)')
 // Ivan: "las correcciones de la IA están súper mezcladas". Antes iba todo en

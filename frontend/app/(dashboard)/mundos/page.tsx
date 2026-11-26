@@ -41,7 +41,7 @@ export default function MundosPage() {
   function entrar(m: Mundo) {
     elegir(m.clave);
     // Si venía de un link (el del mail), elegido el mundo sigue ahí (H-040).
-    router.push(volverDeLaBusqueda(window.location.search) ?? inicioDe(user));
+    router.push(volverDeLaBusqueda(window.location.search) ?? inicioDe(user, m.clave));
   }
 
   const nombre = user?.full_name?.split(" ")[0];
