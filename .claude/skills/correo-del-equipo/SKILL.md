@@ -47,7 +47,8 @@ python3 $C leer --procesados $P
 ```
 
 Devuelve en JSON los mails que todavía no se atendieron, del más viejo al más
-nuevo. Lo que importa de cada uno:
+nuevo. Cada agente lee solo los que le escribieron a **su** casilla (la de
+`CORREO_RESPONDER_A`): el Escuadrón la suya, Valentina la suya. Lo que importa de cada uno:
 
 | Campo | Qué es |
 |---|---|
@@ -69,7 +70,8 @@ python3 $C responder --a <id> --cuerpo $S/respuesta.md --nombre Sofía --procesa
 ```
 
 Contesta **a todos** (el que escribió va en «para», el resto en copia, sin
-sumar ni sacar a nadie), en el mismo hilo (`Re:` y las cabeceras de hilo), y
+sumar ni sacar a nadie; con datos confidenciales, `--permitidos` deja solo a
+quienes pueden leerlos), en el mismo hilo (`Re:` y las cabeceras de hilo), y
 lo marca como atendido. Después, subí el cuaderno (`procesados.txt` cambió).
 
 Cómo escribir: castellano rioplatense, corto, como un compañero; cada uno
