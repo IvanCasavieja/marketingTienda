@@ -62,7 +62,10 @@ llegó (o no) a la otra cuenta y cuánto tardó.
   locales. Bien hecha si: se encuentra un local y su pedido rápido.
 - **E8. Cenefas.** Subir un listado, convertir descripciones, generar.
   (Necesita archivos de ejemplo: buscalos en `backend/tests`; si no hay,
-  anotá que la zona no se pudo recorrer y por qué.)
+  anotá que la zona no se pudo recorrer y por qué.) Desde el 26/11/2026
+  Tienda Inglesa no tiene tipos de cenefa (los borró Ivan: no se usan):
+  generá en Redexpres, o creá en Tienda Inglesa uno sin costo con un nombre
+  nuevo ("Prueba nocturna"). Que no haya tipos ahí no es un hallazgo.
 - **E9. Buscar un precio** de un producto y sus listas.
 - **E10. Administrar:** dar de alta una persona, cambiar sus permisos y su
   alcance del calendario, crear una cuenta externa de agencia.

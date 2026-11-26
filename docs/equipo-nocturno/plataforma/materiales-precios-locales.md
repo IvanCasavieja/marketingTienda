@@ -212,15 +212,23 @@ listas de precios y las validaciones de RRSS son comunes (no filtran por mundo).
   - Generar: `POST /tools/cenefas/v2/lotes` (multipart: excels, pares_json,
     vigencia, usar_legales, legales, image_overrides_json) → pasa al paso 2.
   - `?destino=<slug>` en la URL abre ese tipo directo.
-- **Estados:** cargando tipos: spinner en el selector; error: toast "No se
-  pudieron cargar los tipos de cenefa"; sin tipos: "Todavía no hay ningún tipo
-  de cenefa creado en este mundo."; picker vacío: "Todavía no hay plantillas
+- **Estados:** cargando tipos: spinner en el selector; error: toast y, en el
+  selector, "No se pudieron cargar los tipos de cenefa" con "Reintentar" (sin
+  "Nuevo tipo de cenefa" hasta que cargue); sin tipos —Tienda Inglesa, desde la
+  0094—: "Todavía no hay ningún tipo de cenefa creado en este mundo."; nombre de
+  un tipo borrado que se cobraría distinto: el servidor no lo crea y el toast
+  dice qué casilla tocar; picker vacío: "Todavía no hay plantillas
   guardadas para <tipo>"; Excel repetido: toast; error al generar: toast con el
   detalle del servidor (por ejemplo un listado de gestión sin convertir lo frena
   con "qué hacer"). Sin permiso: SinAcceso.
 - **Celular:** el panel de carga es `grid-cols-2` fijo, sin variante angosta.
-- **Datos para probarla:** elegir el tipo **Pruebas** (no suma al informe),
-  cargar una plantilla con `Base cenefa A4 1.pptx` y usar el Excel de
+- **Datos para probarla:** el tipo **Pruebas** ya no existe (0094). En Tienda
+  Inglesa, crear uno sin costo con un nombre nuevo (por ejemplo "Prueba
+  nocturna", con "No suma al informe de producción" tildado): con el nombre de
+  uno borrado ("Pruebas", "Rompe Precios"…) continúa al viejo, y "Pruebas"
+  además prende el experimento de autoajuste de `services/cenefas/pruebas.py`.
+  O probar en Redexpres, que entra derecho. Después, cargar una plantilla con
+  `Base cenefa A4 1.pptx` y usar el Excel de
   "Descargar plantilla Excel".
 - **Código:** `frontend/app/(dashboard)/materiales/cenefas/page.tsx`,
   `components/cenefas/{DestinoModal,CenefaPanel,LotePreviewStep}.tsx`,
@@ -382,7 +390,8 @@ listas de precios y las validaciones de RRSS son comunes (no filtran por mundo).
   la página queda vacía bajo los filtros.
 - **Celular:** grillas de 1 columna en angosto; tablas con scroll horizontal.
 - **Datos para probarla:** con la base vacía ya muestra "Declarado · Parrilla y
-  Vinos" (2.700). Para más, generar y confirmar lotes en un tipo cobrable.
+  Vinos" (2.700). Para más, generar y confirmar lotes en un tipo cobrable (en
+  Tienda Inglesa, crearlo antes: ver E).
 - **Código:** `.../v2/informe/page.tsx`, `services/cenefas/informe.py`.
 - **Puntos a mirar:** sin estado de error con reintento; el botón volver lleva
   al editor y no a Cenefas.
@@ -931,6 +940,10 @@ Quién: `cenefas.edit`, en Tienda Inglesa o Redexpres.
 1. Cenefas → "Cambiar tipo de cenefa" (si ya estaba adentro) → "Nuevo tipo de
    cenefa": nombre, descripción, ícono, color, cobrable → "Crear tipo de cenefa".
 2. Nace en el mundo en el que se está. Aparece en el selector de ese mundo.
+   Con el nombre de un tipo borrado (los 12 de Tienda Inglesa, 0094) lo
+   continúa: sus corridas viejas pasan a leerse del nuevo. Por eso, si se
+   cobraría distinto que el borrado, el servidor no lo crea (409) y dice qué
+   casilla tocar: si no, cambiaría lo ya facturado.
 3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena. Sus
    corridas siguen en el informe igual que antes (nombre, cobrable o sin
    costo): lo que necesita de él queda en `cenefa_destinos_borrados`.
