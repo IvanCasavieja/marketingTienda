@@ -859,6 +859,9 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
             <button
               type="button"
               aria-describedby={idPregunta}
+              // Ese segundo toque tampoco se lleva el foco: si no, quedaba en
+              // «Aprobar igual» y un Enter después aprobaba sin haber elegido.
+              onMouseDown={e => { if (e.detail > 1) e.preventDefault() }}
               onClick={e => {
                 // El segundo toque de un doble clic en «Aprobar y terminar»
                 // cae acá, donde estaba ese botón: no cuenta como respuesta.
