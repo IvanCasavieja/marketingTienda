@@ -304,6 +304,22 @@ async def validar_imagen(
     r = await validador.validar_placa(datos, archivo.filename or "placa", v.mailing, cargar_paginas, v.config)
     r.resultado["tiempos_ms"]["hasta_guardar"] = round((time.perf_counter() - inicio) * 1000)
 
+    # Que la validación siga estando mientras se guarda la placa: FOR KEY SHARE
+    # no deja borrarla hasta el commit, y es la misma traba que pone la clave
+    # foránea al insertar. Si ya no está (venció mientras CatTi miraba, ver
+    # services/rrss/retencion.py, o la borró quien la creó), la placa no tiene
+    # dónde guardarse: se dice por qué, como al abrirla, en vez del 500 de la
+    # clave foránea. Los tokens ya se gastaron: se anotan igual.
+    sigue = await db.scalar(
+        select(RrssValidacion.id).where(RrssValidacion.id == v.id).with_for_update(read=True, key_share=True)
+    )
+    if sigue is None:
+        if r.tokens_in or r.tokens_out:
+            await log_ai_usage(db, current_user.id, catti.FEATURE, catti.PROVEEDOR, catti._MODEL,
+                               r.tokens_in, r.tokens_out)
+            await db.commit()
+        raise HTTPException(status_code=404, detail=_ya_no_esta())
+
     # Idempotente por `orden`: si el navegador reintenta una placa (la request se
     # cortó pero el servidor sí la había guardado) o la persona reintenta las que
     # fallaron, la nueva REEMPLAZA a la anterior en vez de duplicarla.

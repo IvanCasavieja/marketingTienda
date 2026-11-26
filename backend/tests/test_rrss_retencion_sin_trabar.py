@@ -18,7 +18,10 @@ contra Postgres:
   anterior no llegó;
 - una placa no tiene la base tomada mientras CatTi la mira (de cinco a
   noventa segundos): la transacción quedaba abierta todo ese rato, con las
-  tablas de RRSS en uso, y la purga no podía compactarlas en todo el día.
+  tablas de RRSS en uso, y la purga no podía compactarlas en todo el día;
+- si la validación se borra mientras CatTi mira una placa (venció, o la
+  borró quien la creó), la placa dice que ya no está en vez de «Internal
+  server error».
 """
 import asyncio
 import os
@@ -323,6 +326,7 @@ async def _con_la_app(prueba):
     from app.core.rate_limit import limiter
     from app.core.security import create_access_token, hash_password
     from app.main import app
+    from app.models.ai_usage_log import AIUsageLog
     from app.models.rrss_validacion import RrssValidacion, RrssValidacionPagina
     from app.models.user import User
 
@@ -368,6 +372,7 @@ async def _con_la_app(prueba):
             if vid is not None:
                 await db.execute(delete(RrssValidacion).where(RrssValidacion.id == vid))
             if uid is not None:
+                await db.execute(delete(AIUsageLog).where(AIUsageLog.user_id == uid))
                 await db.execute(delete(User).where(User.id == uid))
             await db.commit()
         await motor.dispose()
@@ -434,5 +439,44 @@ def test_mientras_catti_mira_la_placa_la_base_queda_libre(monkeypatch):
                                    .where(RrssValidacionImagen.validacion_id == vid)) == 1
             assert await db.scalar(select(func.sum(AIUsageLog.input_tokens))
                                    .where(AIUsageLog.user_id == uid)) == 1000
+
+    asyncio.run(_con_la_app(prueba))
+
+
+@con_base
+def test_si_la_validacion_se_borra_mientras_catti_mira_la_placa_dice_que_ya_no_esta(monkeypatch):
+    """La validación vence (o la borra quien la creó, desde otra pestaña)
+    mientras CatTi mira una de sus placas. Al guardarla fallaba la clave
+    foránea y la placa quedaba marcada con «Internal server error». Ahora dice
+    por qué, con el mismo 404 que al abrirla, no queda nada suelto y los
+    tokens que ya se gastaron se anotan igual."""
+    from sqlalchemy import delete, func, select
+
+    from app.models.ai_usage_log import AIUsageLog
+    from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen
+    from app.services.rrss import validador
+
+    estado = {}
+
+    async def validar_placa(datos, nombre, mailing, cargar_paginas, config):
+        # Mientras CatTi mira la placa, pasa la purga.
+        async with estado["sesiones"]() as db:
+            await db.execute(delete(RrssValidacion).where(RrssValidacion.id == estado["vid"]))
+            await db.commit()
+        return _placa_ok()
+
+    monkeypatch.setattr(validador, "validar_placa", validar_placa)
+
+    async def prueba(http, cabeza, motor, sesiones, vid, uid):
+        estado.update(sesiones=sesiones, vid=vid)
+        r = await http.post(f"/api/v1/rrss/validaciones/{vid}/imagenes", headers=cabeza,
+                            files={"archivo": ("placa.jpg", _jpeg(), "image/jpeg")}, data={"orden": "0"})
+        assert r.status_code == 404, r.text
+        assert "ya no está" in r.json()["detail"]
+        async with sesiones() as db:
+            assert await db.scalar(select(func.count()).select_from(RrssValidacionImagen)
+                                   .where(RrssValidacionImagen.validacion_id == vid)) == 0
+            assert await db.scalar(select(func.sum(AIUsageLog.input_tokens))
+                                   .where(AIUsageLog.user_id == uid)) == 1000, "los tokens gastados no se anotaron"
 
     asyncio.run(_con_la_app(prueba))
