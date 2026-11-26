@@ -22,6 +22,8 @@ def test_el_superadmin_ve_cuanto_ocupa_la_base_y_los_demas_no():
         assert j["base_mb"] > 0 and j["tope_mb"] > 0
         assert j["tablas"] and {"tabla", "mb", "filas", "muertas"} <= set(j["tablas"][0])
         assert "users" in {t["tabla"] for t in j["tablas"]}
+        assert isinstance(j["archivos"], list)
+        assert {"con_archivo", "verificadas_con_archivo", "verificadas_mb", "archivo_mas_viejo"} <= set(j["cenefas"])
         admin = Cliente(d.http, await _persona(d, "Admin sin super", permisos=("platform.admin", "calendario.view")))
         assert (await admin.get("/admin/espacio")).status_code == 403
     correr(prueba)

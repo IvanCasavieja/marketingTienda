@@ -982,10 +982,10 @@ async def verificar_corrida(
     # _get_job y no db.get: sin el chequeo de pertenencia, cualquiera con
     # cenefas.view podia verificar o DESverificar una corrida ajena -- y los
     # ids se los servia el propio listado. Desverificar no es cosmetico:
-    # verificado=False mete la fila en el WHERE de purgar_archivos_vencidos
-    # (jobs.py), asi que a los CENEFAS_RETENCION_DIAS el PPTX de otro se
-    # borraba sin vuelta atras. Del otro lado, verificar corridas ajenas
-    # infla "verificadas" en el informe, que es la cifra que se factura.
+    # baja "verificadas" en el informe (el archivo ya no depende de esto:
+    # desde el 26/11/2026 el de toda corrida se borra a las 24 horas). Del
+    # otro lado, verificar corridas ajenas infla "verificadas" en el
+    # informe, que es la cifra que se factura.
     job = await _get_job(job_id, current_user, db)
     if job.status != "done":
         raise HTTPException(
@@ -1209,10 +1209,9 @@ async def _job_to_dict(
         "template_id": str(job.template_id) if job.template_id else None,
         "row_count":   job.row_count,
         "error_count": job.error_count,
-        # Una persona confirmó que esta corrida salió bien. Además de sumar
-        # aparte en el informe, decide la retención: el archivo de una corrida
-        # verificada se conserva; el de una sin verificar se borra a los
-        # CENEFAS_RETENCION_DIAS días (ver purga en jobs.py).
+        # Una persona confirmó que esta corrida salió bien: suma aparte en el
+        # informe. El archivo, verificada o no, se borra a las
+        # CENEFAS_RETENCION_HORAS horas (ver purga en jobs.py).
         "verificado":  job.verificado,
         "created_at":  job.created_at.isoformat() if job.created_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,

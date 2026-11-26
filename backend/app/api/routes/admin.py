@@ -1371,6 +1371,29 @@ async def espacio_de_la_base(
         " WHERE c.relkind = 'r' AND n.nspname = 'public'"
         " ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 25"
     ))).mappings().all()
+    # Lo que pesan de verdad los archivos guardados (columnas bytea). Si una
+    # tabla ocupa mucho más que esto, el resto es lugar ya liberado (por
+    # ejemplo, por la purga de cenefas) que Postgres todavía no devolvió.
+    # pg_column_size mide lo guardado sin leer el contenido.
+    columnas = (await db.execute(text(
+        "SELECT table_name, column_name FROM information_schema.columns"
+        " WHERE table_schema = 'public' AND data_type = 'bytea'"
+    ))).all()
+    archivos = []
+    for tabla, columna in columnas:
+        con, bytes_ = (await db.execute(text(
+            f'SELECT count("{columna}"), COALESCE(sum(pg_column_size("{columna}")), 0) FROM "{tabla}"'
+        ))).one()
+        if con:
+            archivos.append({"tabla": tabla, "columna": columna, "con_dato": int(con), "mb": round(int(bytes_) / MB, 1)})
+    archivos.sort(key=lambda a: -a["mb"])
+    cenefas = (await db.execute(text(
+        "SELECT count(*) FILTER (WHERE result_bytes IS NOT NULL),"
+        " count(*) FILTER (WHERE result_bytes IS NOT NULL AND verificado),"
+        " COALESCE(sum(pg_column_size(result_bytes)) FILTER (WHERE verificado), 0),"
+        " min(created_at) FILTER (WHERE result_bytes IS NOT NULL)"
+        " FROM cenefa_jobs"
+    ))).one()
     return {
         "base_mb": round(total / MB, 1),
         "tope_mb": settings.BASE_TOPE_MB,
@@ -1379,4 +1402,11 @@ async def espacio_de_la_base(
             {"tabla": f["tabla"], "mb": round(f["bytes"] / MB, 1), "filas": int(f["vivas"]), "muertas": int(f["muertas"])}
             for f in filas
         ],
+        "archivos": archivos,
+        "cenefas": {
+            "con_archivo": int(cenefas[0]),
+            "verificadas_con_archivo": int(cenefas[1]),
+            "verificadas_mb": round(int(cenefas[2]) / MB, 1),
+            "archivo_mas_viejo": cenefas[3].isoformat() if cenefas[3] else None,
+        },
     }

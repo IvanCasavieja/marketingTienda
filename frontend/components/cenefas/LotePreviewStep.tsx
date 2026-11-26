@@ -340,10 +340,8 @@ export default function LotePreviewStep({ loteId, onBack }: LotePreviewStepProps
 
   // Una persona mira el archivo y dice si salio bien o mal -- una respuesta
   // real, no un "despues lo veo" que no queda registrado en ningun lado.
-  // Ademas de sumar aparte en el informe de produccion, decide la retencion:
-  // el archivo de una corrida verificada se conserva para siempre (se puede
-  // volver a bajar cuando sea); el de una marcada mal (o nunca contestada)
-  // sigue la retencion normal y se borra a los dias configurados.
+  // Suma aparte en el informe de produccion. El archivo, verificada o no,
+  // se borra a las 24 horas (Ivan, 26/11/2026).
   async function marcarVerificacion(salioBien: boolean) {
     setVerificando(true);
     try {

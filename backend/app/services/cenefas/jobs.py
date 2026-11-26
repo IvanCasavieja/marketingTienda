@@ -10,6 +10,7 @@ from sqlalchemy import or_, select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.services.espacio import MB, compactar
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
@@ -628,12 +629,15 @@ async def _resolve_template_def(
 #   - El NUMERO de cada corrida (cuantas cenefas, cuantas correctas) queda para
 #     siempre: vive en columnas propias (row_count, validation_report) que la
 #     purga no toca -- es lo que suma el informe de produccion.
-#   - El ARCHIVO (result_bytes) de una corrida VERIFICADA se conserva: es la
-#     prueba de lo que salio bien y se puede volver a bajar cuando sea.
-#   - El archivo de una corrida SIN verificar se borra a los
-#     CENEFAS_RETENCION_DIAS dias: nadie confirmo que sirviera, y 500 corridas
-#     de prueba ya pesaban 197 MB de PPTX muertos en la base (medido 2026-08-29,
-#     casi la mitad de la cuota de Supabase).
+#   - El ARCHIVO de toda corrida, verificada o no, se borra a las
+#     CENEFAS_RETENCION_HORAS horas (24). Hasta el 26/11/2026 el de una
+#     verificada se guardaba para siempre: 938 corridas llegaron a ocupar
+#     203 MB, con la base en 397,9 de 400 MB y las entregas sin poder subir
+#     imágenes. Ivan: «ya no tiene sentido que las guardemos… que quede
+#     guardado a lo sumo un día y nada más».
+#   - Después de borrar, la tabla se compacta (services/espacio.py,
+#     compactar): si no, Postgres guarda el lugar para sí y la base sigue
+#     «llena» para el freno y para la cuota de Supabase.
 
 
 async def recuperar_jobs_huerfanos(arranque: datetime) -> int:
@@ -673,15 +677,15 @@ async def recuperar_jobs_huerfanos(arranque: datetime) -> int:
         return result.rowcount or 0
 
 
-async def purgar_archivos_vencidos(dias: int) -> tuple[int, int]:
+async def purgar_archivos_vencidos(horas: int) -> tuple[int, int]:
     """Una pasada de retencion. Devuelve (archivos_purgados, previews_vencidos)."""
-    corte = datetime.now(timezone.utc) - timedelta(days=dias)
+    corte = datetime.now(timezone.utc) - timedelta(hours=horas)
     async with AsyncSessionLocal() as db:
-        # 1. Corridas terminadas SIN verificar: se va el archivo, queda el numero.
+        # 1. Corridas terminadas, verificadas o no: se va el archivo, queda
+        #    el numero (y si alguien la verifico, que es lo que cuenta el informe).
         r1 = await db.execute(
             update(CenefaJob)
             .where(
-                CenefaJob.verificado.is_(False),
                 CenefaJob.status.in_(("done", "error")),
                 # coalesce a mano: los jobs viejos no siempre tienen completed_at
                 or_(CenefaJob.completed_at < corte,
@@ -702,26 +706,36 @@ async def purgar_archivos_vencidos(dias: int) -> tuple[int, int]:
             .values(
                 status="error",
                 validation_report={"error": (
-                    f"El preview venció sin confirmarse (más de {dias} días)."
+                    f"El preview venció sin confirmarse (más de {horas} horas)."
                 )},
                 completed_at=datetime.now(timezone.utc),
                 staged_data=None, staged_source_pptx=None, staged_excel_bytes=None,
             )
         )
         await db.commit()
-        return (r1.rowcount or 0, r2.rowcount or 0)
+    purgados, vencidos = r1.rowcount or 0, r2.rowcount or 0
+    if purgados or vencidos:
+        # Sin esto el lugar no vuelve: Postgres lo guarda para sí.
+        try:
+            antes, despues = await compactar("cenefa_jobs")
+            logger.info("purga_cenefas: cenefa_jobs compactada de %.1f a %.1f MB",
+                        antes / MB, despues / MB)
+        except Exception as exc:
+            logger.error("purga_cenefas: no se pudo compactar cenefa_jobs -- %s", exc)
+    return purgados, vencidos
 
 
 async def run_purga_cenefas_loop() -> None:
     """Loop perpetuo, mismo patron que run_cotizacion_check_loop: una pasada
     al arrancar (asi el primer deploy ya limpia lo acumulado) y despues una
-    por dia."""
+    por hora: con 24 horas de retencion, una por dia dejaba archivos hasta
+    48 horas."""
     while True:
         try:
-            purgados, vencidos = await purgar_archivos_vencidos(settings.CENEFAS_RETENCION_DIAS)
+            purgados, vencidos = await purgar_archivos_vencidos(settings.CENEFAS_RETENCION_HORAS)
             if purgados or vencidos:
                 logger.info("purga_cenefas: %d archivo(s) liberados, %d preview(s) vencidos",
                             purgados, vencidos)
         except Exception as exc:
             logger.error("purga_cenefas: fallo la pasada -- %s", exc, exc_info=True)
-        await asyncio.sleep(24 * 3600)
+        await asyncio.sleep(3600)
