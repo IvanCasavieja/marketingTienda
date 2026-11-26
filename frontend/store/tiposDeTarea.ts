@@ -55,9 +55,15 @@ const pidiendoTableros = new Map<string, Promise<Tablero[]>>();
  * pantallas a la vez comparten el pedido). Antes se pedía una sola vez por
  * sesión, y una agencia dada de alta mientras tanto no aparecía en «¿Quién la
  * hace?» hasta recargar la página (H-018, 26/11/2026).
+ *
+ * `error`: no se pudo traer la lista y no había ninguna de antes. Quien la
+ * muestra lo dice: si no, «¿Quién la hace?» quedaba sin agencias (o
+ * «Cargando…» para siempre) sin decir por qué, que es justo lo de H-018.
+ * Se vuelve a pedir la próxima vez que se abre la pantalla.
  */
-export function useTableros(mundo: string | null | undefined): { tableros: Tablero[] | null } {
+export function useTableros(mundo: string | null | undefined): { tableros: Tablero[] | null; error: boolean } {
   const [llegada, setLlegada] = useState<{ mundo: string; tableros: Tablero[] } | null>(null);
+  const [fallo, setFallo] = useState<string | null>(null);
   useEffect(() => {
     if (!mundo) return;
     let vivo = true;
@@ -68,9 +74,13 @@ export function useTableros(mundo: string | null | undefined): { tableros: Table
         .finally(() => pidiendoTableros.delete(mundo));
       pidiendoTableros.set(mundo, pedido);
     }
-    pedido.then((tableros) => { if (vivo) setLlegada({ mundo, tableros }); }).catch(() => {});
+    pedido.then(
+      (tableros) => { if (vivo) { setLlegada({ mundo, tableros }); setFallo(null); } },
+      () => { if (vivo) setFallo(mundo); },
+    );
     return () => { vivo = false; };
   }, [mundo]);
-  if (!mundo) return { tableros: null };
-  return { tableros: llegada?.mundo === mundo ? llegada.tableros : ultimosTableros.get(mundo) ?? null };
+  if (!mundo) return { tableros: null, error: false };
+  const tableros = llegada?.mundo === mundo ? llegada.tableros : ultimosTableros.get(mundo) ?? null;
+  return { tableros, error: tableros === null && fallo === mundo };
 }
