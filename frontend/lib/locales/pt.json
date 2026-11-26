@@ -542,7 +542,7 @@
         "error": "erro"
       },
       "verifTitulo": "Confirma que os cartazes saíram bem?",
-      "verifDetalle": "Abra o arquivo e confira. Ao confirmar, o arquivo fica guardado para ver quando quiser e a rodada conta como verificada no relatório. Sem confirmar, o arquivo é apagado em 7 dias — os números permanecem.",
+      "verifDetalle": "Abra o arquivo e confira. Ao confirmar, a rodada conta como verificada no relatório. O arquivo é apagado em 24 horas, confirmado ou não — os números permanecem.",
       "verifSi": "Sim, saíram bem",
       "verifNo": "Não, saíram com erro",
       "verifOk": "{{n}} rodada(s) verificadas: contam no relatório",

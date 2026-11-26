@@ -542,7 +542,7 @@
         "error": "error"
       },
       "verifTitulo": "¿Confirmás que las cenefas salieron bien?",
-      "verifDetalle": "Abrí el archivo y miralo. Si confirmás, el archivo queda guardado para volver a verlo cuando quieras y la corrida suma como verificada en el informe. Sin confirmar, el archivo se borra a los 7 días — los números quedan igual.",
+      "verifDetalle": "Abrí el archivo y miralo. Si confirmás, la corrida suma como verificada en el informe. El archivo se borra a las 24 horas, confirmado o no: los números quedan igual.",
       "verifSi": "Sí, salieron bien",
       "verifNo": "No, salieron mal",
       "verifOk": "{{n}} corrida(s) verificadas: suman en el informe",
