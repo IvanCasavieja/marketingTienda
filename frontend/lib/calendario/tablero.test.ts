@@ -15,8 +15,8 @@ import {
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import {
-  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, textoDeAprobar,
-  type ResumenEntrega, type Tarjeta,
+  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, faltanAlAprobar, fechaDia, pasoEnLaVista, proximoPaso,
+  seAproboSinEllas, textoDeAprobar, type ResumenEntrega, type Tarjeta,
 } from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
@@ -282,6 +282,19 @@ igual('un ZIP con el folleto en PDF (sin medir: el servidor llena la versión co
   [botonGrandeAlRevisar(3, 4, null, 4), botonGrandeAlRevisar(3, 4, undefined, 4)], ['avanzar', 'avanzar'])
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
+// H-023 (25/11/2026): «¿Ya está todo? Aprobar y terminar» aprobaba sin
+// preguntar con «Falta 1 pieza del pedido» al lado. Ahora pregunta, y dice cuáles.
+igual('aprobar con una pieza que falta: pregunta', faltanAlAprobar('aprobada', ['Carrito']), { count: 1, piezas: 'Carrito' })
+igual('con muchas, las primeras tres', faltanAlAprobar('aprobada', ['Carrito', 'Checkout', 'Header (mobile)', 'Cocardas']),
+  { count: 4, piezas: 'Carrito, Checkout, Header (mobile), …' })
+igual('sin piezas que falten (o sin medir): no pregunta',
+  [faltanAlAprobar('aprobada', []), faltanAlAprobar('aprobada', null), faltanAlAprobar('aprobada', undefined)], [null, null, null])
+igual('avanzar y pedir cambios no preguntan', [faltanAlAprobar('avanzar', ['Carrito']), faltanAlAprobar('cambios', ['Carrito'])],
+  [null, null])
+// Y una vez aprobada, lo que faltaba es un dato (en gris), no un aviso en rojo.
+igual('lo que faltaba, en gris solo si se aprobó',
+  (['aprobada', 'revision', 'avanzar', 'cambios', 'reemplazada'] as const).map(seAproboSinEllas),
+  [true, false, false, false, false])
 // El día de cada ronda, en el renglón cerrado.
 igual('el día de una ronda', [fechaDia(null), fechaDia('x'), fechaDia('2026-11-19T12:00:00')], ['', '', '19/11'])
 

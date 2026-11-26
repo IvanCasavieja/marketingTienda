@@ -1493,6 +1493,14 @@
   },
   "calendario": {
     "accessDenied": "No tenés acceso al calendario",
-    "loading": "Cargando el calendario…"
+    "loading": "Cargando el calendario…",
+    "revisar": {
+      "faltanAlAprobar_one": "Falta 1 pieza del pedido: {{piezas}}. ¿Aprobar igual?",
+      "faltanAlAprobar_other": "Faltan {{count}} piezas del pedido: {{piezas}}. ¿Aprobar igual?",
+      "aprobarIgual": "Aprobar igual",
+      "seguirRevisando": "Seguir revisando",
+      "seAproboSin_one": "Se aprobó sin 1 pieza del pedido",
+      "seAproboSin_other": "Se aprobó sin {{count}} piezas del pedido"
+    }
   }
 }

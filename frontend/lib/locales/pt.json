@@ -1406,6 +1406,14 @@
   },
   "calendario": {
     "accessDenied": "Você não tem acesso ao calendário",
-    "loading": "Carregando o calendário…"
+    "loading": "Carregando o calendário…",
+    "revisar": {
+      "faltanAlAprobar_one": "Falta 1 peça do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobar_other": "Faltam {{count}} peças do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "aprobarIgual": "Aprovar mesmo assim",
+      "seguirRevisando": "Continuar revisando",
+      "seAproboSin_one": "Aprovado sem 1 peça do pedido",
+      "seAproboSin_other": "Aprovado sem {{count}} peças do pedido"
+    }
   }
 }

@@ -412,6 +412,37 @@ export function textoDeAprobar(esUltimaFase: boolean, quedanDespuesEnLaCadena: n
   return esUltimaFase && quedanDespuesEnLaCadena <= 0 ? 'Aprobar y terminar' : 'Aprobar'
 }
 
+/**
+ * Si hay que preguntar antes de aprobar: al aprobar una versión a la que le
+ * faltan piezas del pedido. Devuelve cuántas son y las primeras, para
+ * decirlas en la pregunta («Falta 1 pieza del pedido: Carrito. ¿Aprobar
+ * igual?»); null si no hay que preguntar. Pura.
+ *
+ * H-023 de la auditoría del 25/11/2026: «¿Ya está todo? Aprobar y terminar»
+ * aprobaba sin preguntar con «Falta 1 pieza del pedido» en rojo al lado, y
+ * la pieza no llegaba nunca. Avanzar no pregunta: es justo para eso.
+ */
+export function faltanAlAprobar(
+  decision: TipoDecision, faltan: readonly string[] | null | undefined, tope = 3,
+): { count: number; piezas: string } | null {
+  if (decision !== 'aprobada' || !faltan?.length) return null
+  return { count: faltan.length, piezas: faltan.slice(0, tope).join(', ') + (faltan.length > tope ? ', …' : '') }
+}
+
+/**
+ * Si lo que faltaba en una versión ya no es un aviso sino un dato: la
+ * versión se aprobó sin esas piezas («Se aprobó sin 1 pieza del pedido», en
+ * gris). En las demás (esperando revisión, con el OK para avanzar, con
+ * cambios), falta: en rojo. Pura.
+ *
+ * H-023 de la auditoría del 25/11/2026: con la versión aprobada, arriba
+ * decía «Finalizada: se aprobó la entrega» y abajo, en rojo, «Falta 1 pieza
+ * del pedido». No se sabía si estaba terminada o no.
+ */
+export function seAproboSinEllas(estado: EstadoVersion): boolean {
+  return estado === 'aprobada'
+}
+
 /** "Fase 1 · Boceto": el estado de cada fase en una línea corta. */
 export function estadoDeFase(
   fase: ResumenEntrega['fases'][number], resumen: ResumenEntrega,
