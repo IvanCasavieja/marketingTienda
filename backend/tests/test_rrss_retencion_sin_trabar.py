@@ -16,9 +16,9 @@ contra Postgres:
   lo recién borrado y el lugar no volvía;
 - el lazo arranca con las tres tablas por compactar, por si el proceso
   anterior no llegó;
-- una placa no tiene la base tomada mientras CatTi la mira (de cinco a
-  noventa segundos): la transacción quedaba abierta todo ese rato, con las
-  tablas de RRSS en uso, y la purga no podía compactarlas en todo el día;
+- una placa no tiene la base tomada mientras CatTi la mira (hasta cinco
+  llamadas): la transacción quedaba abierta todo ese rato, con las tablas de
+  RRSS en uso, y la purga no podía compactarlas mientras alguien validaba;
 - si la validación se borra mientras CatTi mira una placa (venció, o la
   borró quien la creó), la placa dice que ya no está en vez de «Internal
   server error».
