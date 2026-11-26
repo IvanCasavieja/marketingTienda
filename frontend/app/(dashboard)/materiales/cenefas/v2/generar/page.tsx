@@ -64,6 +64,12 @@ export default function GenerarPage() {
   // La corrida en curso. Su espera, la revisión y la descarga son de
   // PreviewStep (paso 3).
   const [jobId, setJobId] = useState<string | null>(null);
+  // Mientras se sube el Excel y se crea la corrida. Un segundo clic en
+  // «Generar» creaba otra corrida: la pantalla seguía una sola y la otra
+  // quedaba «Esperando confirmación» en el Historial (H-008). El ref frena
+  // el segundo clic aunque llegue antes de que se vuelva a dibujar el botón.
+  const [iniciando, setIniciando] = useState(false);
+  const iniciandoRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -141,7 +147,9 @@ export default function GenerarPage() {
 
   // ── Crear job (llamado desde step 2 o directo para builtins)
   async function handleStartJob(direct = false) {
-    if (!excel) return;
+    if (!excel || iniciandoRef.current) return;
+    iniciandoRef.current = true;
+    setIniciando(true);
     try {
       const fd = new FormData();
       fd.append("excel",       excel);
@@ -173,6 +181,9 @@ export default function GenerarPage() {
       setStep(3);
     } catch (e: any) {
       toast.error(e?.response?.data?.detail ?? "Error al iniciar la generación");
+    } finally {
+      iniciandoRef.current = false;
+      setIniciando(false);
     }
   }
 
@@ -440,9 +451,9 @@ export default function GenerarPage() {
           </div>
 
           <div className="flex justify-end pt-2">
-            <button onClick={handleNext} disabled={validating || !excel || (tmplMode === "v2" && !templateId)}
+            <button onClick={handleNext} disabled={validating || iniciando || !excel || (tmplMode === "v2" && !templateId)}
               className="btn-primary flex items-center gap-2 px-5 py-2.5 disabled:opacity-50">
-              {validating ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />}
+              {validating || iniciando ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />}
               {tmplMode === "builtin" ? "Generar" : "Siguiente — Validar"}
             </button>
           </div>
@@ -503,8 +514,9 @@ export default function GenerarPage() {
                 if (validation.missing_required.length > 0) setShowMissingModal(true);
                 else handleStartJob();
               }}
-              className="btn-primary flex items-center gap-2 px-5 py-2.5">
-              <ChevronRight size={15} /> Generar cenefas
+              disabled={iniciando}
+              className="btn-primary flex items-center gap-2 px-5 py-2.5 disabled:opacity-50">
+              {iniciando ? <Loader2 size={15} className="animate-spin" /> : <ChevronRight size={15} />} Generar cenefas
             </button>
           </div>
 
@@ -533,7 +545,8 @@ export default function GenerarPage() {
                     Cancelar
                   </button>
                   <button onClick={() => { setShowMissingModal(false); handleStartJob(); }}
-                    className="flex-1 btn-primary py-2 text-sm">
+                    disabled={iniciando}
+                    className="flex-1 btn-primary py-2 text-sm disabled:opacity-50">
                     Continuar igual
                   </button>
                 </div>
