@@ -105,21 +105,25 @@ def test_quedan_solo_las_de_redexpres_y_el_informe_da_lo_mismo():
                 db.add(sin_tipo)
                 await db.flush()
                 ids_plantillas = [t.id for t in (*plantillas.values(), sin_tipo)]
+                # Sin dos plantillas ni dos mundos con el mismo total en ningún
+                # período: el informe los ordena por total, y entre empatados el
+                # orden lo elige Postgres (puede cambiar de una consulta a otra).
                 corridas = [
-                    # Mega: un listado reprocesado (dos formatos) y otro aparte.
+                    # Mega: un listado en dos formatos y reintentado, y otro aparte.
                     _corrida(mega, plantillas[mega, "A4"], cuando(8, 10), 40, excel="a.xlsx", criticos=2),
                     _corrida(mega, plantillas[mega, "3xA4"], cuando(8, 11), 40, excel="a.xlsx"),
+                    _corrida(mega, plantillas[mega, "A4"], cuando(8, 12), 40, excel="a.xlsx"),
                     _corrida(mega, plantillas[mega, "A4"], cuando(10, 2), 30, excel="b.xlsx", verificado=True),
                     _corrida(pruebas, plantillas[pruebas, "A4"], cuando(9, 3), 25, excel="p.xlsx"),
                     _corrida(pruebas, plantillas[pruebas, "A4"], cuando(9, 4), 25, excel="p.xlsx"),
                     _corrida(parrilla, plantillas[parrilla, "3xA4"], cuando(7, 5), 15, excel="c.xlsx"),
-                    _corrida(rx, plantillas[rx, "A4"], cuando(10, 20), 70, excel="rx.xlsx"),
-                    _corrida(rx, plantillas[rx, "3xA4"], cuando(10, 21), 70, excel="rx.xlsx", verificado=True),
+                    _corrida(rx, plantillas[rx, "A4"], cuando(10, 20), 71, excel="rx.xlsx"),
+                    _corrida(rx, plantillas[rx, "3xA4"], cuando(10, 21), 72, excel="rx.xlsx", verificado=True),
                     # Sin mundo: de antes de que el job lo guardara.
                     _corrida(None, None, cuando(6, 20), 9),
                     # Las que no cuentan: con error o sin confirmar.
-                    _corrida(mega, plantillas[mega, "A4"], cuando(8, 12), 50, estado="error"),
-                    _corrida(mega, plantillas[mega, "A4"], cuando(8, 13), 50, estado="preview"),
+                    _corrida(mega, plantillas[mega, "A4"], cuando(8, 13), 50, estado="error"),
+                    _corrida(mega, plantillas[mega, "A4"], cuando(8, 14), 50, estado="preview"),
                 ]
                 db.add_all(corridas)
                 await db.flush()
@@ -166,8 +170,8 @@ def test_quedan_solo_las_de_redexpres_y_el_informe_da_lo_mismo():
             r = despues["sin_filtros"]["resumen"]
             por_mundo = {m["mundo"]: m for m in r["por_mundo"]}
             assert por_mundo[mega]["nombre"] == f"Mega Rompe Precios {s}" and por_mundo[mega]["cobrable"] is True
-            assert por_mundo[mega]["corridas"] == 3 and por_mundo[mega]["cenefas"] == 110
-            assert por_mundo[mega]["costo"] == 110 * 49 and por_mundo[mega]["cenefas_reales"] == 40 * 2 + 30
+            assert por_mundo[mega]["corridas"] == 4 and por_mundo[mega]["cenefas"] == 150
+            assert por_mundo[mega]["costo"] == 150 * 49 and por_mundo[mega]["cenefas_reales"] == 40 * 2 + 30
             assert por_mundo[pruebas]["nombre"] == f"Pruebas {s}"
             assert por_mundo[pruebas]["cobrable"] is False and por_mundo[pruebas]["costo"] == 0
             assert por_mundo[parrilla]["cobrable"] is True and por_mundo[parrilla]["costo"] == 15 * 49
