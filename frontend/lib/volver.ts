@@ -37,3 +37,19 @@ export function volverDeLaBusqueda(busqueda: string): string | null {
     return null
   }
 }
+
+const TABLERO = '/entregas'
+
+/** La dirección del tablero con la tarjeta abierta («/entregas?tarea=ta-1»), o
+ *  sin ninguna («/entregas»), con lo demás de la búsqueda como estaba. Fuera
+ *  del tablero, la dirección no se toca. Con la tarjeta en la dirección,
+ *  recargar la vuelve a abrir y, si vence la sesión, el login vuelve a ella
+ *  (H-039 y H-040, 26/11/2026). */
+export function direccionConTarjeta(pathname: string, busqueda: string, tareaId: string | null): string {
+  if (pathname !== TABLERO) return pathname + busqueda
+  const parametros = new URLSearchParams(busqueda)
+  if (tareaId) parametros.set('tarea', tareaId)
+  else parametros.delete('tarea')
+  const resto = parametros.toString()
+  return resto ? `${pathname}?${resto}` : pathname
+}

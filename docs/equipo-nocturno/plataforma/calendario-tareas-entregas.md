@@ -630,6 +630,8 @@ Acá se escriben sin el prefijo.
   devuelve o se cambia la configuración.
 - **Quién la ve:** quien puede ver la tarea (el equipo del mundo; la agencia dueña). Vive una sola vez en
   el layout: la abren el tablero, la ficha de la acción («Abrir la tarjeta»), Mis tareas y la campanita.
+  En el tablero, la abierta queda en la dirección (`/entregas?tarea=…`): recargar, o volver a entrar
+  cuando venció la sesión, la abre de nuevo; al cerrarla se saca (H-039 y H-040, 26/11/2026).
 - **Qué hay en la pantalla (modo «ver»):**
   - Encabezado: tipo, nombre, acción, "Vence el / Venció el", X.
   - 1) Línea de fases (si hay varias), "Ronda 2 · Volvió con cambios" (en rojo), el **próximo paso** en

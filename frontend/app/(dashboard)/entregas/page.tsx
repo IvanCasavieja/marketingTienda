@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Archive, BarChart3, ChevronDown, Layers, Loader2, RotateCcw, Search, ShieldAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { entregasApi } from "@/lib/api";
@@ -20,6 +20,7 @@ import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
 /** El tablero de la agencia: el de todos los mundos (25/11/2026). */
 const TODOS_LOS_MUNDOS = "todos";
 import { esExterno } from "@/lib/externos";
+import { direccionConTarjeta } from "@/lib/volver";
 import { useTableros } from "@/store/tiposDeTarea";
 import { useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
@@ -53,7 +54,8 @@ const SEGUNDOS_DEL_TABLERO = 6;
  *   miniaturas se piden cuando la tarjeta aparece en pantalla.
  *
  * `/entregas?tarea=ta-xxx` abre esa tarjeta encima: es a donde lleva un aviso
- * de la campanita.
+ * de la campanita o del mail. Y la tarjeta abierta queda en la dirección (ver
+ * TarjetaEnLaDireccion).
  */
 
 type Datos = {
@@ -72,16 +74,62 @@ type Arrastre = {
   conElDedo: boolean;
 };
 
-function AbrirTareaDeLaUrl() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const tarea = params.get("tarea");
+/**
+ * La tarjeta abierta, en la dirección: `/entregas?tarea=ta-xxx` (H-039 y H-040
+ * de la auditoría del 25/11/2026). Abierta tocándola en el tablero, la
+ * dirección quedaba «/entregas»: recargar en medio de una entrega, o volver a
+ * entrar cuando vencía la sesión, caía en el tablero sin la tarjeta. Y la que
+ * llegaba por un link no se sacaba al cerrarla (el router.replace de antes no
+ * llegaba a aplicarse), así que recargar la volvía a abrir.
+ *
+ * - La dirección abre la tarjeta cuando llega con una: el link del mail, la
+ *   campanita, recargar.
+ * - Abrir o cerrar una tarjeta reescribe la dirección sin sumar pasos al
+ *   «atrás» (history.replaceState, que Next toma para useSearchParams).
+ * - Después de un «atrás» manda la tarjeta: el formulario de entrega deja un
+ *   paso propio en la historia y, al cerrarse, lo saca; el paso al que se
+ *   vuelve tiene la dirección de antes y no tiene que reabrir nada.
+ */
+function TarjetaEnLaDireccion() {
+  const tarea = useSearchParams().get("tarea");
+  const abierta = useVistaEntregas(s => s.tareaId);
+  const llego = useRef(false);
   useEffect(() => {
+    const alLlegar = !llego.current;
+    llego.current = true;
     if (!tarea) return;
-    useVistaEntregas.getState().abrir(tarea);
-    router.replace("/entregas");
-  }, [tarea, router]);
+    const abrir = () => {
+      // La de la dirección de ese momento: después de un «atrás», ya la corrigió
+      // el escucha de abajo.
+      const ahora = new URLSearchParams(window.location.search).get("tarea");
+      if (tarea === ahora && tarea !== useVistaEntregas.getState().tareaId) useVistaEntregas.getState().abrir(tarea);
+    };
+    // Al llegar (el link, recargar), ya. Después, un instante más tarde: un
+    // «atrás» se pinta enseguida, antes de que el escucha de abajo deje la
+    // dirección como la tarjeta, y reabría la que se acababa de cerrar.
+    if (alLlegar) {
+      abrir();
+      return;
+    }
+    const reloj = window.setTimeout(abrir, 0);
+    return () => window.clearTimeout(reloj);
+  }, [tarea]);
+  useEffect(() => {
+    // La del store, no `abierta`: la de arriba la pudo abrir recién.
+    ponerLaTarjetaEnLaDireccion(useVistaEntregas.getState().tareaId);
+  }, [abierta]);
+  useEffect(() => {
+    const alVolver = () => ponerLaTarjetaEnLaDireccion(useVistaEntregas.getState().tareaId);
+    window.addEventListener("popstate", alVolver);
+    return () => window.removeEventListener("popstate", alVolver);
+  }, []);
   return null;
+}
+
+function ponerLaTarjetaEnLaDireccion(tareaId: string | null) {
+  const { pathname, search } = window.location;
+  const destino = direccionConTarjeta(pathname, search, tareaId);
+  if (destino !== pathname + search) window.history.replaceState(null, "", destino);
 }
 
 function detalleDeError(e: unknown): string | null {
@@ -498,7 +546,7 @@ export default function TableroPage() {
 
   return (
     <div className="animate-fade-in">
-      <Suspense fallback={null}><AbrirTareaDeLaUrl /></Suspense>
+      <Suspense fallback={null}><TarjetaEnLaDireccion /></Suspense>
 
       <header className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-3">
         <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm shadow-brand-600/30">
