@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 100 abiertos (95 confirmados, 1 pedido de Ivan, 4 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026, corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 106 abiertos (101 confirmados, 1 pedido de Ivan, 4 para confirmar) · 16 en curso (los arregla Claude, pedido de Ivan del 26/11) · 10 hechos · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -25,6 +25,8 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 > Ivan (25/11): «esta plataforma la van a usar varias agencias a la vez, así que tiene que adaptarse a su forma de trabajar, no al revés». H-081 (ida y vuelta con versiones) ya está en `main` (#86); H-082 (sugerencias) entra después del flujo de la agencia.
 >
 > Orden del 26/11 (corrida de procesos): 1) que se le pueda pedir trabajo a cualquier agencia (H-018 + H-090) y lo que bloquea (CI en rojo, borrar entregas, cenefas v2); 2) revisar y entregar sin sorpresas; 3) Sugerencias (Ivan); 4) local y Redexpres; 5) Clientes VIP; 6) trabas de herramientas; 7) lo visual y los detalles; 8) lo que falta confirmar.
+>
+> Orden del 26/11 noche (lo que no está en curso ni en el PR #93): 1) la campanita y la ficha dicen lo mismo que pasó (H-111, H-113); 2) Cenefas sin dudas al cargar (H-115, H-112); 3) local y Redexpres (H-085, H-099, H-086, H-084); 4) palabras de las versiones (H-097) y miniaturas (H-114) después de «Tarjetas por pieza»; 5) lo visual (H-116, H-069, H-003…).
 
 ### H-018 · La agencia con la que trabajás no aparece en «¿Quién la hace?», y una «Nueva tarjeta» no se le puede pasar
 - **Gravedad:** 🔴 Bloquea (una persona nueva no logra pedirle trabajo a su agencia) · **Quién:** equipo · **Dónde:** ficha de la acción → «Crear tarea» → «¿Quién la hace?», notebook
@@ -34,7 +36,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** ![H-018](recorridos/2026-11-25/H-018.jpg)
 - **Prueba a ciegas (Martina, auditoría 25/11):** abandonó: «¿Cómo le pido algo a la agencia con la que trabajo todos los días?». Pasa también en Tablero → Nueva tarjeta. ![H-018](auditoria-2026-11-25/img/H-018.jpg)
 - **Procesos 26/11:** sigue en «Crear tarea» y en «Nueva tarjeta», en notebook y celular, y tampoco aparece una agencia recién dada de alta en /admin («Agencia Sofía»). **Se agrava:** una tarjeta creada con «Nueva tarjeta» (sin acción) no tiene en ningún lado cómo cambiarle la agencia (la ficha solo deja nombre, responsable y fecha; «Mover» solo cambia de columna): la agencia de verdad nunca recibe el pedido; hubo que pasarla por la API. En las tareas de una acción el atajo sigue siendo crear para Publicis y reasignar desde ⋯ (ventanita gris H-070, nombre cortado H-022). Ver también H-090 (en el tablero esas agencias caen en «Otras»). ![H-018](procesos-2026-11-26/img/H-018.jpg) · procesos P12, P13, P17, P51
-- **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) · 25/11 (auditoría: sube a 🔴) · 26/11 (procesos: sigue y se agrava)
+- **Visto:** 24/11 (código) · 25/11 (confirmado en pantalla) · 25/11 (auditoría: sube a 🔴) · 26/11 (procesos: sigue y se agrava) · 26/11 noche (Sofía: sigue en «Crear tarea»; reasignar desde ⋯ pide la ventanita gris)
 
 ### H-090 · En el tablero del equipo, la agencia con la que trabajás no aparece por su nombre: está en «Otras»
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Tablero `/entregas`, pestañas de agencia, notebook y celular
@@ -43,7 +45,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo → Tablero → mirar las pestañas; ir a otra pantalla y volver.
 - **Evidencia:** ![H-090](procesos-2026-11-26/img/H-090.jpg)
 - **Idea de arreglo:** una pestaña por agencia que tenga tarjetas, y recordar la última elegida. Va en paquete con H-018.
-- **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P57
+- **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P57 · 26/11 noche (Sofía: la tarjeta de Agencia de prueba aprobada sigue en «Otras»; el tablero vuelve a abrir en «Publicis 0») ![H-090](recorridos/2026-11-26/H-090.jpg)
 
 ### H-083 · Las pruebas automáticas de `main` están en rojo desde el merge de #90 y #91
 - **Gravedad:** 🟠 Traba (no la ve nadie de promo y marca, pero todo PR nuevo nace en rojo) · **Quién:** el equipo que construye (Ivan y el Escuadrón) · **Dónde:** CI de GitHub, paso `npm run test:externos`
@@ -52,7 +54,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** `cd frontend && npm run test:externos` → «FALLA … /clientes-vip · 1 prueba(s) fallaron». En GitHub, corrida del merge de #91.
 - **Evidencia:** salida del comando (Ramiro, 26/11) y el CI de `main` (dato del coordinador).
 - **Idea de arreglo:** sumar `/clientes-vip` con `clientes_vip.view` a los requisitos del front. Chico.
-- **Visto:** 26/11 (Ramiro y coordinador) · procesos P49, P55
+- **Visto:** 26/11 (Ramiro y coordinador) · procesos P49, P55 · 26/11 noche (sigue: el CI del merge de #92 en `main` falla en `test:externos` por `/clientes-vip`; el arreglo está en PR #93, sin mergear)
 
 ### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
 - **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
@@ -143,7 +145,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la agencia tiene que traducir; «fase» y «Entrega 2» no son palabras de la gente (la gente dice «ronda» o «cambio»).
 - **Cómo repetirlo:** reabrir una tarjeta aprobada y mirar la tarjeta y el aviso de la agencia.
 - **Evidencia:** capturas m-agencia2 y 033 de Lucía; 062 de Martina.
-- **Visto:** 26/11 (Lucía, Martina y Ramiro) · procesos P19, P25, P29
+- **Visto:** 26/11 (Lucía, Martina y Ramiro) · procesos P19, P25, P29 · 26/11 noche (sigue: «Revisar la versión 1 de Entrega», «¡Aprobada! Era la última fase», avisos «versión 2 de Entrega»)
 
 ### H-094 · La revisión con IA dice «encontró 2 cosas» y muestra una; el control previo no avisa la medida que falta
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo y agencia · **Dónde:** revisión de la versión (equipo) y control previo al entregar (agencia)
@@ -152,7 +154,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** pedido con dos medidas escritas a mano → la agencia entrega una sola → mirar el control previo y después la revisión.
 - **Evidencia:** capturas 039, 049 y 052 de Sofía; 027 de Martina.
 - **Ojo:** la IA de pruebas es simulada: lo que se juzga es el conteo y el chequeo de medidas (que no depende de la IA), no lo que «ve».
-- **Visto:** 26/11 (Sofía y Martina) · procesos P19, P26
+- **Visto:** 26/11 (Sofía y Martina) · procesos P19, P26 · 26/11 noche (sigue: a la agencia le muestra 1 cosa; al equipo «La IA encontró 3 cosas» en v1 y «4 cosas» en v2, con una sola tarjeta a la vista. El control previo **sí** avisó «Pieza que falta: Dobles (mobile) 315×405» antes de mandar: esa parte ya no pasa)
 
 ### H-005 · Mover una tarjeta a «Finalizado» la aprueba aunque no haya nada entregado, y no avisa a nadie
 - **Gravedad:** 🟠 · **Quién:** equipo, agencia · **Dónde:** tablero `/entregas`
@@ -168,7 +170,35 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la agencia deja el tablero abierto todo el día y trabaja sobre algo viejo. (La ficha de la acción del equipo sí se pone al día en ~15 s.)
 - **Cómo repetirlo:** agencia con el tablero abierto → el equipo pide cambios → mirar la pestaña sin recargar.
 - **Evidencia:** captura 051 de Martina.
-- **Visto:** 26/11 (Martina a ciegas) · proceso P22
+- **Visto:** 26/11 (Martina a ciegas) · proceso P22 · 26/11 noche (**no se repitió**: con la ficha abierta en la pestaña de la agencia y en la del equipo, cada cambio del otro apareció solo al volver a la pestaña, sin recargar; si Martina tampoco lo ve, pasa a Hechos)
+
+### H-111 · La campanita sigue diciendo «Te toca revisarla» de entregas que ya aprobaste
+- **Gravedad:** 🟠 Traba (sube con la prueba a ciegas) · **Quién:** equipo y agencia · **Dónde:** Notificaciones (campanita), notebook y celular
+- **Qué ve una persona:** después de revisar, pedir cambios y aprobar, la campanita del equipo sigue en rojo con «2»: «Agencia de prueba entregó la versión 2… Te toca revisarla» y «…versión 1… Te toca revisarla», como si fueran pendientes. A la agencia le pasa igual: «3» avisos, entre ellos «Te toca entregar la versión 2», cuando la tarjeta ya está Finalizada. Hay que marcarlos a mano uno por uno o con «Marcar todas como leídas».
+- **Por qué importa:** la campanita es lo primero que mira el equipo para saber qué le toca hoy (E4): con avisos viejos que dicen «te toca», el número en rojo deja de servir y se termina ignorando, también cuando llega algo nuevo de verdad.
+- **Cómo repetirlo:** hacer el ciclo completo (pedido → entrega v1 → pedir cambios → v2 → aprobar) abriendo la tarjeta desde Mis tareas, sin tocar la campanita; al final abrir Notificaciones en las dos cuentas.
+- **Evidencia:** ![H-111](recorridos/2026-11-26/H-111.jpg) (izquierda equipo, derecha agencia en el celular)
+- **Prueba a ciegas (Martina, 26/11 noche):** consigna «fijate qué te toca hoy y en qué quedó lo de la agencia»: Mis tareas dice «No tenés nada pendiente» y la campanita, «Te toca revisarla»: «¿me toca o no?». Tocó el aviso y la entrega ya estaba Finalizada. 8 pasos. ![H-111](recorridos/2026-11-26/H-111-martina.jpg)
+- **Idea de arreglo:** dar por leídos los avisos de una tarjeta cuando la persona la abre o hace lo que el aviso pedía.
+- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina a ciegas: sube a 🟠)
+
+### H-113 · La versión aprobada dice «Aprobada · Agencia de prueba»: no se sabe quién de Tienda la aprobó
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (y jefatura) · **Dónde:** ficha de la tarjeta → Versiones, notebook
+- **Qué ve una persona:** la línea de la versión dice «v2 · 26/11 02:14 · Aprobada · Agencia de prueba» y abajo «La subió Agencia de prueba». Leído de corrido parece que la aprobó la agencia; en ningún lado dice quién de Tienda aprobó ni cuándo.
+- **Por qué importa:** con varias personas en el equipo, nadie sabe quién dio el OK a una pieza que sale publicada. Martina (a ciegas): «yo no aprobé nada, ¿quién la aprobó?».
+- **Cómo repetirlo:** ciclo completo hasta aprobar → abrir la tarjeta Finalizada → bajar a Versiones.
+- **Evidencia:** ![H-113](recorridos/2026-11-26/H-113.jpg)
+- **Idea de arreglo:** «Aprobada por Equipo nocturno · 26/11 02:15» en la línea de la versión (y en el aviso).
+- **Visto:** 26/11 noche (Martina a ciegas)
+
+### H-114 · Las miniaturas de la entrega dicen solo la medida, no qué pieza es
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la tarjeta y revisión, notebook
+- **Qué ve una persona:** debajo de la imagen grande, cuadritos «1920×416», «640×260», «590×240», «315×405». Para saber cuál es el Header y cuál el Doble mobile hay que bajar a «Lo que se pidió» y cruzar medidas a mano.
+- **Por qué importa:** revisar una entrega es comparar con lo pedido (E3); con 4 a 8 piezas, cruzar medidas cansa y se escapa una.
+- **Cómo repetirlo:** abrir una tarjeta con la entrega de Banners Header + Dobles.
+- **Evidencia:** ![H-114](recorridos/2026-11-26/H-114.jpg) (en las imágenes de prueba la medida está escrita adentro; con piezas de verdad no se ve ni eso)
+- **Ojo:** probablemente lo cubre «Tarjetas por pieza» (`feat/tarjetas-por-pieza`, revisar por pieza). Confirmar cuando entre.
+- **Visto:** 26/11 noche (Martina a ciegas)
 
 ### H-082 · Pedido de Ivan: un lugar de Sugerencias para las agencias, con estado visible
 - **Gravedad:** 🟡 (pedido nuevo de Ivan, 25/11) · **Quién:** agencias (y el equipo, que las prioriza) · **Dónde:** nuevo: sección o botón «Sugerencias»
@@ -184,7 +214,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** subir el botón flotante por encima de la barra de abajo en el celular. Ivan (25/11): los asistentes conservan nombre e identidad aunque se vaya el dibujo de robot.
 - **Auditoría 25/11:** en la notebook tapa el botón de enviar del chat de La Triada (`/analytics`). ![H-025](auditoria-2026-11-25/img/H-025.jpg)
 - **Procesos 26/11:** **ya no tapa «Más»** de la barra del celular (arreglado por #87, una sola burbuja). **Sigue tapando:** «Confirmar pedido» y el sello «Confirmado» de **Mi pedido** del local (notebook: se lee «Confirm…»; celular igual), «Sacar foto» en Fotos (celular), «Validar placas (2)» en **Validación de RRSS** (notebook), «Enviar» en La Triada, el último «Confirmar pedido» visible en la **Planilla**, el final de «Pinchos Bombas», la columna «L» del calendario, el contador de columna del tablero, el texto del informe de Clientes VIP y chips de la Guía y Precios (celular). Al local le sugiere Google Ads / ROAS. ![H-025](procesos-2026-11-26/img/H-025.jpg) · procesos P31, P40, P41, P43, P44, P45, P57
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue: «Más» arreglado, tapa en lugares nuevos)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue: «Más» arreglado, tapa en lugares nuevos) · 26/11 noche (Lucía: sigue)
 
 ### H-085 · Mi pedido: una cantidad negativa da «Error al guardar» y queda escrita como si estuviera
 - **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** Mi pedido `/redexpres/mi-pedido`, cualquier casilla, notebook
@@ -238,7 +268,8 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** el encargado tiene que entrar a mirar cada tanto para saber si ya puede pedir.
 - **Cómo repetirlo:** local con el mes sin abrir → Mi pedido → tocar Octubre; el equipo abre el mes → campanita del local.
 - **Evidencia:** captura 007 de Martina.
-- **Visto:** 26/11 (Martina a ciegas) · proceso P40
+- **Lucía (26/11 noche):** en el celular los 12 meses son palabras grises sin borde, de 28 px de alto, y no marcan el mes en curso: no parecen tocables. ![H-099](recorridos/2026-11-26/H-099-meses.jpg)
+- **Visto:** 26/11 (Martina a ciegas) · proceso P40 · 26/11 noche (Lucía: meses en el celular)
 
 ### H-044 · En la Planilla de pedidos no hay cómo buscar un local entre 60
 - **Gravedad:** 🟠 Traba · **Quién:** equipo de Redexpres · **Dónde:** `/redexpres/planilla`, notebook
@@ -256,7 +287,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** acción → tarea de Publicis → «Quién la hace» → otra agencia.
 - **Evidencia:** la ventanita no sale en las capturas; texto leído en pantalla (Sofía).
 - **Procesos 26/11:** sale también en **«Confirmar pedido» del local** (confirma bien, pero pide el OK en la ventanita gris; la herramienta de Martina la cerraba sola y le pareció que el botón no hacía nada) y al tocar un mes punteado de la Planilla. Al reasignar: «Se la sacás a Publicis…» (Sofía y Ramiro) · procesos P17, P39, P41
-- **Visto:** 25/11 · 26/11 (sigue, más lugares)
+- **Visto:** 25/11 · 26/11 (sigue, más lugares) · 26/11 noche (sigue: reasignar la tarea a otra agencia)
 
 ### H-019 · Una foto panorámica de la góndola no se puede mandar, y el error no se entiende
 - **Gravedad:** 🟠 Traba · **Quién:** local · **Dónde:** Fotos para subir `/fotos`, celular claro
@@ -294,6 +325,15 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** ![H-100](procesos-2026-11-26/img/H-100.jpg)
 - **Idea de arreglo:** sin historia suficiente, «Nuevo» o «Sin historia» en vez de «Creciendo».
 - **Visto:** 26/11 (Sofía) · proceso P48
+
+### H-115 · Cenefas: la Vigencia obligatoria no dice qué escribir ni si hay que tocar «Guardar»
+- **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Cenefas → Rompe Precios, «Configuración», notebook
+- **Qué ve una persona:** «Vigencia *» es un campo vacío con una flechita. Al abrirla: «Sin opciones guardadas — escribí un valor y hacé clic en "Guardar"». No hay ejemplo de formato (¿«del 27 al 29/11»?, ¿fechas?) y no se sabe si el valor se usa sin tocar «Guardar». El título pide «el Excel de productos y la plantilla PPTX», pero lugar para la plantilla recién aparece después de cargar el Excel. Y a pesar del asterisco, se puede seguir sin vigencia (H-112).
+- **Por qué importa:** la vigencia sale impresa en cada cenefa del fin de semana: si se escribe mal o queda vacía, hay que reimprimir todo.
+- **Cómo repetirlo:** Cenefas → Rompe Precios → tocar la flechita de Vigencia.
+- **Evidencia:** ![H-115](recorridos/2026-11-26/H-115.jpg)
+- **Idea de arreglo:** ejemplo en el campo («Ej.: Válido del 27/11 al 29/11»), que lo escrito valga sin «Guardar» (guardar = recordarlo para la próxima), y no dejar seguir sin vigencia. Va en paquete con H-112.
+- **Visto:** 26/11 noche (Martina a ciegas)
 
 ### H-043 · Una plantilla armada en el editor no aparece al hacer cenefas
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Editor `/materiales/cenefas/v2` y Cenefas → Pruebas, notebook
@@ -336,7 +376,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo → ir a `/materiales` en modo claro.
 - **Evidencia:** ![H-002](recorridos/2026-11-24/H-002.jpg) · contraste medido 1,1:1 (el mínimo es 4,5:1).
 - **Auditoría 25/11:** además, el texto de las tarjetas toca el borde (sin margen). ![H-002](auditoria-2026-11-25/img/H-002.jpg)
-- **Visto:** 24/11 · 25/11 (sigue en claro; en oscuro los títulos sí se leen) · 25/11 (auditoría) · 26/11 (Lucía: sigue)
+- **Visto:** 24/11 · 25/11 (sigue en claro; en oscuro los títulos sí se leen) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-026 · En Campañas, Analytics y Conexiones el menú no marca dónde estás
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** `/campaigns`, `/canales`, `/settings`, notebook
@@ -344,7 +384,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la persona no sabe en qué pantalla está ni cómo volver; el menú cambia de forma de una pantalla a otra.
 - **Cómo repetirlo:** equipo → /campaigns en 1366×768.
 - **Evidencia:** ![H-026](recorridos/2026-11-25/H-026.jpg)
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-027 · Editor de cenefas en el celular: la barra de arriba se encima y se corta
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** Editor de plantillas `/materiales/cenefas/v2`, celular
@@ -353,7 +393,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo en el celular → /materiales/cenefas/v2.
 - **Evidencia:** ![H-027](recorridos/2026-11-25/H-027.jpg)
 - **Procesos 26/11:** captura 033 de Sofía · proceso P34
-- **Visto:** 25/11 (Lucía) · 26/11 (sigue)
+- **Visto:** 25/11 (Lucía) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-091 · Usar una plantilla en una acción que ya arrancó crea tareas ya vencidas, sin avisar
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la acción → Tareas → Usar plantilla, notebook
@@ -418,7 +458,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** hace dudar en el primer paso de pedir algo.
 - **Cómo repetirlo:** equipo → acción → Crear tarea.
 - **Evidencia:** ![H-047](auditoria-2026-11-25/img/H-047.jpg)
-- **Visto:** 25/11 (Sofía, Martina y Lucía) · 26/11 (sigue)
+- **Visto:** 25/11 (Sofía, Martina y Lucía) · 26/11 (sigue) · 26/11 noche (sigue)
 
 ### H-022 · En la tarea, quién la hace y el responsable se ven cortados
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la acción, tarea desplegada, `/calendario`, notebook 1366×768
@@ -462,7 +502,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo en el celular → Tablero.
 - **Evidencia:** ![H-052](auditoria-2026-11-25/img/H-052.jpg)
 - **Procesos 26/11:** captura 169 de Sofía; 043 de Lucía · proceso P27
-- **Visto:** 25/11 (Sofía y Lucía) · 26/11 (sigue)
+- **Visto:** 25/11 (Sofía y Lucía) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-051 · Calendario en el celular: una semana a la vista y filtros que se cortan
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/calendario` y `/campaigns`, celular
@@ -487,7 +527,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** el mundo es lo primero que hay que saber (qué estoy mirando) y está cortado; dos botones para lo mismo confunden.
 - **Cómo repetirlo:** equipo → Tienda Inglesa → `/calendario` en 1366×768.
 - **Evidencia:** ![H-004](recorridos/2026-11-24/H-004.jpg)
-- **Visto:** 24/11 · 25/11 (Lucía: «Tienda In…» cortado en todas las pantallas del equipo, también en oscuro) · 25/11 (auditoría) · 26/11 (sigue)
+- **Visto:** 24/11 · 25/11 (Lucía: «Tienda In…» cortado en todas las pantallas del equipo, también en oscuro) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-003 · Tres carteles distintos para decir «esto no es para vos»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** local, agencia, equipo con permisos limitados · **Dónde:** pantallas sin acceso (por ejemplo `/admin`, `/calendario`, `/entregas`, `/precios` con la cuenta del local)
@@ -498,7 +538,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** un solo cartel (el del candado, con botón) para todas.
 - **Auditoría 25/11:** sigue; además el local en /entregas deja un error en la consola (pide el tablero y recibe «no») y una dirección que no existe muestra otro cartel más, en inglés (H-058).
 - **Procesos 26/11:** Clientes VIP suma un cuarto estilo («Clientes VIP no es de Redexpres»); con un usuario sin permiso de calendario, «No tenés acceso al calendario» sigue sin salida (Sofía, Lucía, Ramiro) · procesos P49, P52, P55
-- **Visto:** 24/11 · 25/11 (sigue: en el local, /calendario, /mis-tareas y /entregas con escudo rojo sin botón; /mis-tareas dice «No tenés acceso al calendario.») (Lucía: en el local, Convertidor y /materiales dicen «No tenés acceso a las cenefas»; Diccionario «El diccionario no es de Redexpres» con otro dibujo y sin botón; hojas local-celular-claro-3 y local-notebook-oscuro-3) · 25/11 (auditoría) · 26/11 (sigue)
+- **Visto:** 24/11 · 25/11 (sigue: en el local, /calendario, /mis-tareas y /entregas con escudo rojo sin botón; /mis-tareas dice «No tenés acceso al calendario.») (Lucía: en el local, Convertidor y /materiales dicen «No tenés acceso a las cenefas»; Diccionario «El diccionario no es de Redexpres» con otro dibujo y sin botón; hojas local-celular-claro-3 y local-notebook-oscuro-3) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (barrido: sigue igual en el local) · 26/11 noche (Lucía: además, el Convertidor le dice al local «No tenés acceso a las cenefas»)
 
 ### H-058 · Una dirección que no existe muestra el 404 de fábrica, en inglés y sin salida
 - **Gravedad:** 🟡 Desprolijo · **Quién:** todos · **Dónde:** cualquier ruta inventada, notebook
@@ -516,13 +556,21 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** hoja equipo-notebook-claro-2 del barrido; contraste 1,5:1 medido
 - **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue)
 
+### H-116 · Dos estilos de botón «apagado»: lila lavado en unas pantallas, gris en otras, sin decir por qué
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** Diccionario («Descargar Excel»), Finanzas → Cuentas («+ Crear»), Convertidor («Continuar»), Precios («Buscar»); notebook y celular
+- **Qué ve una persona:** con el diccionario vacío, «Descargar Excel» es un violeta lavado (~2:1) que no se sabe si está apagado o es que no se lee, y no dice qué falta. En otras pantallas lo apagado es gris. Dos maneras distintas de decir «todavía no».
+- **Por qué importa:** no se distingue «no se puede» de «no se lee», y no dice qué falta para poder usarlo (vara: pareja en todas partes, contraste alto).
+- **Cómo repetirlo:** equipo → Herramientas → Diccionario con la base vacía; Finanzas → Cuentas; Convertidor sin archivo.
+- **Evidencia:** ![H-116](recorridos/2026-11-26/H-116.jpg) (Lucía, barrido del 26/11 noche)
+- **Visto:** 26/11 noche (Lucía)
+
 ### H-069 · Letra gris clarito o de 10 px que no se lee
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo, agencia, local · **Dónde:** Generar cenefas (pasos 2 y 3), Informe («DESDE/HASTA»), La Triada («Sin conexión»), Cuentas («ACTIVA»), Perfil («SUPER ADMIN»), Mi pedido («OFERTAS», «BOMBAS»)
 - **Qué ve una persona:** etiquetas en gris muy claro (≈2,5:1) o de 10 px en mayúscula.
 - **Por qué importa:** hay que acercarse para leer; no se distingue «apagado» de «no se lee».
 - **Cómo repetirlo:** abrir esas pantallas en claro.
 - **Evidencia:** barrido `equipo/notebook-claro/materiales__cenefas__v2__generar.jpg`, `analytics.jpg`, `facturacion__cuentas.jpg`; medida aprox. 2,5–2,6:1.
-- **Visto:** 25/11 (Lucía) · 26/11 (Lucía: sigue)
+- **Visto:** 25/11 (Lucía) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-068 · El calendario de Redexpres encandila: amarillo flúo y títulos en mayúscula cortados
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/calendario` en Redexpres, notebook
@@ -549,7 +597,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** la agencia entrega con comentario → el equipo abre la tarjeta.
 - **Evidencia:** captura C/080 de la noche (Sofía).
 - **Procesos 26/11:** después de pedir cambios con comentario, el panel sigue mostrando solo «Sumé 1 archivo…» (captura 062 de Sofía) · proceso P22
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: con una marca y la nota de la agencia, «Comentarios» dice «Todavía no hay comentarios»)
 
 ### H-054 · «Cambiar el pedido» abre otro formulario, con otras palabras y las medidas vacías
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la tarjeta → «Cambiar el pedido, las fases o quiénes aprueban», notebook
@@ -593,7 +641,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** se ve sin terminar y sale una cenefa sin vigencia.
 - **Cómo repetirlo:** Cenefas → Pruebas → Excel de ejemplo → `Base cenefa A4 1.pptx` → sin vigencia → Generar.
 - **Evidencia:** ![H-050](auditoria-2026-11-25/img/H-050.jpg)
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: «Ver capacidad (XXX)», «9 cosas para revisar antes de con…» cortado y deja seguir sin vigencia)
 
 ### H-063 · Convertidor y Editor de plantillas hablan en jerga
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/materiales/convertidor`, `/materiales/cenefas/v2`, notebook
@@ -602,7 +650,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** Convertidor con un Excel de gestión; editor → Cenefa A4.
 - **Evidencia:** capturas C/050, C/053, C/022, C/023 de la noche (Sofía).
 - **Procesos 26/11:** en la grilla del Convertidor la descripción corregida se lee «Refresco S» (captura 046 de Sofía) · procesos P35, P36
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: en Rompe Precios, «Badge o sello que reemplaza la variable "imagen"» y «<<codigo>>»)
 
 ### H-015 · El link «Informe» de Cenefas no hace nada para quien no es superadmin
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (no superadmin) · **Dónde:** `/materiales/cenefas`, arriba a la derecha
@@ -710,7 +758,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** no se lee qué es cada tipo.
 - **Cómo repetirlo:** equipo en el celular → /materiales/cenefas.
 - **Evidencia:** hoja equipo-celular-claro-2 (Lucía: V8-cenefas-tarjetas-celular)
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-033 · Conexiones en modo oscuro: un cuadro «+» blanco
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/settings`, notebook oscuro
@@ -718,7 +766,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** rompe el modo oscuro.
 - **Cómo repetirlo:** equipo, modo oscuro → /settings.
 - **Evidencia:** hoja equipo-notebook-oscuro (Lucía: V7-conexiones-oscuro)
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-101 · Clientes VIP: letra gris clarito, «▲ 0,0%» en verde y dos «Cargar archivo»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo con Clientes VIP · **Dónde:** `/clientes-vip`, notebook
@@ -775,7 +823,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** hay que esperar para cerrar.
 - **Cómo repetirlo:** crear una tarea.
 - **Evidencia:** captura C/035 de la noche.
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: «Se adjuntó el archivo al pedido» tapa la ✕ de la ficha)
 
 ### H-073 · La app no sigue el modo oscuro del celular
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia y local · **Dónde:** todo, celular en oscuro
@@ -848,6 +896,15 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** /admin → Nuevo usuario → Externa → Otra agencia (nueva)….
 - **Evidencia:** captura 149 de Sofía.
 - **Visto:** 26/11 (Sofía) · proceso P51
+
+### H-112 · Cenefas: antes de generar dice «Se van a generar 1 cenefas» con un Excel de 5 productos
+- **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** Cenefas → Rompe Precios `/materiales/cenefas?destino=rompe_precios`, notebook
+- **Qué ve una persona:** con el Excel de ejemplo (5 productos) y una plantilla elegida, abajo dice «Se van a generar 1 cenefas a partir de 1 Excel» (cuenta plantillas, no cenefas, y con «1 cenefas» mal escrito). Al lado, el botón «Generar y descargar PPTX» está activo aunque la Vigencia (con asterisco) está vacía, y no descarga nada: lleva a la revisión del lote (H-050).
+- **Por qué importa:** quien prepara cenefas para el fin de semana no sabe cuántas va a imprimir y duda de si cargó bien el Excel; el botón promete algo que no hace.
+- **Cómo repetirlo:** Cenefas → Rompe Precios → Agregar Excel (el de «Descargar plantilla Excel») → Elegir plantillas → Cargar nueva plantilla (A4, `Base cenefa A4 1.pptx`) → elegirla → mirar el cuadro de abajo a la derecha.
+- **Evidencia:** ![H-112](recorridos/2026-11-26/H-112.jpg)
+- **Idea de arreglo:** «Se van a generar 5 cenefas (1 plantilla)» y el botón «Revisar y generar», apagado sin vigencia.
+- **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina: tampoco supo si la vigencia cuenta, ver H-115)
 
 ### H-071 · Para confirmar: las miniaturas de la entrega recortan la pieza
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia y equipo · **Dónde:** formulario de entrega y ficha
