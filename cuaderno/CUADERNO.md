@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 96 abiertos (86 confirmados, 1 pedido de Ivan, 9 para confirmar) · 2 en curso (las tarjetas, las arregla Claude, pedido de Ivan del 26/11) · 25 hechos (15 entraron a `main` el 26/11 con los PR #93, #94 y #99) · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 96 abiertos (87 confirmados, 1 pedido de Ivan, 8 para confirmar) · 2 en curso (las tarjetas, las arregla Claude, pedido de Ivan del 26/11) · 26 hechos (16 entraron a `main` el 26/11 con los PR #93, #94, #99 y #100) · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -38,6 +38,15 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** ![H-089](procesos-2026-11-26/img/H-089.jpg)
 - **Idea de arreglo:** comparar pieza por pieza, emparejando por medida (o dejar elegir cuál).
 - **Visto:** 26/11 (Lucía) · proceso P23
+
+### H-122 · «Reintentar las que fallaron» nunca anda en la Validación de RRSS: cada placa dice «Esta validación ya está cerrada»
+- **Gravedad:** 🟠 Traba · **Quién:** equipo (quien valida placas) · **Dónde:** Redes sociales → Validación de RRSS, notebook
+- **Qué ve una persona:** CatTi no pudo leer dos placas y el botón «Reintentar las que fallaron (2)» queda arriba. Al tocarlo, cada placa vuelve con «Esta validación ya está cerrada» y el botón sigue ahí para siempre.
+- **Por qué importa:** si CatTi falla en una placa, la única salida es rehacer toda la validación desde cero (el mailing o la planilla y todas las placas).
+- **Cómo repetirlo:** validar un lote donde alguna placa dé «No se pudo leer» (con la IA simulada alcanza una placa sin pareja), esperar a que el lote se cierre y tocar «Reintentar las que fallaron».
+- **Evidencia:** ![H-122](recorridos/2026-11-26/H-122.jpg) (los POST de las placas dan 400)
+- **Idea de arreglo:** que reintentar reabra el lote para esas placas, o que el lote no se cierre mientras haya placas para reintentar.
+- **Visto:** 26/11 (Ramiro, revisando el #100; ya pasaba en `main` desde el 21/09/2026)
 
 ### H-095 · Si la agencia manda una versión mientras revisás, «recargá» te borra la marca que ya escribiste
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (quien revisa) · **Dónde:** ficha → Revisar ahora
@@ -785,11 +794,6 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Fuente:** `plataforma/entrada-admin-diseno.md`.
 - **Auditoría 25/11:** el ícono de desactivar está en la fila propia del admin (no se tocó). Desactivar a otro es un toque sin preguntar: H-049.
 
-### H-016 · Para confirmar: Validación de redes deja borrar lo ajeno
-- **Gravedad:** 🟡 · **Quién:** equipo · **Dónde:** `/redes-sociales/validacion`
-- **Sospecha (código):** el tacho aparece en validaciones de otras personas; si el borrado falla, toda la lista dice «No se pudo cargar el historial».
-- **Fuente:** `plataforma/materiales-precios-locales.md`.
-
 ### H-117 · Para confirmar: en English y en Português faltan 75 textos
 - **Gravedad:** 🟡 Desprolijo · **Quién:** quien usa la plataforma en inglés o portugués · **Dónde:** sobre todo el Convertidor (`convertidor.dividir.*`) y otras pantallas
 - **Sospecha (código, 26/11):** `frontend/lib/locales/es.json` tiene 75 claves que no están en `en.json` ni en `pt.json`; en esos idiomas se ven en castellano o como la clave cruda. La biblioteca de Bruno ya lo nota («Ya faltan claves de antes»).
@@ -821,6 +825,13 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Fuente:** al escribir las bibliotecas (25/11); confirmado en el código el 26/11.
 
 ## Hechos
+
+### H-016 · Validación de redes deja borrar lo ajeno (y un borrado rechazado tira la lista)
+- **Gravedad:** 🟡 · **Quién:** equipo · **Dónde:** `/redes-sociales/validacion`
+- **Sospecha (código):** el tacho aparece en validaciones de otras personas; si el borrado falla, toda la lista dice «No se pudo cargar el historial».
+- **Fuente:** `plataforma/materiales-precios-locales.md`.
+- **Visto:** 26/11 (Ramiro, confirmado en el navegador al revisar el #100)
+- **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #100 (validaciones sin historial): el tacho sale solo donde esa persona puede borrar y un borrado rechazado deja la lista.
 
 ### H-001 · Borrar una acción o una tarea borra las imágenes y los ZIP que entregó la agencia
 - **Gravedad:** 🔴 Bloquea (rompe la regla «las imágenes de las entregas no se borran nunca») · **Quién:** equipo · **Dónde:** ficha de la acción (Eliminar) y tarea («Borrar con sus entregas»), `/calendario`
