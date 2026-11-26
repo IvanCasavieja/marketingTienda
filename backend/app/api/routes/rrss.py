@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import require_permission
+from app.core.externos import puede_tener
 from app.core.rate_limit import limiter
 from app.core.uploads import read_limited
 from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, RrssValidacionPagina
@@ -56,11 +57,16 @@ async def _get_validacion_or_404(db: AsyncSession, validacion_id: int) -> RrssVa
     return v
 
 
-def _exigir_dueno(v: RrssValidacion, user: User) -> None:
+def _es_suya(creado_por_id: int | None, user: User) -> bool:
     """Cualquiera con rrss.view puede MIRAR una validación (las de hoy son
     del equipo), pero solo quien la creó -o un superusuario- puede
-    modificarla o borrarla."""
-    if not user.is_superuser and v.creado_por_id != user.id:
+    modificarla o borrarla. La misma regla la usa la lista para decir en qué
+    filas va el tacho (puede_borrar)."""
+    return user.is_superuser or creado_por_id == user.id
+
+
+def _exigir_dueno(v: RrssValidacion, user: User) -> None:
+    if not _es_suya(v.creado_por_id, user):
         raise HTTPException(status_code=403, detail="Solo quien creó la validación puede modificarla")
 
 
@@ -364,12 +370,18 @@ async def cerrar_validacion(
 
 @router.get("/validaciones")
 async def listar_validaciones(
-    _: User = Depends(require_permission("rrss.view")),
+    current_user: User = Depends(require_permission("rrss.view")),
     db: AsyncSession = Depends(get_db),
 ):
     """Las validaciones de hoy, una fila por validación con sus contadores:
     para retomar una si se cerró la pestaña. No es un historial: cada una se
-    borra sola a las RRSS_RETENCION_HORAS horas (services/rrss/retencion.py)."""
+    borra sola a las RRSS_RETENCION_HORAS horas (services/rrss/retencion.py).
+
+    `puede_borrar` dice si ESTA persona puede borrar esa fila (rrss.validate y
+    que sea suya, o superusuario), con la misma regla que DELETE: la pantalla
+    mostraba el tacho en todas y, al tocarlo en la de otra persona, el 403
+    reemplazaba la lista entera por un error (H-016, Ramiro 26/11/2026)."""
+    puede_validar = puede_tener(current_user, "rrss.validate")
     I = RrssValidacionImagen
     res = await db.execute(
         select(
@@ -380,6 +392,7 @@ async def listar_validaciones(
             func.count(I.id).filter(I.estado.in_(("diferencias", "avisos"))),
             func.count(I.id).filter(I.estado == "sin_match"),
             func.count(I.id).filter(I.estado == "error"),
+            RrssValidacion.creado_por_id,
         )
         .outerjoin(I, I.validacion_id == RrssValidacion.id)
         .outerjoin(User, User.id == RrssValidacion.creado_por_id)
@@ -392,6 +405,7 @@ async def listar_validaciones(
             "id": r[0], "nombre_mailing": r[1], "estado": r[2],
             "created_at": r[3].isoformat() if r[3] else None, "usuario": r[4],
             "total": r[5], "ok": r[6], "con_diferencias": r[7], "sin_match": r[8], "error": r[9],
+            "puede_borrar": puede_validar and _es_suya(r[10], current_user),
         }
         for r in res.all()
     ]
