@@ -283,6 +283,13 @@ async def validar_imagen(
             detail=f"'{archivo.filename}' supera los {archivos.max_mb('placas')} MB",
         )
 
+    # Lo que sigue tarda: CatTi mira la placa hasta cinco veces. Hasta acá solo
+    # se leyó, así que la transacción se cierra: si no, quedaba abierta todo
+    # ese rato, con una conexión del pool tomada y las tablas de RRSS en uso, y
+    # la purga no podía compactarlas (services/rrss/retencion.py). Lo que se
+    # guarda al final va en una transacción corta.
+    await db.commit()
+
     async def cargar_paginas():
         # Las páginas del mailing (ya renderizadas) sirven para recortar el lado del
         # mailing de cada diferencia: solo se traen si la placa tiene alguna.
@@ -290,6 +297,7 @@ async def validar_imagen(
         # cuatro enteras por placa, con tres placas a la vez, tiraba el servidor
         # (ver imagenes.Carillas.desde_jpegs).
         paginas_db = await _paginas(db, v.id)
+        await db.commit()  # lo mismo: después de traerlas, CatTi vuelve a mirar
         return imagenes.Carillas.desde_jpegs(
             [p.imagen for p in paginas_db], [(p.ancho, p.alto) for p in paginas_db])
 

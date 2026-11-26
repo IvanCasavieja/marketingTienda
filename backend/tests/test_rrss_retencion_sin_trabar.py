@@ -15,7 +15,10 @@ contra Postgres:
   siguiente: con una transacción más vieja abierta, VACUUM FULL se guardaba
   lo recién borrado y el lugar no volvía;
 - el lazo arranca con las tres tablas por compactar, por si el proceso
-  anterior no llegó.
+  anterior no llegó;
+- una placa no tiene la base tomada mientras CatTi la mira (de cinco a
+  noventa segundos): la transacción quedaba abierta todo ese rato, con las
+  tablas de RRSS en uso, y la purga no podía compactarlas en todo el día.
 """
 import asyncio
 import os
@@ -289,3 +292,147 @@ def test_el_lugar_vuelve_aunque_hubiera_una_transaccion_abierta_al_borrar(monkey
             await motor.dispose()
 
     asyncio.run(prueba())
+
+
+# ---------------------------------------------------------------- la placa, mientras CatTi la mira
+
+def _jpeg() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), "white").save(buf, "JPEG")
+    return buf.getvalue()
+
+
+async def _con_la_app(prueba):
+    """La app de verdad contra la base de prueba, con sesiones que confirman de
+    verdad (no adentro de una transacción que se deshace al final): lo que se
+    prueba es justamente qué tiene tomado cada pedido. Siembra una persona que
+    valida y una validación suya en curso, con una página del mailing, y las
+    borra al terminar."""
+    import uuid
+    from datetime import datetime, timezone
+
+    import httpx
+    from sqlalchemy import delete
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.core.database import get_db
+    from app.core.rate_limit import limiter
+    from app.core.security import create_access_token, hash_password
+    from app.main import app
+    from app.models.rrss_validacion import RrssValidacion, RrssValidacionPagina
+    from app.models.user import User
+
+    motor = create_async_engine(URL, connect_args={"statement_cache_size": 0})
+    sesiones = async_sessionmaker(motor, expire_on_commit=False)
+
+    async def get_db_de_prueba():
+        async with sesiones() as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    uid = vid = None
+    app.dependency_overrides[get_db] = get_db_de_prueba
+    limite_antes = limiter.enabled
+    limiter.enabled = False
+    try:
+        async with sesiones() as db:
+            u = User(email=f"valida.{uuid.uuid4().hex[:8]}@prueba-rrss.test", full_name="Valida Placas",
+                     hashed_password=hash_password("Clave-de-prueba-1"),
+                     permissions=["rrss.view", "rrss.validate"], is_active=True, is_superuser=False,
+                     must_change_password=False, password_changed_at=datetime.now(timezone.utc))
+            db.add(u)
+            await db.flush()
+            uid = u.id
+            v = RrssValidacion(nombre_mailing="mailing.pdf", estado="en_proceso", config={},
+                               mailing={"productos": []}, creado_por_id=uid)
+            db.add(v)
+            await db.flush()
+            vid = v.id
+            db.add(RrssValidacionPagina(validacion_id=vid, numero=0, ancho=20, alto=20, imagen=_jpeg()))
+            await db.commit()
+        cabeza = {"Authorization": f"Bearer {create_access_token(uid)}"}
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://prueba") as http:
+            await prueba(http, cabeza, motor, sesiones, vid, uid)
+    finally:
+        limiter.enabled = limite_antes
+        app.dependency_overrides.pop(get_db, None)
+        async with sesiones() as db:
+            if vid is not None:
+                await db.execute(delete(RrssValidacion).where(RrssValidacion.id == vid))
+            if uid is not None:
+                await db.execute(delete(User).where(User.id == uid))
+            await db.commit()
+        await motor.dispose()
+
+
+async def _nadie_tiene_tomadas_las_tablas(motor) -> bool:
+    """Si en este momento se podría compactar: nadie tiene en uso ninguna de
+    las tres tablas de RRSS (ni para leer)."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    async with motor.connect() as c:
+        try:
+            await c.execute(text(
+                "LOCK TABLE rrss_validaciones, rrss_validacion_paginas, rrss_validacion_imagenes "
+                "IN ACCESS EXCLUSIVE MODE NOWAIT"))
+            return True
+        except DBAPIError:
+            return False
+        finally:
+            await c.rollback()
+
+
+def _placa_ok():
+    from app.services.rrss.validador import ResultadoPlaca
+
+    return ResultadoPlaca(resultado={"filas": [], "tiempos_ms": {}}, vista=None, ancho=20, alto=20,
+                          formato="cuadrada", estado="ok", tokens_in=1000, tokens_out=200)
+
+
+@con_base
+def test_mientras_catti_mira_la_placa_la_base_queda_libre(monkeypatch):
+    """La ruta de cada placa leía la validación, dejaba la transacción abierta
+    y llamaba a CatTi (hasta cinco veces): todo ese rato tenía una conexión
+    del pool y las tablas de RRSS en uso, y la purga no podía compactarlas.
+    Ahora, mientras CatTi mira la placa (antes y después de traer las páginas
+    del mailing), nadie tiene las tablas tomadas; y la placa se guarda igual."""
+    from sqlalchemy import func, select
+
+    from app.models.ai_usage_log import AIUsageLog
+    from app.models.rrss_validacion import RrssValidacionImagen
+    from app.services.rrss import validador
+
+    libres = []
+
+    async def validar_placa(datos, nombre, mailing, cargar_paginas, config):
+        motor = estado["motor"]
+        libres.append(await _nadie_tiene_tomadas_las_tablas(motor))
+        await cargar_paginas()
+        libres.append(await _nadie_tiene_tomadas_las_tablas(motor))
+        return _placa_ok()
+
+    estado = {}
+    monkeypatch.setattr(validador, "validar_placa", validar_placa)
+
+    async def prueba(http, cabeza, motor, sesiones, vid, uid):
+        estado["motor"] = motor
+        r = await http.post(f"/api/v1/rrss/validaciones/{vid}/imagenes", headers=cabeza,
+                            files={"archivo": ("placa.jpg", _jpeg(), "image/jpeg")}, data={"orden": "0"})
+        assert r.status_code == 200, r.text
+        assert libres == [True, True], "mientras CatTi miraba la placa, las tablas de RRSS seguían tomadas"
+        async with sesiones() as db:
+            assert await db.scalar(select(func.count()).select_from(RrssValidacionImagen)
+                                   .where(RrssValidacionImagen.validacion_id == vid)) == 1
+            assert await db.scalar(select(func.sum(AIUsageLog.input_tokens))
+                                   .where(AIUsageLog.user_id == uid)) == 1000
+
+    asyncio.run(_con_la_app(prueba))
