@@ -225,13 +225,66 @@ def test_un_mundo_borrado_desde_la_pantalla_no_cambia_el_informe():
         assert guardado is not None and guardado.cobrable is False
         tipos = (await jefa.get("/tools/cenefas/v2/destinos", params={"mundo": "tienda_inglesa"})).json()
         assert slug not in {t["slug"] for t in tipos}
-        # El mismo nombre se puede volver a crear: nace como uno nuevo.
+        # Volver a crearlo sin tildar la casilla (cobrable) pasaba a cobrar sus
+        # corridas viejas: no se deja, y se dice qué hacer (Ramiro, 26/11/2026).
         r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "mundo": "tienda_inglesa"})
+        assert r.status_code == 409, r.text
+        assert "tildá «No suma al informe de producción»" in r.json()["detail"]
+        async with d.Sesion() as s:
+            assert await informe.resumen(s) == antes
+        # Sin costo, como era, sí: lo continúa, y lo facturado no se mueve ni al
+        # crearlo ni al volver a borrarlo.
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "cobrable": False,
+                                                                 "mundo": "tienda_inglesa"})
         assert r.status_code == 201, r.text
+        assert r.json()["slug"] == slug
+        async with d.Sesion() as s:
+            assert await informe.resumen(s) == antes
         assert (await jefa.delete(f"/tools/cenefas/v2/destinos/{slug}")).status_code == 204
         async with d.Sesion() as s:
+            assert await informe.resumen(s) == antes
             assert (await s.execute(select(CenefaDestinoBorrado.cobrable).where(
-                CenefaDestinoBorrado.slug == slug))).scalar_one() is True, "manda el último que se borró"
+                CenefaDestinoBorrado.slug == slug))).scalar_one() is False
+
+    correr(prueba)
+
+
+def test_volver_a_crear_un_tipo_cobrable_como_sin_costo_no_se_deja():
+    """Lo mismo al revés: un tipo borrado que se cobraba (Mega Rompe Precios, el
+    ejemplo del propio formulario) creado de nuevo «para probar», sin costo,
+    dejaba sus corridas en cero pesos. El 409 no crea nada."""
+    from app.models.cenefa_destino import CenefaDestino
+    from app.services.cenefas import informe
+    from test_tablero_agencia_api import Cliente, _persona, correr
+
+    async def prueba(d):
+        jefa = Cliente(d.http, await _persona(d, "Jefa Cenefas", permisos=("cenefas.view", "cenefas.edit")))
+        nombre = f"Mega Rompe Precios {d.sufijo}"
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "mundo": "tienda_inglesa"})
+        assert r.status_code == 201, r.text
+        slug = r.json()["slug"]
+        async with d.Sesion() as s:
+            s.add(_corrida(slug, None, datetime(2026, 10, 2, 10, tzinfo=timezone.utc), 30, excel="m.xlsx"))
+            await s.commit()
+        assert (await jefa.delete(f"/tools/cenefas/v2/destinos/{slug}")).status_code == 204
+        async with d.Sesion() as s:
+            antes = await informe.resumen(s)
+        assert next(m for m in antes["por_mundo"] if m["mundo"] == slug)["costo"] == 30 * 49
+
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "cobrable": False,
+                                                                 "mundo": "tienda_inglesa"})
+        assert r.status_code == 409, r.text
+        assert "dejá sin tildar «No suma al informe de producción»" in r.json()["detail"]
+        assert nombre in r.json()["detail"]
+        async with d.Sesion() as s:
+            assert await s.get(CenefaDestino, slug) is None
+            assert await informe.resumen(s) == antes
+
+        # Cobrable, como era: se crea y lo facturado sigue igual.
+        r = await jefa.post("/tools/cenefas/v2/destinos", json={"nombre": nombre, "mundo": "tienda_inglesa"})
+        assert r.status_code == 201, r.text
+        async with d.Sesion() as s:
+            assert await informe.resumen(s) == antes
 
     correr(prueba)
 

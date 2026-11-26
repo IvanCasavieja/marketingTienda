@@ -1424,6 +1424,25 @@ async def create_destino(
     if existente is not None:
         raise HTTPException(status_code=409, detail=f"Ya existe un mundo llamado {existente.nombre!r}")
 
+    # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
+    cobrable = bool(payload.get("cobrable", True))
+    # Volver a crear un mundo borrado (los de Tienda Inglesa, 0094) lo
+    # continúa: sus corridas tienen el mismo slug y el informe las lee del
+    # mundo vivo. Si el nuevo se cobrara distinto, cambiaría lo ya facturado:
+    # crear «Pruebas» sin tildar la casilla pasaba a cobrar todas sus corridas
+    # desde 2025. Eso no se deja; se dice qué hacer.
+    borrado = await db.get(CenefaDestinoBorrado, slug)
+    if borrado is not None and borrado.cobrable != cobrable:
+        if borrado.cobrable:
+            como, hacer = "sumaba al informe de producción", "dejá sin tildar"
+        else:
+            como, hacer = "no sumaba al informe de producción", "tildá"
+        raise HTTPException(status_code=409, detail=(
+            f"Ya hubo un tipo de cenefa «{borrado.nombre}» que {como}, y sus cenefas siguen en el informe "
+            f"así. Para volver a crearlo, {hacer} «No suma al informe de producción»; si es otro, "
+            "elegí otro nombre."
+        ))
+
     icono = str(payload.get("icono") or "Store")
     color = str(payload.get("color") or "emerald")
     if icono not in _ICONOS_VALIDOS:
@@ -1443,10 +1462,9 @@ async def create_destino(
         color=color,
         orden=max_orden + 10,
         mundo=mundo,
-        # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
         # Se marca en false para Redexpres y para el mundo de pruebas, que
         # pasan por el motor pero no son trabajo facturable.
-        cobrable=bool(payload.get("cobrable", True)),
+        cobrable=cobrable,
         created_by=current_user.id,
     )
     db.add(destino)
