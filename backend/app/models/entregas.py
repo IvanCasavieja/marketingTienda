@@ -244,8 +244,9 @@ class CalendarioVersionZip(Base):
     la base: app/services/espacio.py), la entrega se hace igual y la fila
     queda SIN los bytes (`datos` en NULL):
     así la ficha dice que el ZIP no se guardó y por qué. Nunca se borra nada
-    para hacerle lugar. Como el resto de la versión, se va solo si alguien
-    borra la tarea (o la acción) entera."""
+    para hacerle lugar. Las claves son ON DELETE CASCADE, pero una tarea (o
+    una acción) con algo entregado no se deja borrar: ver
+    `_exigir_que_no_haya_entregas` en las rutas del calendario (H-001)."""
 
     __tablename__ = "calendario_version_zips"
 
