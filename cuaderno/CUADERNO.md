@@ -201,6 +201,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** Cenefas → Rompe Precios → tocar la flechita de Vigencia.
 - **Evidencia:** ![H-115](recorridos/2026-11-26/H-115.jpg)
 - **Idea de arreglo:** ~~no dejar seguir sin vigencia~~ → **Ivan (26/11, mail): «La vigencia no debería ser obligatoria, bajemos la importancia ya que muchas cenefas lo traen implícito en su diseño».** Sacar el asterisco, ejemplo en el campo («Ej.: Válido del 27/11 al 29/11») y aclarar que «Guardar» es solo para recordarlo. Baja de 🟠 a 🟡. Va en paquete con H-112.
+- **Ojo (26/11, PR #101):** Tienda Inglesa ya no tiene tipos de cenefa (Rompe Precios, Pruebas y los demás se borraron a pedido de Ivan; Redexpres quedó igual). Para repetirlo, creá un tipo nuevo en Tienda Inglesa o usá Redexpres; si ya no aplica, cerralo.
 - **Visto:** 26/11 noche (Martina a ciegas)
 
 ### H-043 · Una plantilla armada en el editor no aparece al hacer cenefas
@@ -626,6 +627,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** no se lee qué es cada tipo.
 - **Cómo repetirlo:** equipo en el celular → /materiales/cenefas.
 - **Evidencia:** hoja equipo-celular-claro-2 (Lucía: V8-cenefas-tarjetas-celular)
+- **Ojo (26/11, PR #101):** Tienda Inglesa ya no tiene tipos de cenefa (Rompe Precios, Pruebas y los demás se borraron a pedido de Ivan; Redexpres quedó igual). Para repetirlo, creá un tipo nuevo en Tienda Inglesa o usá Redexpres; si ya no aplica, cerralo.
 - **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
 
 ### H-033 · Conexiones en modo oscuro: un cuadro «+» blanco
@@ -650,6 +652,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** no se sabe si una prueba infla el número que se reporta (H-064).
 - **Cómo repetirlo:** Cenefas → Pruebas → generar → Descargar → Sí, salieron bien.
 - **Evidencia:** captura 020 de Sofía.
+- **Ojo (26/11, PR #101):** Tienda Inglesa ya no tiene tipos de cenefa (Rompe Precios, Pruebas y los demás se borraron a pedido de Ivan; Redexpres quedó igual). Para repetirlo, creá un tipo nuevo en Tienda Inglesa o usá Redexpres; si ya no aplica, cerralo.
 - **Visto:** 26/11 (Sofía) · proceso P33
 
 ### H-106 · Tablero vacío: dice que las tarjetas «se piden desde la ficha de una acción» con «Nueva tarjeta» al lado
@@ -772,6 +775,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** Cenefas → Rompe Precios → Agregar Excel (el de «Descargar plantilla Excel») → Elegir plantillas → Cargar nueva plantilla (A4, `Base cenefa A4 1.pptx`) → elegirla → mirar el cuadro de abajo a la derecha.
 - **Evidencia:** ![H-112](recorridos/2026-11-26/H-112.jpg)
 - **Idea de arreglo:** «Se van a generar 5 cenefas (1 plantilla)» y el botón «Revisar y generar», apagado sin vigencia.
+- **Ojo (26/11, PR #101):** Tienda Inglesa ya no tiene tipos de cenefa (Rompe Precios, Pruebas y los demás se borraron a pedido de Ivan; Redexpres quedó igual). Para repetirlo, creá un tipo nuevo en Tienda Inglesa o usá Redexpres; si ya no aplica, cerralo.
 - **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina: tampoco supo si la vigencia cuenta, ver H-115)
 
 ### H-071 · Para confirmar: las miniaturas de la entrega recortan la pieza
