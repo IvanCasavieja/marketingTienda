@@ -16,9 +16,10 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, EmailStr, Field
 from app.schemas.auth import _validate_password_strength
-from sqlalchemy import delete, select, desc, func, update
+from sqlalchemy import delete, select, desc, func, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user, client_ip as _client_ip
 from app.core.security import hash_password
@@ -34,6 +35,7 @@ from app.core.mundos import MUNDOS, mundos_de, mundos_iniciales, mundos_que_no_p
 from app.core.tableros import tablero_de
 from app.models.user import User
 from app.services import agencias
+from app.services.espacio import MB, tamano_de_la_base
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -1339,4 +1341,42 @@ async def ai_usage_summary(
         "by_feature": by_feature,
         "by_user": by_user,
         "daily": daily,
+    }
+
+
+# ---------------------------------------------------------------------------
+# El espacio de la base
+# ---------------------------------------------------------------------------
+
+@router.get("/espacio")
+async def espacio_de_la_base(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cuánto ocupa la base y qué la llena. 26/11/2026: la carga de Clientes
+    VIP rebotó con «La base está casi llena» y hacía falta saber qué ocupa el
+    lugar antes de decidir qué hacer. Solo el superadmin, y solo lee el
+    catálogo de Postgres (tamaños y conteos), nunca los datos.
+
+    `muertas` son filas borradas o reemplazadas que todavía ocupan lugar hasta
+    que Postgres las limpia: si son muchas, el tamaño engaña."""
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Solo el superadmin ve el espacio de la base")
+    total = await tamano_de_la_base(db)
+    filas = (await db.execute(text(
+        "SELECT c.relname AS tabla, pg_total_relation_size(c.oid) AS bytes,"
+        " COALESCE(s.n_live_tup, 0) AS vivas, COALESCE(s.n_dead_tup, 0) AS muertas"
+        " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+        " LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid"
+        " WHERE c.relkind = 'r' AND n.nspname = 'public'"
+        " ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 25"
+    ))).mappings().all()
+    return {
+        "base_mb": round(total / MB, 1),
+        "tope_mb": settings.BASE_TOPE_MB,
+        "libre_mb": round(settings.BASE_TOPE_MB - total / MB, 1),
+        "tablas": [
+            {"tabla": f["tabla"], "mb": round(f["bytes"] / MB, 1), "filas": int(f["vivas"]), "muertas": int(f["muertas"])}
+            for f in filas
+        ],
     }
