@@ -4,6 +4,8 @@ import { cenefasV2Api } from "@/lib/api";
 import type { CenefaComponent, CenefaJob, CenefaRule, CenefaTemplate, ComponentOverride } from "@/types/cenefas";
 import { acumularOverride, afectaAlArchivo, overrideEliminado, sacarCuadros } from "@/lib/cenefas/overrides";
 import { alternarSeleccion, seleccionUnica, type Seleccion } from "@/lib/cenefas/seleccion";
+import { CONSULTA_CADA_MS, CONSULTAS_FALLIDAS_TOLERADAS, queSigue } from "@/lib/cenefas/corrida";
+import { extractErrorDetail } from "@/lib/errors";
 import { ArrowLeft, Download, Loader2, RefreshCw, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
@@ -13,11 +15,13 @@ import RulesPanel from "@/components/cenefas/editor/RulesPanel";
 import AvisosSolape from "@/components/cenefas/AvisosSolape";
 import AvisosDesborde from "@/components/cenefas/AvisosDesborde";
 
-// Paso compartido por Redexpres y Rompe Precios: el job se generó hasta
-// quedar en status="preview" (ver jobs.py) con la definición de componentes
-// y la primera fila real de productos. Acá se muestra en el mismo Canvas del
-// editor v2, con datos resueltos en vez de {variable}, permitiendo arrastrar
-// componentes antes de confirmar el render final.
+// La revisión de UNA corrida antes de armar el archivo. Hoy la usa Generar del
+// editor (/materiales/cenefas/v2/generar); el camino de siempre revisa por
+// lotes (LotePreviewStep). El job se generó hasta quedar en status="preview"
+// (ver jobs.py) con la definición de componentes y la primera fila real de
+// productos. Acá se muestra en el mismo Canvas del editor v2, con datos
+// resueltos en vez de {variable}, permitiendo arrastrar componentes antes de
+// confirmar el render final.
 
 interface PreviewStepProps {
   jobId: string;
@@ -75,26 +79,53 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dlRef = useRef<HTMLAnchorElement>(null);
 
-  // Poll hasta que el job llegue a "preview" (o falle)
+  // Poll hasta que el job llegue a "preview" (o falle): qué estado termina la
+  // espera lo decide queSigue (lib/cenefas/corrida.ts). Una consulta a la vez:
+  // con un Excel grande el preview tarda en armarse (mide los avisos en todas
+  // las filas), y con el intervalo pisándose podían llegar varias respuestas
+  // que volvieran a cargar el lienzo encima de lo que la persona ya estaba
+  // moviendo. Por lo mismo, lo que llega después de terminar se ignora.
   useEffect(() => {
+    let terminado = false;
+    let enVuelo = false;
+    let fallidas = 0;
+    function terminar() {
+      terminado = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+    }
     async function tick() {
+      if (terminado || enVuelo) return;
+      enVuelo = true;
       try {
         const { data } = await cenefasV2Api.getJob(jobId);
+        if (terminado) return;
+        fallidas = 0;
         setJob(data);
-        if (data.status === "preview" && data.template_def) {
-          setTemplate(data.template_def);
-          if (pollRef.current) clearInterval(pollRef.current);
-        } else if (data.status === "error") {
-          setErrorMsg(data.validation_report?.error ?? t("cenefas.previewStep.previewError"));
-          if (pollRef.current) clearInterval(pollRef.current);
+        const sigue = queSigue(data, "revision");
+        if (sigue.tipo === "lista") {
+          setTemplate(data.template_def ?? null);
+          terminar();
+        } else if (sigue.tipo === "error") {
+          setErrorMsg(sigue.motivo ?? t("cenefas.previewStep.previewError"));
+          terminar();
         }
       } catch {
-        /* ignore, reintenta en el próximo tick */
+        // Un corte corto se reintenta; uno que no se termina se dice, en vez de
+        // girar para siempre (ver CONSULTAS_FALLIDAS_TOLERADAS). Con el texto
+        // propio y no el del servidor: un 500 trae "Internal server error".
+        if (!terminado && ++fallidas >= CONSULTAS_FALLIDAS_TOLERADAS) {
+          setErrorMsg(t("cenefas.previewStep.noResponse"));
+          terminar();
+        }
+      } finally {
+        enVuelo = false;
       }
     }
     tick();
-    pollRef.current = setInterval(tick, 1500);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    pollRef.current = setInterval(tick, CONSULTA_CADA_MS);
+    // Al salir de la pantalla también corta la espera del archivo, que usa el
+    // mismo pollRef (ver esperarElArchivo).
+    return terminar;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId]);
 
@@ -154,6 +185,56 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
     toast.success(t("cenefas.previewStep.downloaded"));
   }
 
+  // Si la descarga falla, la corrida igual quedó generada: se avisa, y
+  // "Descargar de nuevo" vuelve a pedir solo el archivo.
+  async function bajarArchivo() {
+    try {
+      await triggerDownload();
+    } catch {
+      toast.error(t("cenefas.previewStep.downloadError"));
+    }
+  }
+
+  // Poll hasta que el archivo esté (null) o la corrida falle (el motivo, para
+  // mostrarlo). OJO: no pisar el estado `job` acá con setJob(data) — apenas
+  // se confirma, el status pasa a "running" y _job_to_dict() deja de mandar
+  // template_def/preview_product (solo van con status="preview"), así que
+  // sobreescribir job vaciaba el Canvas (previewData quedaba en {}) justo al
+  // confirmar, antes incluso de terminar de renderizar.
+  //
+  // Límite de intentos: sin esto, un job trabado en "running" (ver
+  // _RENDER_TIMEOUT_SECONDS en jobs.py, que debería evitar esto del lado
+  // del backend) dejaba este loop esperando en silencio para siempre —
+  // "no para de estar cargando" sin ningún error visible. 550 × 1200ms =
+  // 660s, con margen sobre los 600s del backend (confirmado en vivo:
+  // 1291 productos reales tardan más de 180s en la instancia de Render,
+  // que corre con 1 sola CPU -- ver _RENDER_TIMEOUT_SECONDS en jobs.py).
+  function esperarElArchivo(): Promise<string | null> {
+    const MAX_CONFIRM_ATTEMPTS = 550;
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const iv = setInterval(async () => {
+        attempts++;
+        try {
+          const { data } = await cenefasV2Api.getJob(jobId);
+          const sigue = queSigue(data, "archivo");
+          if (sigue.tipo !== "esperar") {
+            clearInterval(iv);
+            resolve(sigue.tipo === "lista" ? null : sigue.motivo ?? t("cenefas.previewStep.generateError"));
+            return;
+          }
+        } catch {
+          /* reintenta hasta el límite */
+        }
+        if (attempts >= MAX_CONFIRM_ATTEMPTS) {
+          clearInterval(iv);
+          resolve(t("cenefas.previewStep.confirmTimeout"));
+        }
+      }, 1200);
+      pollRef.current = iv;
+    });
+  }
+
   async function handleConfirm() {
     setConfirming(true);
     try {
@@ -162,58 +243,34 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
       // Si ya se confirmó en esta sesión, solo volvemos a descargar el
       // mismo archivo ya generado, sin tocar el job de nuevo.
       if (confirmed) {
-        await triggerDownload();
+        await bajarArchivo();
         return;
       }
 
       const components = Object.values(dirtyOverrides.current);
-      await cenefasV2Api.confirmJob(jobId, components, reglasEditadas ?? undefined);
+      try {
+        await cenefasV2Api.confirmJob(jobId, components, reglasEditadas ?? undefined);
+      } catch (err) {
+        // No llegó a empezar: la revisión sigue en pie y se puede reintentar.
+        // El motivo es el del servidor, no el "Request failed with status
+        // code 409" de axios.
+        toast.error(extractErrorDetail(err, t("cenefas.previewStep.confirmError")));
+        return;
+      }
 
-      // Poll hasta "done", después descarga automática. OJO: no pisar el
-      // estado `job` acá con setJob(data) — apenas se confirma, el status
-      // pasa a "running" y _job_to_dict() deja de mandar template_def/
-      // preview_product (solo van con status="preview"), así que
-      // sobreescribir job vaciaba el Canvas (previewData quedaba en {})
-      // justo al confirmar, antes incluso de terminar de renderizar.
-      //
-      // Límite de intentos: sin esto, un job trabado en "running" (ver
-      // _RENDER_TIMEOUT_SECONDS en jobs.py, que debería evitar esto del lado
-      // del backend) dejaba este loop esperando en silencio para siempre —
-      // "no para de estar cargando" sin ningún error visible. 550 × 1200ms =
-      // 660s, con margen sobre los 600s del backend (confirmado en vivo:
-      // 1291 productos reales tardan más de 180s en la instancia de Render,
-      // que corre con 1 sola CPU -- ver _RENDER_TIMEOUT_SECONDS en jobs.py).
-      const MAX_CONFIRM_ATTEMPTS = 550;
-      await new Promise<void>((resolve, reject) => {
-        let attempts = 0;
-        const iv = setInterval(async () => {
-          attempts++;
-          try {
-            const { data } = await cenefasV2Api.getJob(jobId);
-            if (data.status === "done") {
-              clearInterval(iv);
-              resolve();
-            } else if (data.status === "error") {
-              clearInterval(iv);
-              reject(new Error(data.validation_report?.error ?? t("cenefas.previewStep.generateError")));
-            } else if (attempts >= MAX_CONFIRM_ATTEMPTS) {
-              clearInterval(iv);
-              reject(new Error(t("cenefas.previewStep.confirmTimeout")));
-            }
-          } catch {
-            if (attempts >= MAX_CONFIRM_ATTEMPTS) {
-              clearInterval(iv);
-              reject(new Error(t("cenefas.previewStep.confirmTimeout")));
-            }
-            /* si no, reintenta */
-          }
-        }, 1200);
-      });
-
-      await triggerDownload();
+      const fallo = await esperarElArchivo();
+      if (fallo) {
+        // Confirmada, la corrida ya no vuelve a "preview": lo preparado se usa
+        // una sola vez (pop_job_products en jobs.py). Quedarse en el lienzo
+        // dejaba un botón que solo podía dar 409; se dice qué pasó y se
+        // ofrece volver.
+        setErrorMsg(fallo);
+        return;
+      }
+      // Antes de bajar: si la descarga falla, el botón tiene que ofrecer
+      // bajarla de nuevo, no volver a confirmar.
       setConfirmed(true);
-    } catch (e: any) {
-      toast.error(e?.message ?? t("cenefas.previewStep.confirmError"));
+      await bajarArchivo();
     } finally {
       setConfirming(false);
     }
@@ -259,7 +316,7 @@ export default function PreviewStep({ jobId, onBack }: PreviewStepProps) {
   if (errorMsg) {
     return (
       <div className="card p-8 flex flex-col items-center text-center gap-3">
-        <p className="text-sm text-red-500">{errorMsg}</p>
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">{errorMsg}</p>
         <button onClick={onBack} className="btn-secondary text-sm py-2 px-4">
           <ArrowLeft size={14} /> {t("cenefas.previewStep.back")}
         </button>

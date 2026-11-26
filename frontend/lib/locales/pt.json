@@ -500,7 +500,9 @@
       "generateError": "Erro ao gerar o arquivo",
       "downloaded": "Faixa gerada e baixada",
       "confirmError": "Erro ao confirmar",
-      "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos."
+      "confirmTimeout": "A geração está demorando demais. Tente de novo ou com menos produtos.",
+      "noResponse": "Não conseguimos saber como vai a geração porque o servidor não responde. Verifique sua conexão e tente de novo.",
+      "downloadError": "A faixa foi gerada, mas não foi possível baixá-la. Tente «Baixar de novo»."
     },
     "usarLegales": "Usar textos legais",
     "usarLegalesHint": "Deixe desligado se o modelo já traz os textos legais no design.",
