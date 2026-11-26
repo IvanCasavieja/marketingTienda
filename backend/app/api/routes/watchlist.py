@@ -621,20 +621,27 @@ async def listar_notificaciones(
     ]
 
 
+async def no_leidas_de(db: AsyncSession, usuario: User) -> int:
+    """El número de la campanita: las no leídas que la persona puede ver. Lo
+    usan el contador y quien marca avisos como leídos y devuelve el número al
+    día (ver entregas.avisos_leidos), así los dos cuentan igual."""
+    result = await db.execute(
+        select(Notificacion).where(Notificacion.user_id == usuario.id, Notificacion.leida == False)
+    )
+    todas = result.scalars().all()
+    if externos.es_externo(usuario):
+        return len(await _recortar_al_alcance(db, usuario, todas, externo=True))
+    es_sucursal = await _es_sucursal_si_hace_falta(db, usuario, todas)
+    visibles = [n for n in todas if _notif_visible(usuario, n, es_sucursal)]
+    return len(await _recortar_al_alcance(db, usuario, visibles, externo=False))
+
+
 @router.get("/notificaciones/no-leidas/count")
 async def contar_no_leidas(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(Notificacion).where(Notificacion.user_id == current_user.id, Notificacion.leida == False)
-    )
-    todas = result.scalars().all()
-    if externos.es_externo(current_user):
-        return {"count": len(await _recortar_al_alcance(db, current_user, todas, externo=True))}
-    es_sucursal = await _es_sucursal_si_hace_falta(db, current_user, todas)
-    visibles = [n for n in todas if _notif_visible(current_user, n, es_sucursal)]
-    return {"count": len(await _recortar_al_alcance(db, current_user, visibles, externo=False))}
+    return {"count": await no_leidas_de(db, current_user)}
 
 
 @router.post("/notificaciones/{notif_id}/marcar-leida")

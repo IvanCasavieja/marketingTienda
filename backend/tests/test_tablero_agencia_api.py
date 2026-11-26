@@ -4209,3 +4209,115 @@ def test_sumar_lo_que_faltaba_lo_saca_de_lo_que_falta():
         r = await a1.post(f"/calendario/versiones/{v1}/archivos", data={"faltan": "no es json"}, files=files)
         assert r.status_code == 422, r.text
     correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# La campanita al día (H-111, 26/11/2026): al abrir la tarjeta, decidir o
+# entregar, MIS avisos de esa tarjeta quedan leídos.
+# ---------------------------------------------------------------------------
+
+def _sin_leer(avisos) -> list:
+    return [n for n in avisos if not n.leida and n.origen_tipo == reglas.ORIGEN]
+
+
+def test_aprobar_y_entregar_dejan_leidos_tus_avisos_de_la_tarjeta():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+
+        # v1: a Lucía le toca revisarla.
+        assert (await _entregar_link(a1, tarea_id, f"ve-1-{d.sufijo}")).status_code == 201
+        assert [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, d.lucia, tarea_id))] == [
+            f"revisar-{d.lucia.id}"]
+
+        # Pide cambios: su «Te toca revisarla» queda leído; a la agencia le
+        # llega el «pidió cambios» (y sigue el de la tarjeta nueva, que nadie abrió).
+        assert (await _decidir(lucia, f"ve-1-{d.sufijo}", "cambios", "El logo más grande")).status_code == 200
+        assert _sin_leer(await _avisos(d, d.lucia, tarea_id)) == []
+        # (a1, que entregó, ya no tiene el de la tarjeta nueva.)
+        for u, esperados in ((d.a1, ["cambios"]), (d.a2, ["nueva", "cambios"])):
+            assert [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, u, tarea_id))] == esperados
+
+        # v2: quien entrega ya hizo lo que pedía el aviso; la otra cuenta de la
+        # agencia, que no hizo nada, lo sigue teniendo sin leer.
+        assert (await _entregar_link(a1, tarea_id, f"ve-2-{d.sufijo}")).status_code == 201
+        assert _sin_leer(await _avisos(d, d.a1, tarea_id)) == []
+        assert len(_sin_leer(await _avisos(d, d.a2, tarea_id))) == 2
+        assert [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, d.lucia, tarea_id))] == [
+            f"revisar-{d.lucia.id}"]
+
+        # Aprueba: a Lucía no le queda nada; a la agencia, el «aprobó», sin leer.
+        assert (await _decidir(lucia, f"ve-2-{d.sufijo}", "aprobada")).status_code == 200
+        assert _sin_leer(await _avisos(d, d.lucia, tarea_id)) == []
+        assert [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, d.a1, tarea_id))] == ["aprobada"]
+        # Los avisos siguen ahí (leídos), no se borran.
+        assert len(await _avisos(d, d.lucia, tarea_id)) == 2
+    correr(prueba)
+
+
+def test_abrir_la_tarjeta_marca_solo_mis_avisos_de_esa_tarjeta():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        # Otra tarjeta de la misma acción cuyo id empieza igual: no se toca.
+        parecida, _ = await _pedir_banners(d, d.lucia, tarea_id=f"{tarea_id}x")
+        barra = d.ciber.id
+        async with d.Sesion() as s:
+            # Arranca de cero: lo que haya dejado el pedido, leído.
+            await s.execute(update(Notificacion).where(Notificacion.user_id.in_([d.lucia.id, d.aprob2.id]))
+                            .values(leida=True))
+            for uid, ref, origen in (
+                (d.lucia.id, f"{barra}:{tarea_id}:ve-1:revisar", reglas.ORIGEN),
+                (d.lucia.id, f"{barra}:{tarea_id}:co-1:comentario", reglas.ORIGEN),
+                (d.lucia.id, f"{barra}:{parecida}:ve-9:revisar", reglas.ORIGEN),
+                (d.lucia.id, f"{barra}:{tarea_id}:otra-cosa", "calendario_tarea"),
+                (d.aprob2.id, f"{barra}:{tarea_id}:ve-1:revisar", reglas.ORIGEN),
+            ):
+                s.add(Notificacion(user_id=uid, tipo=origen, mensaje="x", origen_tipo=origen, origen_ref=ref,
+                                   mail_pendiente=False))
+            await s.commit()
+
+        r = await Cliente(d.http, d.lucia).post(f"/calendario/tareas/{tarea_id}/avisos-leidos")
+        assert r.status_code == 200, r.text
+        # Los dos de esta tarjeta; le quedan la otra tarjeta y el de otro origen.
+        assert r.json() == {"marcados": 2, "noLeidos": 2}
+        assert (await Cliente(d.http, d.lucia).get("/notificaciones/no-leidas/count")).json()["count"] == 2
+        quedan = sorted(n.origen_ref for n in await _avisos(d, d.lucia) if not n.leida)
+        assert quedan == sorted([f"{barra}:{parecida}:ve-9:revisar", f"{barra}:{tarea_id}:otra-cosa"])
+        # El de otra persona, intacto.
+        assert len([n for n in await _avisos(d, d.aprob2, tarea_id) if not n.leida]) == 1
+        # Abrirla otra vez no marca nada.
+        r = await Cliente(d.http, d.lucia).post(f"/calendario/tareas/{tarea_id}/avisos-leidos")
+        assert r.json() == {"marcados": 0, "noLeidos": 2}
+        # El GET de la tarjeta (que se pregunta cada tanto) no marca nada.
+        async with d.Sesion() as s:
+            await s.execute(update(Notificacion).where(Notificacion.user_id == d.lucia.id,
+                                                       Notificacion.origen_ref.startswith(f"{barra}:{tarea_id}:"))
+                            .values(leida=False))
+            await s.commit()
+        await _detalle(Cliente(d.http, d.lucia), tarea_id)
+        de_la_tarjeta = [n for n in _sin_leer(await _avisos(d, d.lucia)) if n.origen_ref.startswith(f"{barra}:{tarea_id}:")]
+        assert len(de_la_tarjeta) == 2
+    correr(prueba)
+
+
+def test_la_agencia_no_marca_avisos_de_una_tarjeta_ajena():
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        assert (await _entregar_link(Cliente(d.http, d.a1), tarea_id, f"ve-1-{d.sufijo}")).status_code == 201
+        antes = len(_sin_leer(await _avisos(d, d.lucia, tarea_id)))
+        assert antes == 1
+        # Otra agencia, una cuenta sin el calendario y una tarea que no existe.
+        r = await Cliente(d.http, d.b1).post(f"/calendario/tareas/{tarea_id}/avisos-leidos")
+        assert r.status_code == 404
+        sin_permiso = await _persona(d, "Sin Calendario", permisos=())
+        r = await Cliente(d.http, sin_permiso).post(f"/calendario/tareas/{tarea_id}/avisos-leidos")
+        assert r.status_code == 403
+        r = await Cliente(d.http, d.b1).post("/calendario/tareas/ta-no-existe/avisos-leidos")
+        assert r.status_code == 404
+        # Nada cambió para nadie.
+        assert len(_sin_leer(await _avisos(d, d.lucia, tarea_id))) == antes
+        # Su propia agencia sí puede, y solo marca lo suyo.
+        r = await Cliente(d.http, d.a2).post(f"/calendario/tareas/{tarea_id}/avisos-leidos")
+        assert r.status_code == 200
+        assert len(_sin_leer(await _avisos(d, d.lucia, tarea_id))) == antes
+    correr(prueba)

@@ -1144,6 +1144,28 @@ async def avisar(db: AsyncSession, user_id: int | None, mensaje: str, ref: str) 
     return True
 
 
+async def dar_por_leidos(db: AsyncSession, user_id: int, barra_id: str, tarea_id: str) -> int:
+    """Los avisos de la campanita de UNA tarjeta, de UNA persona, quedan leídos
+    (H-111, 26/11/2026): al abrir la tarjeta, decidir o entregar ya hizo lo que
+    el aviso pedía, y el número de la campanita no tiene por qué seguir
+    contándolo. Toda referencia de estos avisos empieza por
+    "{barra}:{tarea}:" (ver `referencia`); con los dos puntos al final, otra
+    tarjeta cuyo id empiece igual no entra. No hace commit: va en la
+    transacción de quien llama. Devuelve cuántos marcó."""
+    resultado = await db.execute(
+        update(Notificacion)
+        .where(
+            Notificacion.user_id == user_id,
+            Notificacion.origen_tipo == ORIGEN,
+            Notificacion.leida == False,  # noqa: E712
+            Notificacion.origen_ref.startswith(f"{barra_id}:{tarea_id}:", autoescape=True),
+        )
+        .values(leida=True)
+        .execution_options(synchronize_session=False)
+    )
+    return resultado.rowcount or 0
+
+
 async def decisiones_de(db: AsyncSession, version_id: str) -> Decisiones:
     return [
         (a, d) for a, d in (await db.execute(

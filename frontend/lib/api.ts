@@ -2353,6 +2353,12 @@ export const entregasApi = {
   detalleSiCambio: (tareaId: string, huella: string) =>
     api.get<DetalleEntregas | { huella: string; sinCambios: true }>(
       `/calendario/tareas/${encodeURIComponent(tareaId)}/entregas`, { ...ESPERA, params: { huella } }),
+  /** La persona abrió la tarjeta: SUS avisos de la campanita de esta tarjeta
+   *  quedan leídos (H-111, 26/11/2026). Vuelve cuántos marcó y el número de
+   *  la campanita ya al día, para cambiarlo en el acto. */
+  avisosLeidos: (tareaId: string) =>
+    api.post<{ marcados: number; noLeidos: number }>(
+      `/calendario/tareas/${encodeURIComponent(tareaId)}/avisos-leidos`, undefined, ESPERA),
   /** Una ronda, con sus imágenes (y las miniaturas) en el mismo pedido. Si
    *  vino un ZIP, `zip.guardado` dice si se guardó (sin lugar, no) y
    *  `zip.sumadas` cuántas imágenes de la ronda sacó de él el servidor.
