@@ -209,7 +209,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {mundo && !rutaEnMundo(pathname, mundo.clave)
                 ? <FueraDeMundo pathname={pathname} mundo={mundo} />
                 : !puedeEntrar(pathname, user)
-                  ? <SinAcceso pathname={pathname} />
+                  ? <SinAcceso pathname={pathname} mundo={mundo?.clave} />
                   : children}
             </ClientOnly>
           </ErrorBoundary>

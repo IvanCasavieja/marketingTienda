@@ -10,8 +10,12 @@ import { MARCA, inicioDe } from "@/lib/mundos";
  * Lo que se ve al abrir una herramienta sin tener el permiso (lib/acceso.ts):
  * con un link guardado, un aviso o escribiendo la dirección. Antes se veían
  * errores sueltos en cada recuadro (Ivan, 20/11/2026).
+ *
+ * `mundo`: donde está parada la persona. «Volver al inicio» lo necesita, como
+ * FueraDeMundo: el inicio de un local depende de lo que hay en ese mundo
+ * (H-010, `inicioDe` en lib/mundos.ts).
  */
-export default function SinAcceso({ pathname }: { pathname: string }) {
+export default function SinAcceso({ pathname, mundo }: { pathname: string; mundo?: string | null }) {
   const { user } = useCurrentUser();
   const req = requisitoDe(pathname);
   if (!req) return null;
@@ -30,7 +34,7 @@ export default function SinAcceso({ pathname }: { pathname: string }) {
         </p>
       </div>
       <Link
-        href={inicioDe(user)}
+        href={inicioDe(user, mundo)}
         className="flex min-h-[48px] w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-card transition hover:-translate-y-px hover:shadow-card-hover active:translate-y-0 active:scale-[.99] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
       >
         Volver al inicio
