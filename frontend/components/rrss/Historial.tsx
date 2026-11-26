@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Clock, Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { rrssApi, type RrssValidacionResumen } from "@/lib/api";
 import { yaNoEsta } from "@/components/rrss/reintentos";
 
@@ -37,8 +38,14 @@ export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
       quitar(f.id);
     } catch (e) {
       // Si ya no estaba (se borró sola, o la borró otro) quedó como se quería.
+      // Si no se pudo, la lista queda como estaba y se dice por qué: antes un
+      // 403 la reemplazaba entera por «No se pudieron cargar…», que encima
+      // era falso (H-016, Ramiro 26/11/2026).
       if (yaNoEsta(e)) quitar(f.id);
-      else setError(true);
+      else {
+        const prohibido = (e as { response?: { status?: number } } | null)?.response?.status === 403;
+        toast.error(t(prohibido ? "rrss.borrarSoloQuienLaCreo" : "rrss.errorBorrar"));
+      }
     }
   }
 
@@ -93,7 +100,9 @@ export default function Historial({ puedeBorrar, onAbrir, abriendoId }: Props) {
                 <button onClick={() => onAbrir(f.id)} disabled={abriendoId !== null} className="btn-secondary text-xs mr-2">
                   {abriendoId === f.id ? <Loader2 size={13} className="animate-spin" /> : t("rrss.abrir")}
                 </button>
-                {puedeBorrar && (
+                {/* El servidor dice en qué filas va (puede_borrar: las propias,
+                    o todas para superadmin). Sin el dato (servidor anterior), como antes. */}
+                {puedeBorrar && f.puede_borrar !== false && (
                   <button onClick={() => borrar(f)} className="btn-ghost text-xs" title={t("rrss.borrar")}>
                     <Trash2 size={14} />
                   </button>

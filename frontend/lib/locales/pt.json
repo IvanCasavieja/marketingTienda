@@ -1141,6 +1141,8 @@
     "deHoyAviso": "Cada validação é apagada automaticamente após 24 horas. Aqui você pode reabrir uma se fechou a aba; se for precisar do Excel, baixe antes.",
     "yaNoEsta": "Essa validação não está mais disponível: as validações são apagadas automaticamente após 24 horas. Se precisar, faça de novo.",
     "borrarConfirm": "Excluir a validação de \"{{nombre}}\"? Não dá para desfazer.",
+    "borrarSoloQuienLaCreo": "Só quem criou a validação pode excluí-la.",
+    "errorBorrar": "Não foi possível excluir a validação. Tente de novo.",
     "hFecha": "Data",
     "hUsuario": "Usuário",
     "hResultado": "Resultado",

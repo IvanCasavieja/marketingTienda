@@ -345,3 +345,22 @@ def test_en_el_celular_se_llega_a_abrir_una_de_hoy():
     contenedor = src.split("<table")[0].rsplit("<div", 1)[1]
     assert "overflow-x-auto" in contenedor, contenedor
     assert "overflow-hidden" not in contenedor, contenedor
+
+
+def test_el_tacho_va_solo_donde_el_servidor_deja_borrar():
+    """H-016 (confirmado por Ramiro en el navegador el 26/11/2026): el tacho
+    aparecía en las validaciones de todas las personas y, al tocarlo en una
+    ajena, el 403 reemplazaba la lista entera por «No se pudieron cargar las
+    validaciones de hoy», que encima era falso: la lista había cargado. Ahora
+    el tacho va donde dice el servidor (puede_borrar) y un borrado rechazado
+    avisa por qué sin tocar la lista. El servidor lo cuida
+    test_rrss_borrar_lo_propio.py."""
+    src = _texto(_RRSS / "Historial.tsx")
+    assert "puedeBorrar && f.puede_borrar !== false &&" in src
+    borrar = src.split("async function borrar")[1].split("\n  }\n")[0]
+    assert "setError" not in borrar, "un borrado que falla no puede reemplazar la lista por el error de carga"
+    assert 't(prohibido ? "rrss.borrarSoloQuienLaCreo" : "rrss.errorBorrar")' in borrar
+    for idioma in _IDIOMAS:
+        rrss = _rrss(idioma)
+        assert rrss["borrarSoloQuienLaCreo"] and rrss["errorBorrar"], idioma
+    assert "puede_borrar?: boolean" in _texto(_FRONT / "lib" / "api.ts")

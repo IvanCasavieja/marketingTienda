@@ -1228,6 +1228,8 @@
     "deHoyAviso": "Cada validación se borra sola a las 24 horas. Acá podés volver a abrir una si cerraste la pestaña; si vas a necesitar el Excel, bajalo antes.",
     "yaNoEsta": "Esa validación ya no está: las validaciones se borran solas a las 24 horas. Si la necesitás, hacela de nuevo.",
     "borrarConfirm": "¿Borrar la validación de \"{{nombre}}\"? No se puede deshacer.",
+    "borrarSoloQuienLaCreo": "Solo quien creó la validación puede borrarla.",
+    "errorBorrar": "No se pudo borrar la validación. Probá de nuevo.",
     "hFecha": "Fecha",
     "hUsuario": "Usuario",
     "hResultado": "Resultado",

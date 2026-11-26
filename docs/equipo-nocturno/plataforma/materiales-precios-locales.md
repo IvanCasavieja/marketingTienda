@@ -802,8 +802,9 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   mailing (PDF/imagen) o la planilla (Excel) de la campaña y marca diferencias
   de precio, descripción, legales, fecha.
 - **Quién la ve:** `rrss.view` (menú "REDES SOCIALES → Validación de RRSS").
-  Solo Tienda Inglesa. Validar y borrar: `rrss.validate`; sin él solo se ve
-  "Las de hoy".
+  Solo Tienda Inglesa. Validar: `rrss.validate`; sin él solo se ve "Las de
+  hoy". Borrar: con `rrss.validate`, solo las propias (superadmin, todas); el
+  tacho aparece solo donde el servidor deja (`puede_borrar` de la lista).
 - **No hay historial (26/11/2026):** cada validación dura 24 horas, terminada o
   no, y después se borra entera (páginas del mailing, placas y recortes) y se
   compactan las tablas (`services/rrss/retencion.py`, `RRSS_RETENCION_HORAS`).
@@ -820,7 +821,8 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   recorte del mailing o tira de la planilla, "Siguiente con problemas",
   reintentar las que dieron error, "Descargar Excel de correcciones". Las de
   hoy: un renglón que dice que se borran solas a las 24 horas y la tabla con
-  abrir y borrar, para retomar una si se cerró la pestaña.
+  abrir y borrar, para retomar una si se cerró la pestaña (en el celular la
+  tabla se desliza de costado para llegar a "Abrir").
 - **Qué se puede hacer:** `GET /rrss/config`, `POST /rrss/validaciones`
   (fuente + legales, hasta 5 min), `POST /rrss/validaciones/{id}/imagenes` (3
   placas a la vez, con reintentos), `POST /rrss/validaciones/{id}/cerrar`,
@@ -832,7 +834,8 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   placa: "No pude validar esta placa"; ninguna de hoy: "Hoy no hay
   validaciones."; abrir o bajar el Excel de una que ya se borró: "Esa
   validación ya no está: las validaciones se borran solas a las 24 horas…"
-  (y la lista se vuelve a pedir, ya sin ella).
+  (y la lista se vuelve a pedir, ya sin ella); borrar una que el servidor
+  rechaza: "Solo quien creó la validación puede borrarla." (la lista queda).
 - **Celular:** pocas clases responsive (algunas en carga y revisión).
 - **Datos para probarla:** `backend/tests/data/planilla_rrss.xlsx` como fuente
   (leer la planilla no usa IA) + cualquier imagen como placa. En pruebas, la
@@ -843,15 +846,13 @@ El asistente de cenefas y descripciones. Exige `ai.tinin` en el servidor.
   lista de las de hoy), `backend/app/api/routes/rrss.py`, `services/rrss/*`,
   `app/data/rrss_archivos.json`.
 - **Puntos a mirar:**
-  - Sospecha fuerte: en "Las de hoy" el botón borrar aparece en todas las filas,
-    pero el servidor solo deja borrar las propias (o superadmin). Si falla, toda
-    la lista se reemplaza por "No se pudieron cargar las validaciones de hoy"
-    (si ya no estaba, en cambio, solo se saca de la lista).
+  - Arreglado el 26/11/2026 (Ramiro, visto en el navegador): el tacho aparecía
+    en las validaciones de todas las personas y, al tocarlo en una ajena, el
+    403 reemplazaba la lista entera por "No se pudieron cargar las validaciones
+    de hoy" (H-016). Y en el celular (390 px) la tarjeta cortaba la tabla:
+    "Abrir" quedaba fuera de la pantalla, sin forma de llegar.
   - Una validación que se abandona a mitad de camino queda sin cerrar hasta
     que se borra sola, a las 24 horas.
-  - Visto el 26/11/2026: en el celular (390 px) la tabla de "Las de hoy" queda
-    cortada (la tarjeta tiene `overflow-hidden`): se ven Fecha y Archivo, y el
-    resultado y el botón "Abrir" caen afuera de la pantalla.
 
 ---
 
