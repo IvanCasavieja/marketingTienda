@@ -18,7 +18,7 @@ import { INICIO_DE_EXTERNOS, calendarioVedado, esExterno, rutaDeExterno } from "
 import { loginVolviendoA } from "@/lib/volver";
 import { useAvisos } from "@/store/avisos";
 import { useTranslation } from "react-i18next";
-import { muestraBurbuja } from "@/lib/chat/conversacion";
+import { lugarDeAbajo, muestraBurbuja } from "@/lib/chat/conversacion";
 
 const Sidebar = dynamic(() => import("@/components/layout/Sidebar"), { ssr: false });
 // Dashboard pages use useTranslation() which produces server/client HTML mismatches.
@@ -195,8 +195,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        {/* En el teléfono deja lugar abajo para la barra de navegación */}
-        <main className="flex-1 p-3 pb-24 sm:p-5 sm:pb-24 md:pb-5 lg:p-6 overflow-auto">
+        {/* Abajo deja lugar para la barra de navegación del teléfono y, si
+            hay, para la burbuja: lo último de la página no queda debajo de
+            ella (H-025, lib/chat/conversacion.ts). */}
+        <main className={`flex-1 overflow-auto px-3 pt-3 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6 ${lugarDeAbajo(pathname, user)}`}>
           <ErrorBoundary>
             {/* Una herramienta que no es de este mundo no se muestra: se dice
                 dónde está y se ofrece pasar. Y una para la que no se tiene el

@@ -503,14 +503,20 @@ export default function AnalyticsPage() {
     : [];
   const debateHistory = history.filter((h) => h.analysis_type === "debate");
 
+  // Con dos columnas ocupa lo que le deja la pantalla, que ya descuenta abajo
+  // el lugar de Doña Tina; con una (celular, tablet) va a lo largo, y al final
+  // queda ese mismo lugar. Con «100vh − 140px» el campo y «Enviar» quedaban
+  // debajo de ella (H-025). La fila mide lo que hay (minmax(0,1fr)): en una
+  // notebook de 768 px de alto el panel de la izquierda es más alto y estiraba
+  // el chat hasta abajo de Doña Tina; ahora ese panel se pasa de su lado.
   return (
-    <div className="animate-fade-in flex flex-col h-[calc(100vh-140px)]">
+    <div className="animate-fade-in flex flex-col xl:h-full">
       <div className="shrink-0 mb-5">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">La Triada</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Claude · ChatGPT · Llama — debate con tus datos de campañas</p>
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[280px_1fr] gap-5 items-stretch">
+      <div className="grid grid-cols-1 xl:flex-1 xl:min-h-0 xl:grid-cols-[280px_1fr] xl:grid-rows-[minmax(0,1fr)] gap-5 items-stretch">
         {/* ── Left panel ── */}
         <div className="space-y-4">
           <div className="card p-5">

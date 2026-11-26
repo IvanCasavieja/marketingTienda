@@ -57,7 +57,7 @@ export default function FueraDeMundo({ pathname, mundo }: { pathname: string; mu
           </button>
         ))}
         <Link
-          href={inicioDe(user)}
+          href={inicioDe(user, mundo.clave)}
           className="flex min-h-[48px] items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
         >
           Volver al inicio de {mundo.nombre}

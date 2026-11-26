@@ -46,6 +46,19 @@ igual('la agencia entra a su tablero', inicioDe(agencia), INICIO_DE_EXTERNOS)
 igual('el equipo, al calendario', inicioDe(delEquipoUsuario), '/calendario')
 igual('alguien del equipo que no ve el calendario, a su tablero', inicioDe(delEquipoSinCalendario), INICIO_DE_EXTERNOS)
 
+// El local (login de sucursal) entra a lo suyo, no al chat de Don Tino (H-010).
+const local = (extra: Partial<CurrentUser>) =>
+  usuario({ permissions: ['ai.don_tino'], assigned_locales: ['Local de prueba'], mundos: ['redexpres'], ...extra })
+igual('el local de Redexpres entra a su pedido', inicioDe(local({})), '/redexpres/mi-pedido')
+igual('un local cuyo mundo no tiene «Mi pedido», a sus fotos', inicioDe(local({ mundos: ['tienda_inglesa'] })), '/fotos')
+// Con dos mundos, el inicio es el del mundo donde está parado: si no, «Volver
+// al inicio» desde otro mundo lo mandaría a una pantalla que ahí no existe.
+const localEnDosMundos = local({ mundos: ['tienda_inglesa', 'redexpres'] })
+igual('parado en Redexpres, a su pedido', inicioDe(localEnDosMundos, 'redexpres'), '/redexpres/mi-pedido')
+igual('parado en Tienda Inglesa, a sus fotos', inicioDe(localEnDosMundos, 'tienda_inglesa'), '/fotos')
+igual('con un local asignado pero con el calendario, al calendario', inicioDe(usuario({ assigned_locales: ['Local de prueba'] })), '/calendario')
+igual('sin calendario ni local, a Don Tino como siempre', inicioDe(usuario({ permissions: ['ai.don_tino', 'analytics.view'] })), '/home')
+
 igual('la agencia arranca sin calendario', alcanceDe(agencia), 'nada')
 igual('el equipo arranca con todo', alcanceDe(delEquipoUsuario), 'todo')
 ok('con 2 meses ve el calendario', veCalendario(agenciaConCalendario))

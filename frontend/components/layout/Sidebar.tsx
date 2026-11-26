@@ -359,7 +359,7 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         >
         {/* Logo. La X del teléfono va al lado, no adentro del link. */}
         <div className="flex items-center gap-1 px-3 pb-3 pt-4 md:pb-4 md:pt-5">
-          <Link href={inicioDe(currentUser)} onClick={handleNavClick} className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1">
+          <Link href={inicioDe(currentUser, mundo?.clave)} onClick={handleNavClick} className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shrink-0 shadow-sm shadow-brand-600/30 transition-transform group-hover:scale-105 group-active:scale-95">
               <CalendarDays size={18} className="text-white" />
             </div>
