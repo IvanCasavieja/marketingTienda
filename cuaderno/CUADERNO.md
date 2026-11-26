@@ -37,6 +37,8 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 >
 > Orden del 26/11 (corrida de procesos): 1) que se le pueda pedir trabajo a cualquier agencia (H-018 + H-090) y lo que bloquea (CI en rojo, borrar entregas, cenefas v2); 2) revisar y entregar sin sorpresas; 3) Sugerencias (Ivan); 4) local y Redexpres; 5) Clientes VIP; 6) trabas de herramientas; 7) lo visual y los detalles; 8) lo que falta confirmar.
 >
+> **Pedido de Ivan (26/11, por mail), primero en la lista:** H-113, que se vea quién de Tienda aprobó la entrega («súmenlo también, está bueno saber quién aprueba la tarea de la agencia»). Va la noche después de que entre «Tarjetas por pieza» a `main` (Tomás: rehace ese bloque; hoy no está subida). Y su aviso: «estamos trabajando en el repo en este momento»: la noche no toca archivos de nada «En curso», aunque no haya rama visible.
+>
 > Orden del 26/11 noche (lo que no está en curso ni en el PR #93): 1) la campanita y la ficha dicen lo mismo que pasó (H-111, H-113); 2) Cenefas sin dudas al cargar (H-115, H-112); 3) local y Redexpres (H-085, H-099, H-086, H-084); 4) palabras de las versiones (H-097) y miniaturas (H-114) después de «Tarjetas por pieza»; 5) lo visual (H-116, H-069, H-003…).
 
 ### H-018 · La agencia con la que trabajás no aparece en «¿Quién la hace?», y una «Nueva tarjeta» no se le puede pasar
@@ -191,6 +193,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** ![H-113](recorridos/2026-11-26/H-113.jpg)
 - **Idea de arreglo:** «Aprobada por Equipo nocturno · 26/11 02:15» en la línea de la versión (y en el aviso).
 - **Visto:** 26/11 noche (Martina a ciegas)
+- **Pedido de Ivan (26/11, mail):** «súmenlo también». Tomás: el dato ya se guarda (`CalendarioDecision.decidido_por_id`, `aprobador_id`) y viaja al front; `Decisiones()` lo muestra abajo de la imagen y el renglón de `Ronda()` muestra a la agencia. Solo pantalla + textos es/en/pt, sin migración. Después de «Tarjetas por pieza»; antes, ver si el bloque nuevo ya lo resuelve.
 
 ### H-114 · Las miniaturas de la entrega dicen solo la medida, no qué pieza es
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la tarjeta y revisión, notebook
