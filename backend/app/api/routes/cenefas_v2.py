@@ -14,13 +14,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_permission, client_ip as _client_ip
 from app.core.uploads import read_limited
 from app.models.audit_log import AuditLog
-from app.models.cenefa_destino import CenefaDestino
+from app.models.cenefa_destino import CenefaDestino, CenefaDestinoBorrado
 from app.core.mundos import MUNDO_POR_DEFECTO, exigir_mundo
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
@@ -1423,6 +1424,30 @@ async def create_destino(
     if existente is not None:
         raise HTTPException(status_code=409, detail=f"Ya existe un mundo llamado {existente.nombre!r}")
 
+    # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
+    cobrable = bool(payload.get("cobrable", True))
+    # Volver a crear un mundo borrado (los de Tienda Inglesa, 0094) lo
+    # continúa: sus corridas tienen el mismo slug y el informe las lee del
+    # mundo vivo. Si el nuevo se cobrara distinto, cambiaría lo ya facturado:
+    # crear «Pruebas» sin tildar la casilla pasaba a cobrar todas sus corridas
+    # desde 2025. Eso no se deja; se dice qué hacer.
+    borrado = await db.get(CenefaDestinoBorrado, slug)
+    if borrado is not None and borrado.cobrable != cobrable:
+        if borrado.cobrable:
+            como, hacer = "sumaba al informe de producción", "dejá sin tildar"
+        else:
+            como, hacer = "no sumaba al informe de producción", "tildá"
+        raise HTTPException(status_code=409, detail=(
+            f"Ya hubo un tipo de cenefa «{borrado.nombre}» que {como}, y sus cenefas siguen en el informe "
+            f"así. Para volver a crearlo, {hacer} «No suma al informe de producción»; si es otro, "
+            "elegí otro nombre."
+        ))
+    if borrado is not None:
+        # Y con el nombre que tenía: el informe muestra el del mundo vivo, y
+        # «GRAN BRETANA» (el mismo slug) les cambiaba el nombre a las corridas
+        # facturadas de «Gran Bretaña».
+        nombre = borrado.nombre
+
     icono = str(payload.get("icono") or "Store")
     color = str(payload.get("color") or "emerald")
     if icono not in _ICONOS_VALIDOS:
@@ -1442,10 +1467,9 @@ async def create_destino(
         color=color,
         orden=max_orden + 10,
         mundo=mundo,
-        # Un mundo nace cobrable salvo que se diga lo contrario: es lo normal.
         # Se marca en false para Redexpres y para el mundo de pruebas, que
         # pasan por el motor pero no son trabajo facturable.
-        cobrable=bool(payload.get("cobrable", True)),
+        cobrable=cobrable,
         created_by=current_user.id,
     )
     db.add(destino)
@@ -1485,6 +1509,23 @@ async def delete_destino(
             detail=f"El mundo tiene {en_uso} plantilla(s). Borralas antes de eliminarlo.",
         )
 
+    # Lo que el informe necesita de este mundo queda guardado (0094): sus
+    # corridas siguen contando con su nombre, cobrables o no, y el informe da
+    # lo mismo que antes de borrarlo. Si el slug ya se había borrado una vez,
+    # manda el último; lo declarado no se pisa (un mundo creado desde acá
+    # nace sin producción declarada).
+    guardar = pg_insert(CenefaDestinoBorrado).values(
+        slug=destino.slug, nombre=destino.nombre, descripcion=destino.descripcion, icono=destino.icono,
+        color=destino.color, orden=destino.orden, mundo=destino.mundo, cobrable=destino.cobrable,
+        cenefas_previas=destino.cenefas_previas, cenefas_previas_nota=destino.cenefas_previas_nota,
+        created_at=destino.created_at,
+    )
+    await db.execute(guardar.on_conflict_do_update(
+        index_elements=[CenefaDestinoBorrado.slug],
+        set_={**{c: guardar.excluded[c] for c in ("nombre", "descripcion", "icono", "color", "orden", "mundo",
+                                                   "cobrable", "created_at")},
+              "borrado_at": func.now()},
+    ))
     await db.delete(destino)
     db.add(AuditLog(
         user_id=current_user.id, action="cenefas.destino.delete", resource="cenefa_destino",

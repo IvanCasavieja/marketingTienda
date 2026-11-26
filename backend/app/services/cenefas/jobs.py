@@ -6,11 +6,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select, text, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.services.espacio import MB, compactar
+from app.services.espacio import compactar_en_segundo_plano, transaccion_actual
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
@@ -712,17 +712,46 @@ async def purgar_archivos_vencidos(horas: int) -> tuple[int, int]:
                 staged_data=None, staged_source_pptx=None, staged_excel_bytes=None,
             )
         )
+        purgados, vencidos = r1.rowcount or 0, r2.rowcount or 0
+        xid = await transaccion_actual(db) if purgados or vencidos else None
         await db.commit()
-    purgados, vencidos = r1.rowcount or 0, r2.rowcount or 0
-    if purgados or vencidos:
-        # Sin esto el lugar no vuelve: Postgres lo guarda para sí.
-        try:
-            antes, despues = await compactar("cenefa_jobs")
-            logger.info("purga_cenefas: cenefa_jobs compactada de %.1f a %.1f MB",
-                        antes / MB, despues / MB)
-        except Exception as exc:
-            logger.error("purga_cenefas: no se pudo compactar cenefa_jobs -- %s", exc)
+    if xid is not None:
+        # Sin esto el lugar no vuelve: Postgres lo guarda para sí. No hace
+        # fila detrás de quien esté usando la tabla (eso colgaba las pantallas
+        # de cenefas): si sigue en uso, queda para la próxima purga. Nunca falla.
+        await compactar_en_segundo_plano(["cenefa_jobs"], xid)
+    await compactar_plantillas_si_sobra_lugar()
     return purgados, vencidos
+
+
+# Lo que tiene que sobrar en la tabla de plantillas para que valga trabarla.
+SOBRA_EN_PLANTILLAS = 4 * 1024 * 1024
+# Lo que ocupa la tabla y lo que ocupan sus plantillas. pg_column_size lee el
+# tamaño guardado sin traer el PPTX (está en TOAST): es barato.
+_LUGAR_DE_LAS_PLANTILLAS = text(
+    "SELECT pg_total_relation_size('cenefa_templates_v2'), "
+    "       coalesce(sum(pg_column_size(source_pptx)), 0) + coalesce(sum(pg_column_size(definition)), 0) "
+    "  FROM cenefa_templates_v2"
+)
+
+
+async def compactar_plantillas_si_sobra_lugar() -> None:
+    """Compacta la tabla de plantillas si ocupa bastante más que ellas.
+
+    Las plantillas no tienen purga, y el lugar de las que se borran Postgres
+    lo guarda para sí. La 0094 (26/11/2026) borró las de Tienda Inglesa —en
+    producción, 35 de 41: unos 33 MB— y compacta la tabla al publicarse, pero
+    si justo había una corrida generándose (la tiene tomada mientras lee el
+    Excel) no puede y la deja para la próxima: esta es la próxima, en cada
+    pasada de la purga. Vale también para una plantilla borrada desde la
+    pantalla. Nunca falla."""
+    try:
+        async with AsyncSessionLocal() as db:
+            total, plantillas = (await db.execute(_LUGAR_DE_LAS_PLANTILLAS)).one()
+        if total - plantillas > SOBRA_EN_PLANTILLAS:
+            await compactar_en_segundo_plano(["cenefa_templates_v2"])
+    except Exception as exc:
+        logger.error("purga_cenefas: no se pudo revisar el lugar de las plantillas -- %s", exc)
 
 
 async def run_purga_cenefas_loop() -> None:

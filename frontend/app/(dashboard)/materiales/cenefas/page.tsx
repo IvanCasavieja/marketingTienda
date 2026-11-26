@@ -36,6 +36,11 @@ function CenefasHost() {
 
   const [destinos, setDestinos] = useState<CenefaDestino[]>([]);
   const [loading, setLoading] = useState(true);
+  // Que la lista no haya cargado no es lo mismo que un mundo sin tipos
+  // (Tienda Inglesa, desde el 26/11/2026): con un error, el selector lo dice
+  // y ofrece reintentar en vez de «Todavía no hay ningún tipo».
+  const [errorCarga, setErrorCarga] = useState(false);
+  const [intento, setIntento] = useState(0);
   const [destino, setDestino] = useState<string | null>(null);
   const [excelConvertido, setExcelConvertido] = useState<File | null>(null);
 
@@ -48,11 +53,12 @@ function CenefasHost() {
   useEffect(() => {
     if (!mundo) return;
     setLoading(true);
+    setErrorCarga(false);
     cenefasV2Api.listDestinos(mundo)
       .then(({ data }) => setDestinos(data))
-      .catch(() => toast.error(t("cenefas.destino.errorCargar")))
+      .catch(() => { setErrorCarga(true); toast.error(t("cenefas.destino.errorCargar")); })
       .finally(() => setLoading(false));
-  }, [t, mundo]);
+  }, [t, mundo, intento]);
 
   // Un mundo con un solo tipo de cenefa no tiene nada que elegir.
   useEffect(() => {
@@ -143,6 +149,8 @@ function CenefasHost() {
         <DestinoModal
           destinos={destinos}
           loading={loading}
+          error={errorCarga}
+          onReintentar={() => setIntento((n) => n + 1)}
           mundo={mundo}
           puedeEditar={puedeEditar}
           onSelect={selectDestino}

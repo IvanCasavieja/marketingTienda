@@ -6,6 +6,7 @@ riesgo, predicción) corre siempre; la carga de punta a punta con la
 API usa la base de TEST_DATABASE_URL, con las ayudas de
 test_tablero_agencia_api.py.
 """
+import asyncio
 import os
 from datetime import date
 
@@ -163,6 +164,19 @@ if URL:
 _con_base = pytest.mark.skipif(not URL, reason="Sin TEST_DATABASE_URL: estas pruebas necesitan una base Postgres")
 
 
+@pytest.fixture
+def compactaciones(monkeypatch):
+    """Las tablas que cada carga deja para compactar después de responder. Acá
+    no se compactan: estas pruebas corren adentro de una transacción que se
+    deshace al final, y VACUUM FULL no puede con lo que ella tiene tomado. La
+    compactación de verdad, en test_recargar_los_mismos_meses_..."""
+    from app.api.routes import clientes_vip as rutas
+
+    agendadas: list[list[str]] = []
+    monkeypatch.setattr(rutas, "compactar_en_segundo_plano", lambda tablas, xid=None: agendadas.append(tablas))
+    return agendadas
+
+
 def _fila(cliente: int, mes: str, venta: int, sucursal="Carrasco") -> list:
     return [cliente, mes, venta, venta // 3, 10, 3, 3, 0, 0, venta // 10, sucursal, f"Almacén={venta}"]
 
@@ -181,7 +195,7 @@ async def _cargar(cliente, archivo: str, filas: list[list], dims: list[dict] | N
 
 
 @_con_base
-def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
+def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no(compactaciones):
 
     async def prueba(d):
         emi = Cliente(d.http, await _persona(d, "Emi VIP", permisos=(vip.PERMISO_VER, vip.PERMISO_CARGAR)))
@@ -196,6 +210,7 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
                  "unidades": 10, "tickets": 3, "clientes": 1}]
         r = await _cargar(emi, "compras_2025.zip", filas, dims)
         assert r["clientes"] == 2
+        assert compactaciones == [], "la primera carga no reemplazó nada"
 
         t = (await mira.get("/clientes-vip/tablero")).json()
         assert t["ultimo_mes"] == "2025-12" and t["clientes"] == 2
@@ -212,6 +227,8 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
 
         # Cargar de nuevo diciembre lo reemplaza: el cliente 1 ya no está en diciembre, el 3 sí.
         await _cargar(emi, "diciembre_corregido.csv", [_fila(3, "2025-12", 5_000)])
+        # Y lo reemplazado se compacta después de responder (sin detalle: no había).
+        assert compactaciones == [["vip_cliente_mes", "vip_clientes", "vip_mes_dimension"]]
         async with d.Sesion() as s:
             dic = (await s.execute(select(VipClienteMes.id_cliente).where(VipClienteMes.mes == date(2025, 12, 1)))).scalars().all()
             assert dic == [3]
@@ -248,7 +265,7 @@ def test_emi_carga_dos_archivos_ve_el_tablero_y_los_demas_no():
 
 
 @_con_base
-def test_valentina_baja_los_datos_publica_su_informe_y_anota_lo_que_aprende():
+def test_valentina_baja_los_datos_publica_su_informe_y_anota_lo_que_aprende(compactaciones):
     """Valentina (Escuadrón Lechuza, en la nube) con su cuenta: ver y cargar."""
 
     async def prueba(d):
@@ -309,7 +326,7 @@ def test_valentina_baja_los_datos_publica_su_informe_y_anota_lo_que_aprende():
 
 
 @_con_base
-def test_el_detalle_comprimido_va_y_vuelve_entero_y_valentina_publica_cada_cliente():
+def test_el_detalle_comprimido_va_y_vuelve_entero_y_valentina_publica_cada_cliente(compactaciones):
     import gzip
 
     async def prueba(d):
@@ -348,8 +365,11 @@ def test_el_detalle_comprimido_va_y_vuelve_entero_y_valentina_publica_cada_clien
         assert (await mira.get(f"/clientes-vip/detalle/{primera}/productos")).status_code == 404
 
         # Una carga nueva de los mismos meses reemplaza el detalle viejo: no se acumula.
+        assert compactaciones == []
         segunda = await cargar_con_detalle("sep-oct-corregido.csv")
         assert [x["carga_id"] for x in (await mira.get("/clientes-vip/detalle")).json()] == [segunda]
+        # Y devuelve su lugar (sin totales del mes: no había ninguno que reemplazar).
+        assert compactaciones == [["vip_cliente_mes", "vip_clientes", "vip_detalle"]]
 
         # Valentina publica lo que ve de cada cliente y aparece en su ficha.
         r = await emi.post("/clientes-vip/valentina/clientes", json={"mes": "2026-10", "filas": [{
@@ -367,3 +387,190 @@ def test_el_detalle_comprimido_va_y_vuelve_entero_y_valentina_publica_cada_clien
         r = await mira.post("/clientes-vip/valentina/clientes", json={"mes": "2026-10", "filas": [{"id_cliente": 1}]})
         assert r.status_code == 403
     correr(prueba)
+
+
+# ---------------------------------------------------------------------------
+# El lugar que deja una recarga vuelve a la base
+# ---------------------------------------------------------------------------
+
+_TABLAS_VIP = ("vip_cliente_mes", "vip_clientes", "vip_detalle", "vip_mes_dimension")
+
+
+@_con_base
+def test_recargar_los_mismos_meses_devuelve_el_lugar_y_no_cambia_un_dato(monkeypatch):
+    """26/11/2026: recargar 2025 y enero-octubre 2026 dejó 22 MB de filas
+    viejas (vip_cliente_mes pasó de 37,4 a 58,8 MB con los mismos datos). Ahora
+    la carga que reemplaza meses compacta, después de responder, las tablas que
+    tocó: vuelven a su tamaño y los datos quedan iguales.
+
+    Con datos confirmados de verdad (VACUUM FULL no puede con lo que tiene
+    tomado una transacción abierta) y borrados al final. Clientes y meses que
+    no existen (2001, desde el 990.000.001)."""
+    import gzip
+    import uuid
+    from datetime import datetime, timezone
+
+    import httpx
+    from sqlalchemy import delete, text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    import app.core.database as database
+    from app.api.routes import clientes_vip as rutas
+    from app.core import alcance
+    from app.core.database import get_db
+    from app.core.rate_limit import limiter
+    from app.core.security import create_access_token
+    from app.main import app
+    from app.models.clientes_vip import VipCarga, VipCliente, VipMesDimension
+    from app.models.user import User
+    from app.services import espacio
+
+    primero, clientes, meses = 990_000_001, 2_500, ("2001-01", "2001-02")
+    filas = [_fila(primero + i, mes, 1_000 + 7 * i) for i in range(clientes) for mes in meses]
+    dims = [{"mes": mes, "dimension": "categoria", "valor": f"Categoría {k}", "venta": 1_000 * k, "margen": 300 * k,
+             "unidades": 10 * k, "tickets": k, "clientes": k} for mes in meses for k in range(1, 41)]
+    detalle = gzip.compress(os.urandom(320_000))  # no se comprime: va a TOAST, como el de verdad
+    hasta = primero + clientes
+
+    async def prueba():
+        motor = create_async_engine(URL, poolclass=NullPool, connect_args={"statement_cache_size": 0})
+        sesiones = async_sessionmaker(motor, expire_on_commit=False)
+
+        async def get_db_de_prueba():
+            async with sesiones() as s:
+                try:
+                    yield s
+                    await s.commit()
+                except Exception:
+                    await s.rollback()
+                    raise
+
+        monkeypatch.setattr(database, "engine", motor)
+        monkeypatch.setitem(app.dependency_overrides, get_db, get_db_de_prueba)
+        monkeypatch.setattr(limiter, "enabled", False)
+        agendadas: list[tuple[list[str], int]] = []
+        monkeypatch.setattr(rutas, "compactar_en_segundo_plano", lambda tablas, xid: agendadas.append((tablas, xid)))
+
+        async def medir() -> dict[str, int]:
+            async with motor.connect() as c:
+                return {t: (await c.execute(text("SELECT pg_total_relation_size(CAST(:t AS regclass))"),
+                                            {"t": t})).scalar_one() for t in _TABLAS_VIP}
+
+        async def foto() -> tuple:
+            """Lo cargado, sin la carga de la que vino."""
+            async with motor.connect() as c:
+                mes = (await c.execute(text(
+                    "SELECT id_cliente, mes, venta, margen, unidades, tickets, dias, venta_ecommerce, venta_smart, "
+                    "venta_marca_propia, sucursal, categorias FROM vip_cliente_mes "
+                    "WHERE id_cliente >= :a AND id_cliente < :b ORDER BY id_cliente, mes"), {"a": primero, "b": hasta})).all()
+                fichas = (await c.execute(text(
+                    "SELECT * FROM vip_clientes WHERE id_cliente >= :a AND id_cliente < :b ORDER BY id_cliente"),
+                    {"a": primero, "b": hasta})).all()
+                totales = (await c.execute(text(
+                    "SELECT mes, dimension, valor, venta, margen, unidades, tickets, clientes FROM vip_mes_dimension "
+                    "WHERE mes < '2002-01-01' ORDER BY mes, dimension, valor"))).all()
+            return mes, fichas, totales
+
+        cargas: list[int] = []
+        async with sesiones() as s:
+            emi = User(email=f"emi.compacta.{uuid.uuid4().hex[:8]}@prueba-vip.test", full_name="Emi Compacta",
+                       hashed_password="sin-clave", permissions=[vip.PERMISO_VER, vip.PERMISO_CARGAR],
+                       mundos=["tienda_inglesa"], is_active=True, is_superuser=False, es_externo=False,
+                       calendario_alcance=alcance.por_defecto(False), must_change_password=False,
+                       password_changed_at=datetime.now(timezone.utc))
+            s.add(emi)
+            await s.commit()
+        cabecera = {"Authorization": f"Bearer {create_access_token(emi.id)}"}
+        try:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://prueba/api/v1",
+                                         headers=cabecera, timeout=60) as http:
+
+                async def cargar(archivo: str) -> int:
+                    r = await http.post("/clientes-vip/cargas", json={"archivo": archivo, "meses": list(meses),
+                                                                      "filas": len(filas)})
+                    assert r.status_code == 200, r.text
+                    carga_id = r.json()["id"]
+                    cargas.append(carga_id)
+                    r = await http.post(f"/clientes-vip/cargas/{carga_id}/filas", json={"filas": filas})
+                    assert r.status_code == 200, r.text
+                    r = await http.post(f"/clientes-vip/cargas/{carga_id}/detalle", content=detalle,
+                                        params={"nombre": "productos", "parte": 0, "filas": 1})
+                    assert r.status_code == 200, r.text
+                    r = await http.post(f"/clientes-vip/cargas/{carga_id}/terminar", json={"dimensiones": dims})
+                    assert r.status_code == 200, r.text
+                    return carga_id
+
+                await cargar("2001.csv")
+                assert agendadas == [], "la primera carga no reemplazó nada"
+                primera, datos = await medir(), await foto()
+                assert len(datos[0]) == len(filas) and len(datos[1]) == clientes and len(datos[2]) == len(dims)
+
+                segunda = await cargar("2001-otra-vez.csv")  # los mismos meses, los mismos datos
+                assert [tablas for tablas, _ in agendadas] == [sorted(_TABLAS_VIP)]
+                recargada = await medir()
+                for t in ("vip_cliente_mes", "vip_clientes", "vip_detalle"):
+                    assert recargada[t] > primera[t], f"{t}: la recarga tendría que dejar lugar muerto"
+
+                # Lo que la tarea de fondo hace después de responder, de verdad.
+                tablas, xid = agendadas[0]
+                if not await espacio.esperar_que_nadie_vea_lo_viejo(xid, 120):
+                    pytest.skip("Otra transacción de este servidor sigue abierta desde antes de la recarga: "
+                                "VACUUM FULL no puede devolver el lugar todavía")
+                resultado = await espacio.compactar_en_segundo_plano(tablas, xid)
+                assert all(resultado[t] for t in tablas), resultado
+
+                compactada = await medir()
+                for t in _TABLAS_VIP:
+                    assert compactada[t] <= primera[t] + 16 * 1024, (t, primera[t], recargada[t], compactada[t])
+                assert compactada["vip_cliente_mes"] < recargada["vip_cliente_mes"]
+                assert await foto() == datos, "los datos quedan iguales"
+                r = await http.get(f"/clientes-vip/detalle/{segunda}/productos")
+                assert r.status_code == 200 and r.content == detalle
+        finally:
+            async with sesiones() as s:
+                await s.execute(text("DELETE FROM vip_cliente_mes WHERE id_cliente >= :a AND id_cliente < :b"),
+                                {"a": primero, "b": hasta})
+                await s.execute(delete(VipCliente).where(VipCliente.id_cliente >= primero, VipCliente.id_cliente < hasta))
+                await s.execute(text("DELETE FROM vip_mes_dimension WHERE mes < '2002-01-01'"))
+                await s.execute(delete(VipCarga).where(VipCarga.id.in_(cargas)))  # y su detalle (CASCADE)
+                await s.execute(delete(User).where(User.id == emi.id))
+                await s.commit()
+            await motor.dispose()
+
+    asyncio.run(prueba())
+
+
+@_con_base
+def test_compactar_no_hace_fila_si_la_tabla_esta_en_uso(monkeypatch):
+    """VACUUM FULL traba hasta las lecturas. Si esperara su turno, todos los
+    que llegan detrás (una pantalla abriéndose) quedarían colgados: si la tabla
+    está en uso no espera, y queda para la próxima."""
+    import time
+
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    import app.core.database as database
+    from app.services import espacio
+
+    async def prueba():
+        motor = create_async_engine(URL, poolclass=NullPool, connect_args={"statement_cache_size": 0})
+        monkeypatch.setattr(database, "engine", motor)
+        monkeypatch.setattr(espacio, "PAUSA_AL_COMPACTAR", 0.01)
+        try:
+            async with motor.connect() as pantalla:
+                await pantalla.execute(text("SELECT count(*) FROM vip_mes_dimension"))  # la tiene tomada
+                t0 = time.monotonic()
+                with pytest.raises(espacio.TablaEnUso):
+                    await espacio.compactar("vip_mes_dimension")
+                assert await espacio.compactar_en_segundo_plano(["vip_mes_dimension"]) == {"vip_mes_dimension": None}
+                assert time.monotonic() - t0 < 10, "no se quedó esperando"
+                await pantalla.rollback()
+            antes, despues = await espacio.compactar("vip_mes_dimension")  # ya la soltó
+            assert despues <= antes
+        finally:
+            await motor.dispose()
+
+    asyncio.run(prueba())

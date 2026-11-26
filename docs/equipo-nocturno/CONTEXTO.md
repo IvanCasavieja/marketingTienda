@@ -112,6 +112,10 @@ en `.claude/skills/recorrido-humano/criterios.md`.
   día) y después se borra entera, con sus imágenes (Ivan, con 73 MB de
   validaciones en la base: «no tiene sentido que mantengamos historial de
   validaciones»).
+- Volver a poner tipos o plantillas de cenefa en Tienda Inglesa. Ivan los
+  borró el 26/11/2026 («el resto elimina todos los submundos esos de cenefas
+  porque no se van a usar»; migración 0094): las cenefas que se usan son las de
+  Redexpres. Que Tienda Inglesa no tenga tipos de cenefa es lo esperado.
 - Mejoras inventadas que no le sirven a nadie. Cada propuesta responde a una
   necesidad concreta de alguien que usa la plataforma.
 

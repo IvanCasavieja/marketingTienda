@@ -146,13 +146,16 @@ def test_con_cero_horas_no_borra_nada(monkeypatch, horas):
 
 
 def test_solo_se_pueden_compactar_las_tablas_permitidas():
-    """Las tres de RRSS se suman a la de cenefas, y ninguna más: VACUUM FULL
-    traba la tabla, y el nombre va pegado en la orden."""
+    """Las tres de RRSS se suman a las de cenefas y de Clientes VIP (0094), y
+    ninguna más: VACUUM FULL traba la tabla, y el nombre va pegado en la orden."""
     from app.services import espacio
     from app.services.rrss import retencion
 
     assert set(retencion.TABLAS) == {"rrss_validaciones", "rrss_validacion_paginas", "rrss_validacion_imagenes"}
-    assert espacio.TABLAS_COMPACTABLES == {"cenefa_jobs", *retencion.TABLAS}
+    assert espacio.TABLAS_COMPACTABLES == {
+        "cenefa_jobs", "cenefa_templates_v2", *retencion.TABLAS,
+        "vip_cliente_mes", "vip_clientes", "vip_mes_dimension", "vip_detalle",
+    }
     for tabla in ("users", "entrega_imagenes", 'rrss_validaciones"; DROP TABLE users; --'):
         with pytest.raises(ValueError):
             asyncio.run(espacio.compactar(tabla))

@@ -60,3 +60,33 @@ class CenefaDestino(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class CenefaDestinoBorrado(Base):
+    """Lo que queda de un tipo de cenefa que se borró (0094): lo que el informe
+    de producción necesita de él.
+
+    Sus corridas siguen en cenefa_jobs con el slug en `categoria`, y el
+    informe —que es lo que se factura— las tiene que seguir mostrando igual:
+    con el nombre del tipo, cobrables o no, y con su producción declarada.
+    Antes, borrar un tipo cambiaba el informe: el nombre pasaba a ser el slug
+    y sus corridas contaban como cobrables, las de pruebas incluidas.
+
+    No aparece en el selector ni en ningún lado más que en el informe. Se
+    guarda la fila entera para que el downgrade de la 0094 la pueda devolver.
+    """
+
+    __tablename__ = "cenefa_destinos_borrados"
+
+    slug: Mapped[str] = mapped_column(String(50), primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    descripcion: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    icono: Mapped[str] = mapped_column(String(40), nullable=False, default="Store")
+    color: Mapped[str] = mapped_column(String(30), nullable=False, default="emerald")
+    orden: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    mundo: Mapped[str] = mapped_column(String(32), nullable=False, default="tienda_inglesa")
+    cobrable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    cenefas_previas: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cenefas_previas_nota: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    borrado_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

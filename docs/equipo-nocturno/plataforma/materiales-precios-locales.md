@@ -50,10 +50,12 @@ de los supermercados: necesita internet y puede venir vacía por bloqueo.
 
 ### Qué trae la base vacía (lo siembran las migraciones)
 
-- Tipos de cenefa (`cenefa_destinos`, migraciones 0040, 0046, 0060):
-  **Rompe Precios**, **Parrilla y Vinos** (con 2.700 cenefas "declaradas" que
-  ya aparecen en el informe) y **Pruebas** (sin costo) en Tienda Inglesa;
-  **Redexpres** (sin costo) en Redexpres.
+- Tipos de cenefa (`cenefa_destinos`): solo **Redexpres** (sin costo), en
+  Redexpres. **Tienda Inglesa arranca sin ningún tipo**: la 0094 (26/11/2026,
+  pedido de Ivan) borró los de Tienda Inglesa y sus plantillas. Para generar
+  cenefas en Tienda Inglesa, primero se crea un tipo (recorrido E, "Nuevo tipo
+  de cenefa"). El informe igual muestra "Declarado · Parrilla y Vinos" (2.700):
+  lo que necesita de un tipo borrado queda en `cenefa_destinos_borrados`.
 - Ninguna plantilla de cenefa, ningún mes de Redexpres, ninguna descripción en
   el Diccionario, ninguna lista de precios, ningún pedido de fotos.
 - La lista de los ~60 locales de Redexpres está fija en el código
@@ -101,7 +103,7 @@ El servidor exige igual el permiso en cada endpoint (`require_permission`).
 
 | Pantalla | Tienda Inglesa | Redexpres | Express / Viajes / Farma |
 |---|---|---|---|
-| Cenefas, editor, informe, conocimiento, Convertidor (`/materiales/*`) | Sí. Tipos: Rompe Precios, Parrilla y Vinos, Pruebas (+ los que se creen) | Sí. Tipo único Redexpres: se entra derecho, sin elegir | No (FueraDeMundo) |
+| Cenefas, editor, informe, conocimiento, Convertidor (`/materiales/*`) | Sí. Tipos: los que se creen (desde la 0094 no queda ninguno de antes) | Sí. Tipo único Redexpres: se entra derecho, sin elegir | No (FueraDeMundo) |
 | Diccionario | Sí | No (FueraDeMundo), aunque el Convertidor de Redexpres escribe en el mismo catálogo | No |
 | Validación de RRSS | Sí | No | No |
 | Buscar precios / Listas | Sí | No | No |
@@ -210,15 +212,23 @@ listas de precios y las validaciones de RRSS son comunes (no filtran por mundo).
   - Generar: `POST /tools/cenefas/v2/lotes` (multipart: excels, pares_json,
     vigencia, usar_legales, legales, image_overrides_json) → pasa al paso 2.
   - `?destino=<slug>` en la URL abre ese tipo directo.
-- **Estados:** cargando tipos: spinner en el selector; error: toast "No se
-  pudieron cargar los tipos de cenefa"; sin tipos: "Todavía no hay ningún tipo
-  de cenefa creado en este mundo."; picker vacío: "Todavía no hay plantillas
+- **Estados:** cargando tipos: spinner en el selector; error: toast y, en el
+  selector, "No se pudieron cargar los tipos de cenefa" con "Reintentar" (sin
+  "Nuevo tipo de cenefa" hasta que cargue); sin tipos —Tienda Inglesa, desde la
+  0094—: "Todavía no hay ningún tipo de cenefa creado en este mundo."; nombre de
+  un tipo borrado que se cobraría distinto: el servidor no lo crea y el toast
+  dice qué casilla tocar; picker vacío: "Todavía no hay plantillas
   guardadas para <tipo>"; Excel repetido: toast; error al generar: toast con el
   detalle del servidor (por ejemplo un listado de gestión sin convertir lo frena
   con "qué hacer"). Sin permiso: SinAcceso.
 - **Celular:** el panel de carga es `grid-cols-2` fijo, sin variante angosta.
-- **Datos para probarla:** elegir el tipo **Pruebas** (no suma al informe),
-  cargar una plantilla con `Base cenefa A4 1.pptx` y usar el Excel de
+- **Datos para probarla:** el tipo **Pruebas** ya no existe (0094). En Tienda
+  Inglesa, crear uno sin costo con un nombre nuevo (por ejemplo "Prueba
+  nocturna", con "No suma al informe de producción" tildado): con el nombre de
+  uno borrado ("Pruebas", "Rompe Precios"…) continúa al viejo, y "Pruebas"
+  además prende el experimento de autoajuste de `services/cenefas/pruebas.py`.
+  O probar en Redexpres, que entra derecho. Después, cargar una plantilla con
+  `Base cenefa A4 1.pptx` y usar el Excel de
   "Descargar plantilla Excel".
 - **Código:** `frontend/app/(dashboard)/materiales/cenefas/page.tsx`,
   `components/cenefas/{DestinoModal,CenefaPanel,LotePreviewStep}.tsx`,
@@ -380,7 +390,8 @@ listas de precios y las validaciones de RRSS son comunes (no filtran por mundo).
   la página queda vacía bajo los filtros.
 - **Celular:** grillas de 1 columna en angosto; tablas con scroll horizontal.
 - **Datos para probarla:** con la base vacía ya muestra "Declarado · Parrilla y
-  Vinos" (2.700). Para más, generar y confirmar lotes en un tipo cobrable.
+  Vinos" (2.700). Para más, generar y confirmar lotes en un tipo cobrable (en
+  Tienda Inglesa, crearlo antes: ver E).
 - **Código:** `.../v2/informe/page.tsx`, `services/cenefas/informe.py`.
 - **Puntos a mirar:** sin estado de error con reintento; el botón volver lleva
   al editor y no a Cenefas.
@@ -915,7 +926,8 @@ Quién: el equipo de promo (`cenefas.view`, `cenefas.generate`; IA con `ai.tinin
    descripciones (cada una se guarda en el Diccionario).
 4. "Convertir a cenefa" → salta a Cenefas con el Excel ya cargado
    ("Excel traído del Convertidor").
-5. Elige el tipo (Rompe Precios, Parrilla y Vinos…; en Redexpres entra directo).
+5. Elige el tipo (en Tienda Inglesa, uno que se haya creado: ver E; en
+   Redexpres entra directo).
 6. "Elegir plantillas" para el Excel (hasta 5), vigencia, legales, cocarda →
    "Generar y descargar PPTX".
 7. Revisión del lote: recorre cada cenefa, mueve lo que no entra, mira los
@@ -951,7 +963,14 @@ Quién: `cenefas.edit`, en Tienda Inglesa o Redexpres.
 1. Cenefas → "Cambiar tipo de cenefa" (si ya estaba adentro) → "Nuevo tipo de
    cenefa": nombre, descripción, ícono, color, cobrable → "Crear tipo de cenefa".
 2. Nace en el mundo en el que se está. Aparece en el selector de ese mundo.
-3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena.
+   Con el nombre de un tipo borrado (los 12 de Tienda Inglesa, 0094) lo
+   continúa: sus corridas viejas pasan a leerse del nuevo. Por eso, si se
+   cobraría distinto que el borrado, el servidor no lo crea (409) y dice qué
+   casilla tocar: si no, cambiaría lo ya facturado. Y nace con el nombre que
+   tenía: "GRAN BRETANA" sobre "Gran Bretaña" borrado queda "Gran Bretaña".
+3. Borrarlo: tacho → confirmar; si tiene plantillas el servidor lo frena. Sus
+   corridas siguen en el informe igual que antes (nombre, cobrable o sin
+   costo): lo que necesita de él queda en `cenefa_destinos_borrados`.
 4. Repercute: en Redexpres, con dos tipos, deja de entrarse directo; en el
    informe aparece como mundo cobrable o sin costo.
 
