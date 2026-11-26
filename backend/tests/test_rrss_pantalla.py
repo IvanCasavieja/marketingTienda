@@ -11,6 +11,8 @@ Los cuatro casos que fija:
   - la punta de la cola de CatTi contrasta también sobre fondo claro;
   - el progreso dice el mismo número que marca la barra, y no llega a 100 %
     antes de que el cierre conteste.
+Y desde el 26/11/2026: la lista es «Las de hoy» (no hay historial: cada
+validación se borra sola a las 24 horas) y una que ya se borró dice por qué.
 
 SI UN TEST DE ACÁ FALLA no hay que "arreglar el test": volvió el bug.
 """
@@ -293,3 +295,96 @@ def test_la_pantalla_dice_que_la_fecha_y_la_leyenda_quedaron_sin_revisar():
     assert 't("rrss.legalAlcohol")' in src and "v.config?.legal_alcohol" in src
     for idioma in _IDIOMAS:
         assert _rrss(idioma)["campoFecha"]
+
+
+# ---------------------------------------------------------------- (26/11) sin historial
+
+_PALABRAS_DE_HISTORIAL = ("historial", "history", "histórico", "historico")
+
+
+def test_la_lista_no_promete_un_historial():
+    """Desde el 26/11/2026 cada validación se borra sola a las 24 horas (Ivan:
+    «no tiene sentido que mantengamos historial de validaciones»). La pestaña
+    es «Las de hoy» y un renglón lo dice siempre. Los textos dicen «24» escrito:
+    si cambia el valor por defecto del servidor, hay que cambiarlos también."""
+    from app.core.config import Settings
+
+    assert Settings.model_fields["RRSS_RETENCION_HORAS"].default == 24
+    for idioma in _IDIOMAS:
+        rrss = _rrss(idioma)
+        for clave in ("tabHistorial", "volverHistorial", "errorHistorial", "historialVacio", "deHoyAviso"):
+            texto = rrss[clave].lower()
+            assert not any(p in texto for p in _PALABRAS_DE_HISTORIAL), (idioma, clave, rrss[clave])
+        assert "24" in rrss["deHoyAviso"] and "24" in rrss["yaNoEsta"], idioma
+    assert 't("rrss.deHoyAviso")' in _texto(_RRSS / "Historial.tsx")
+
+
+def test_una_que_ya_se_borro_dice_por_que_no_esta():
+    """Abrir una de la lista (o bajar su Excel) después de que se borró sola
+    daba «No se pudo abrir esa validación» o el detalle crudo del servidor.
+    Ahora dice que se borran a las 24 horas, en el idioma de la persona, y la
+    lista se vuelve a pedir, ya sin ella. Borrarla cuando ya no estaba no
+    reemplaza la lista por un error: se saca y listo."""
+    pagina = _texto(_PAGINA)
+    abrir = pagina.split("async function abrirDelHistorial")[1].split("\n  }\n")[0]
+    assert "yaNoEsta(e)" in abrir and 't("rrss.yaNoEsta")' in abrir and "setListaVersion" in abrir
+    assert "<Historial key={listaVersion}" in pagina
+    assert 'yaNoEsta(e) ? t("rrss.yaNoEsta")' in _texto(_RRSS / "DescargarExcel.tsx")
+    borrar = _texto(_RRSS / "Historial.tsx").split("async function borrar")[1].split("\n  }\n")[0]
+    assert "if (yaNoEsta(e)) quitar(f.id);" in borrar
+
+
+def test_en_el_celular_se_llega_a_abrir_una_de_hoy():
+    """En el celular (390 px) la tabla de «Las de hoy» no entra entera y la
+    tarjeta la cortaba (overflow-hidden): el resultado, «Abrir» y el tacho
+    quedaban fuera de la pantalla y no había cómo deslizarla. Justo en la
+    lista que dice «Acá podés volver a abrir una». Lo vio Ramiro en el
+    navegador el 26/11/2026: «Abrir» en x=499 con la pantalla de 390."""
+    src = _texto(_RRSS / "Historial.tsx")
+    # El contenedor más cercano a la tabla es el que la deja deslizar.
+    contenedor = src.split("<table")[0].rsplit("<div", 1)[1]
+    assert "overflow-x-auto" in contenedor, contenedor
+    assert "overflow-hidden" not in contenedor, contenedor
+
+
+def test_el_tacho_va_solo_donde_el_servidor_deja_borrar():
+    """H-016 (confirmado por Ramiro en el navegador el 26/11/2026): el tacho
+    aparecía en las validaciones de todas las personas y, al tocarlo en una
+    ajena, el 403 reemplazaba la lista entera por «No se pudieron cargar las
+    validaciones de hoy», que encima era falso: la lista había cargado. Ahora
+    el tacho va donde dice el servidor (puede_borrar) y un borrado rechazado
+    avisa por qué sin tocar la lista. El servidor lo cuida
+    test_rrss_borrar_lo_propio.py."""
+    src = _texto(_RRSS / "Historial.tsx")
+    assert "puedeBorrar && f.puede_borrar !== false &&" in src
+    borrar = src.split("async function borrar")[1].split("\n  }\n")[0]
+    assert "setError" not in borrar, "un borrado que falla no puede reemplazar la lista por el error de carga"
+    assert 't(prohibido ? "rrss.borrarSoloQuienLaCreo" : "rrss.errorBorrar")' in borrar
+    for idioma in _IDIOMAS:
+        rrss = _rrss(idioma)
+        assert rrss["borrarSoloQuienLaCreo"] and rrss["errorBorrar"], idioma
+    assert "puede_borrar?: boolean" in _texto(_FRONT / "lib" / "api.ts")
+
+
+def test_si_se_borra_mientras_se_valida_lo_dice_una_vez_y_no_promete_nada():
+    """Una validación se puede borrar mientras se valida: dura 24 horas y
+    «Reintentar» puede llegar al otro día, o quien la creó la borra desde otra
+    pestaña. Lo vio Ramiro en el navegador (26/11/2026): cada placa quedaba
+    marcada con el error del servidor, en castellano aunque la pantalla
+    estuviera en inglés, y al final decía «El servidor dejó de responder.
+    Faltan 0 placas. Lo que ya se revisó quedó guardado. Apretá Reintentar»,
+    con un Reintentar y un Excel que ya no podían andar. Ahora un 404 frena
+    todo, se dice una vez en el idioma de la persona y se vuelve a la carga
+    con los mismos archivos."""
+    pagina = _texto(_PAGINA)
+    ejecutar = pagina.split("const ejecutar = useCallback(")[1].split("}, [t]);")[0]
+    trabajador = ejecutar.split("const trabajador = async () => {")[1].split("await Promise.all(")[0]
+    assert "if (yaNoEsta(e))" in trabajador and "borrada = true" in trabajador
+    assert "!borrada" in trabajador, "con la validación borrada no se manda ninguna placa más"
+    despues = ejecutar.split("await Promise.all(")[1]
+    assert despues.index("if (borrada)") < despues.index("if (caido)"), "no hay nada que reintentar"
+    cierre = despues.split("rrssApi.cerrar(validacionId)")[1]
+    assert cierre.index("if (yaNoEsta(e))") < cierre.index('fase: "pausada"')
+    al_final = ejecutar.split("const yaNoEstaMas")[1].split("};")[0]
+    assert 'toast.error(t("rrss.yaNoEsta"))' in al_final
+    assert 'setFase("cargar")' in al_final and "setProgreso(null)" in al_final

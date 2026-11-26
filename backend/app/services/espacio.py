@@ -59,8 +59,16 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
 
 
 # Las tablas que se pueden compactar: solo las que la plataforma vacía sola
-# (la purga de cenefas). Por nombre fijo, nunca algo que venga de afuera.
-TABLAS_COMPACTABLES = frozenset({"cenefa_jobs"})
+# (la purga de cenefas y la de las validaciones de RRSS). Por nombre fijo,
+# nunca algo que venga de afuera.
+TABLAS_COMPACTABLES = frozenset({
+    "cenefa_jobs",
+    "rrss_validaciones", "rrss_validacion_paginas", "rrss_validacion_imagenes",
+})
+
+
+class TablaEnUso(Exception):
+    """La tabla se estaba usando y `compactar` no la tocó (ver su docstring)."""
 
 
 async def compactar(tabla: str) -> tuple[int, int]:
@@ -72,17 +80,33 @@ async def compactar(tabla: str) -> tuple[int, int]:
     igual. VACUUM FULL la reescribe solo con lo vivo: necesita lugar libre del
     tamaño de lo vivo (chico, si se borraron los archivos) y traba la tabla
     el rato que tarda (segundos). No puede ir dentro de una transacción: va
-    en AUTOCOMMIT."""
+    en AUTOCOMMIT.
+
+    Nunca espera su turno (SKIP_LOCKED): si alguien está usando la tabla, no
+    la toca y avisa con TablaEnUso, para que quien llama lo intente en otra
+    pasada. Sin esto, VACUUM FULL esperaba a que terminara, por ejemplo, una
+    placa a medio validar, y mientras esperaba frenaba a TODOS los que
+    llegaban después, hasta un SELECT: la lista de validaciones y las demás
+    placas quedaban trabadas (visto el 26/11/2026 contra Postgres). Un
+    lock_timeout no sirve: VACUUM no puede ir en una transacción (SET LOCAL)
+    y un SET suelto, con el pooler de Supabase en modo transacción, puede
+    caer en otra conexión de la base y quedarle puesto a otro pedido.
+    Postgres no dice si la salteó, pero VACUUM FULL siempre deja la tabla en
+    un archivo nuevo (pg_relation_filenode): si sigue el mismo, no la tocó."""
     if tabla not in TABLAS_COMPACTABLES:
         raise ValueError(f"No se compacta {tabla!r}")
     from app.core.database import engine  # acá: evita importar la base al cargar el módulo
-    tamano = text("SELECT pg_total_relation_size(CAST(:t AS regclass))")
+    estado = text(
+        "SELECT pg_total_relation_size(CAST(:t AS regclass)), pg_relation_filenode(CAST(:t AS regclass))"
+    )
     async with engine.connect() as conn:
         conn = await conn.execution_options(isolation_level="AUTOCOMMIT")
-        antes = int((await conn.execute(tamano, {"t": tabla})).scalar_one())
-        await conn.execute(text(f'VACUUM FULL "{tabla}"'))
-        despues = int((await conn.execute(tamano, {"t": tabla})).scalar_one())
-    return antes, despues
+        antes, archivo = (await conn.execute(estado, {"t": tabla})).one()
+        await conn.execute(text(f'VACUUM (FULL, SKIP_LOCKED) "{tabla}"'))
+        despues, archivo_despues = (await conn.execute(estado, {"t": tabla})).one()
+    if archivo_despues == archivo:
+        raise TablaEnUso(f"{tabla} se estaba usando: no se compactó, para no trabar a quien la usa")
+    return int(antes), int(despues)
 
 
 async def hay_lugar(db: AsyncSession, bytes_nuevos: int) -> bool:

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { FileSpreadsheet, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { rrssApi } from "@/lib/api";
+import { yaNoEsta } from "@/components/rrss/reintentos";
 
 /**
  * El motivo real de un error que vino con responseType: "blob": axios no parsea
@@ -51,7 +52,8 @@ export default function DescargarExcel({ validacionId, nombreMailing }: Props) {
       }
       URL.revokeObjectURL(url);
     } catch (e) {
-      toast.error((await motivoDelError(e)) ?? t("rrss.errorExcel"));
+      // Una que ya se borró sola (duran 24 horas) dice por qué no hay Excel.
+      toast.error(yaNoEsta(e) ? t("rrss.yaNoEsta") : ((await motivoDelError(e)) ?? t("rrss.errorExcel")));
     } finally {
       setBajando(false);
     }

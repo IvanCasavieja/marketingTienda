@@ -327,8 +327,8 @@ async def validar_placa(
         # de la fila, y se dibuja ACÁ, cuando se sabe QUÉ fila hace falta: una
         # por placa emparejada en vez de una por fila del archivo (ver
         # planilla.evidencia). Va en el resultado de la placa porque es la
-        # prueba de ESTE emparejamiento, y así viaja igual en vivo y al abrir la
-        # validación del historial.
+        # prueba de ESTE emparejamiento, y así viaja igual en vivo y al volver
+        # a abrir la validación (mientras dura, ver retencion.py).
         recorte_fuente = None
         if idx is not None and mailing.get("origen") == "planilla":
             t = time.perf_counter()

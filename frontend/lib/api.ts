@@ -1738,6 +1738,10 @@ export interface RrssValidacionResumen {
   con_diferencias: number;
   sin_match: number;
   error: number;
+  /** Si quien mira puede borrarla: la propia, o cualquiera si es superadmin.
+   *  La misma regla que DELETE en el servidor. Opcional: un servidor anterior
+   *  no lo manda. */
+  puede_borrar?: boolean;
 }
 
 const _MULTIPART = { headers: { "Content-Type": "multipart/form-data" } };

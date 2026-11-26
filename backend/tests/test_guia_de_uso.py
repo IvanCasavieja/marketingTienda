@@ -87,6 +87,12 @@ def test_no_quedan_cosas_que_ya_no_existen():
     assert "**Aprobar**" not in texto
     # La ficha ya no tiene pestañas.
     assert "pestaña Tareas" not in texto
+    # La validación de RRSS ya no guarda historial (26/11/2026): cada una se
+    # borra sola a las 24 horas, y la pestaña se llama «Las de hoy».
+    rrss = next(s for s in guia.SECCIONES if s.clave == "rrss")
+    rrss_texto = guia.como_texto((rrss,))
+    assert "Historial" not in rrss_texto
+    assert "**Las de hoy**" in rrss_texto and "24 horas" in rrss_texto
 
 
 def test_don_tino_lleva_la_misma_guia():

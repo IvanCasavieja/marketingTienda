@@ -428,7 +428,8 @@ SECCIONES: tuple[Seccion, ...] = (
             Parte("Cómo", (
                 "Subí la fuente (el mailing en PDF o imagen, o la planilla Excel) y después las placas.",
                 "CatTi marca las diferencias de precio, descripción, legales y fechas.",
-                "Al final bajás el Excel con lo encontrado. En **Historial** está lo anterior.",
+                "Al final bajás el Excel con lo encontrado. En **Las de hoy** retomás una si cerraste la "
+                "pestaña: cada validación se borra sola a las 24 horas, así que bajá el Excel antes.",
             ), numerada=True),
         ),
     ),
