@@ -513,6 +513,14 @@ Si se edita algo que otra persona acaba de borrar, el servidor contesta 404 con
 "la borró otra persona" y se recarga. Borrar queda en el registro de auditoría
 (`calendario.borrar`), con qué era.
 
+**Lo entregado no se borra** (H-001, 26/11/2026). Una tarea en la que ya se
+entregó algo (una ronda en cualquier fase, aunque sea solo un link), o una
+acción con una tarea así, no se borra: se llevaría en cascada las imágenes y
+los ZIP de la agencia, que son el histórico de las piezas. El servidor
+contesta 409 diciendo cuántos archivos hay y qué hacer (darla por hecha: la
+tarjeta pasa a Archivado con todo); la pantalla ni ofrece el «Sí, borrar» y
+dice lo mismo antes (`borrar.ts`).
+
 `localStorage` (clave `calendario-mktg-v2`) queda solo como caché para pintar al
 instante. La revisión no se guarda ahí a propósito: al abrir siempre se trae
 todo, así un cambio que quedó a medio subir al cerrar la pestaña no queda como
