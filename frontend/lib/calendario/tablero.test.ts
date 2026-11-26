@@ -15,8 +15,8 @@ import {
 } from './tablero'
 import { diaEnUruguay } from './fechas'
 import {
-  botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, fechaDia, pasoEnLaVista, proximoPaso, textoDeAprobar,
-  type ResumenEntrega, type Tarjeta,
+  avanzarSinDecirQueFalta, botonGrandeAlRevisar, conOk, estadoDeFase, etiquetaDecision, faltanAlAprobar, fechaDia,
+  pasoEnLaVista, proximoPaso, seAproboSinEllas, textoDeAprobar, type ResumenEntrega, type Tarjeta,
 } from './entregas'
 import { descripcionDelPedido, detalleSinPedido, linkValido, pedidoEnLista, type TipoDeTarea } from './tipos-de-tarea'
 
@@ -306,12 +306,41 @@ igual('faltan piezas: Avanzar', botonGrandeAlRevisar(4, 1, ['Header (mobile)']),
 igual('no se sabe (el pedido no tiene piezas): Avanzar', botonGrandeAlRevisar(0, 2, undefined), 'avanzar')
 igual('solo un link: Avanzar', botonGrandeAlRevisar(4, 0, undefined), 'avanzar')
 igual('vino todo: Aprobar y terminar', botonGrandeAlRevisar(4, 4, []), 'terminar')
-// H-035 (25/11/2026): sin medir, la lista llega vacía; una imagen para dos piezas no es «todas».
-igual('una imagen para dos piezas, aunque no se haya medido: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
-igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP): Aprobar y terminar',
-  botonGrandeAlRevisar(10, 4, undefined, 4), 'terminar')
+// H-035 (25/11/2026): «Ya están todas las piezas del pedido» con el carrito
+// sin venir. La lista vacía es solo lo medido; sin medir (null o sin mandar)
+// no se sabe, aunque las imágenes alcancen.
+igual('una imagen para dos piezas: Avanzar', botonGrandeAlRevisar(2, 1, []), 'avanzar')
+igual('diez piezas y las cuatro imágenes que entran (lo demás en el ZIP, medido): Aprobar y terminar',
+  botonGrandeAlRevisar(10, 4, [], 4), 'terminar')
+igual('un ZIP con el folleto en PDF (sin medir: el servidor llena la versión con sus páginas): Avanzar',
+  [botonGrandeAlRevisar(3, 4, null, 4), botonGrandeAlRevisar(3, 4, undefined, 4)], ['avanzar', 'avanzar'])
+// H-036 (25/11/2026): con todas las piezas, «¿Falta algo? Avanzar» le decía
+// a la agencia «entregá lo que falta» y no faltaba nada. Ahí, hay que decir
+// qué falta (backend/tests/test_tablero_agencia.py, los mismos casos).
+igual('avanzar con todo y sin decir qué falta: se frena',
+  [avanzarSinDecirQueFalta('terminar', ''), avanzarSinDecirQueFalta('terminar', '  \n ')], [true, true])
+igual('diciendo qué falta, sí', avanzarSinDecirQueFalta('terminar', 'Falta el PDF con las medidas'), false)
+igual('si falta algo (o no se sabe), Avanzar anda sin escribir nada', avanzarSinDecirQueFalta('avanzar', ''), false)
 igual('aprobar termina solo si es lo último', [textoDeAprobar(true, 0), textoDeAprobar(false, 0), textoDeAprobar(true, 1)],
   ['Aprobar y terminar', 'Aprobar', 'Aprobar'])
+// H-023 (25/11/2026): «¿Ya está todo? Aprobar y terminar» aprobaba sin
+// preguntar con «Falta 1 pieza del pedido» al lado. Ahora pregunta, y dice cuáles.
+igual('aprobar con una pieza que falta: pregunta', faltanAlAprobar('aprobada', ['Carrito']),
+  { count: 1, piezas: 'Carrito', otras: 0 })
+const diezQueFaltan = ['Carrito', 'Checkout', 'Cocardas', 'Header (mobile)', 'Dobles (web)', 'Dobles (mobile)', 'Quíntuples',
+  'Séxtuples', 'Séptuples', 'Óctuples']
+igual('con muchas, las primeras tres y cuántas más («…, Cocardas y 7 más»)', faltanAlAprobar('aprobada', diezQueFaltan),
+  { count: 10, piezas: 'Carrito, Checkout, Cocardas', otras: 7 })
+igual('con cuatro, las cuatro: «y 1 más» ocupa lo mismo que nombrarla', faltanAlAprobar('aprobada', diezQueFaltan.slice(0, 4)),
+  { count: 4, piezas: 'Carrito, Checkout, Cocardas, Header (mobile)', otras: 0 })
+igual('sin piezas que falten (o sin medir): no pregunta',
+  [faltanAlAprobar('aprobada', []), faltanAlAprobar('aprobada', null), faltanAlAprobar('aprobada', undefined)], [null, null, null])
+igual('avanzar y pedir cambios no preguntan', [faltanAlAprobar('avanzar', ['Carrito']), faltanAlAprobar('cambios', ['Carrito'])],
+  [null, null])
+// Y una vez aprobada, lo que faltaba es un dato (en gris), no un aviso en rojo.
+igual('lo que faltaba, en gris solo si se aprobó',
+  (['aprobada', 'revision', 'avanzar', 'cambios', 'reemplazada'] as const).map(seAproboSinEllas),
+  [true, false, false, false, false])
 // El día de cada ronda, en el renglón cerrado.
 igual('el día de una ronda', [fechaDia(null), fechaDia('x'), fechaDia('2026-11-19T12:00:00')], ['', '', '19/11'])
 

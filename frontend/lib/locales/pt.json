@@ -1438,6 +1438,16 @@
       "recuperado": "Recuperamos o que você estava preparando para entregar.",
       "recuperadoSinZip": "Recuperamos o que você estava preparando para entregar. O ZIP «{{zip}}» não fica salvo: escolha-o de novo.",
       "descartar": "Descartar"
+    },
+    "revisar": {
+      "faltanAlAprobar_one": "Falta 1 peça do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobar_other": "Faltam {{count}} peças do pedido: {{piezas}}. Aprovar mesmo assim?",
+      "faltanAlAprobarYOtras_other": "Faltam {{count}} peças do pedido: {{piezas}} e mais {{otras}}. Aprovar mesmo assim?",
+      "aprobarIgual": "Aprovar mesmo assim",
+      "seguirRevisando": "Continuar revisando",
+      "seAproboSin_one": "Aprovado sem 1 peça do pedido",
+      "seAproboSin_other": "Aprovado sem {{count}} peças do pedido",
+      "avanzarConTodo": "Todas as peças do pedido já chegaram: se falta algo, escreva o quê no comentário, para a agência saber o que enviar. Se está tudo certo, aprove."
     }
   }
 }

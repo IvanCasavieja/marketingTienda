@@ -3965,19 +3965,49 @@ def test_lo_que_falta_del_pedido_viaja_con_la_entrega_y_lo_ven_quien_aprueba_y_l
             assert v["porQueFaltan"] == "Es el KV, para aprobarlo antes"
 
         # Vuelve con cambios y la ronda 2 trae todo: no falta nada (y un «por
-        # qué» sin piezas que falten no se guarda).
+        # qué» sin piezas que falten no se guarda). La pantalla lo midió: manda
+        # la lista vacía (H-035).
         assert (await mover(lucia, "esperando", "en-proceso", comentario="Dale, hacé el resto")).status_code == 200
-        r = await a1.post(url, data={"versionId": f"ve-2-{d.sufijo}", "porQueFaltan": "nada"}, files=archivos)
+        r = await a1.post(url, data={"versionId": f"ve-2-{d.sufijo}", "faltan": "[]", "porQueFaltan": "nada"},
+                          files=archivos)
         assert r.status_code == 201, r.text
         v2 = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][1]
         assert v2["faltan"] == [] and v2["porQueFaltan"] is None
         async with d.Sesion() as s:
-            # NULL de la base, no el null de JSON: "no faltaba nada".
-            assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
-                CalendarioVersion.id == f"ve-2-{d.sufijo}", CalendarioVersion.faltan.is_(None),
-            ))).scalar_one() == 1
+            assert (await s.get(CalendarioVersion, f"ve-2-{d.sufijo}")).faltan == []
             v1 = await s.get(CalendarioVersion, f"ve-1-{d.sufijo}")
             assert v1.faltan == ["Header (mobile)", "Checkout"] and v1.por_que_faltan == "Es el KV, para aprobarlo antes"
+    correr(prueba)
+
+
+def test_si_no_se_pudo_medir_lo_que_falta_no_se_dice_que_esta_todo():
+    """H-035 (auditoría del 25/11/2026): al revisar decía «Ya están todas las
+    piezas del pedido» con el carrito sin venir. «Se midió y no falta nada» y
+    «no se pudo medir» (un ZIP que el navegador no lee, uno con el folleto en
+    PDF) se guardaban igual, como NULL, y la pantalla leía las dos como «está
+    todo». Ahora la pantalla manda la lista siempre que pudo medir, también
+    vacía; si no vino, queda NULL y el detalle dice null: no se sabe."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)  # Header y Checkout: tres piezas
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        url = f"/calendario/tareas/{tarea_id}/versiones"
+        medida, sin_medir = f"ve-med-{d.sufijo}", f"ve-sin-{d.sufijo}"
+        archivos = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        # Medida: no falta nada.
+        r = await a1.post(url, data={"versionId": medida, "faltan": "[]"}, files=archivos)
+        assert r.status_code == 201, r.text
+        # Sin medir, aunque traiga una imagen por pieza (la lista no vino). Va
+        # en lugar de la anterior, que esperaba revisión.
+        r = await a1.post(url, data={"versionId": sin_medir}, files=archivos * 3)
+        assert r.status_code == 201, r.text
+        versiones = (await _detalle(lucia, tarea_id))["fases"][0]["versiones"]
+        assert [(v["id"], v["faltan"]) for v in versiones] == [(medida, []), (sin_medir, None)], versiones
+        async with d.Sesion() as s:
+            assert (await s.get(CalendarioVersion, medida)).faltan == []
+            # NULL de la base, no el null de JSON.
+            assert (await s.execute(select(func.count()).select_from(CalendarioVersion).where(
+                CalendarioVersion.id == sin_medir, CalendarioVersion.faltan.is_(None),
+            ))).scalar_one() == 1
     correr(prueba)
 
 
@@ -4053,6 +4083,42 @@ def test_avanzar_tiene_las_mismas_reglas_que_aprobar():
         # Ya decidida: otro OK llega tarde.
         r = await _decidir(lider, v1, "avanzar")
         assert r.status_code == 409
+    correr(prueba)
+
+
+def test_avanzar_con_todas_las_piezas_pide_decir_que_falta():
+    """H-036 (auditoría del 25/11/2026): con todas las piezas en la versión,
+    «¿Falta algo? Avanzar» le mandaba a la agencia «Te dieron el OK: entregá
+    lo que falta» y no faltaba nada: una ronda de más y una agencia que no
+    sabe qué mandar. Si la plataforma midió que vino todo, «Avanzar» va con
+    lo que falta escrito en el comentario, y a la agencia le llega."""
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)  # Header y Checkout: tres piezas
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        url = f"/calendario/tareas/{tarea_id}/versiones"
+        v1, v2 = f"ve-kv-{d.sufijo}", f"ve-tod-{d.sufijo}"
+        una = [("imagenes", ("a.jpg", JPEG, "image/jpeg")), ("miniaturas", ("m.jpg", JPEG, "image/jpeg"))]
+        # El KV solo: lo que falta ya lo dice la plataforma, Avanzar anda sin escribir nada.
+        r = await a1.post(url, data={"versionId": v1, "faltan": '["Header (mobile)", "Checkout"]'}, files=una)
+        assert r.status_code == 201, r.text
+        r = await _decidir(lucia, v1, "avanzar")
+        assert r.status_code == 200 and r.json()["resultado"] == "avanzar", r.text
+
+        # La versión 2 trae todo (medido): sin decir qué falta, no.
+        r = await a1.post(url, data={"versionId": v2, "faltan": "[]"}, files=una * 3)
+        assert r.status_code == 201, r.text
+        r = await _decidir(lucia, v2, "avanzar")
+        assert r.status_code == 422 and "escribí en el comentario qué falta" in r.json()["detail"], r.text
+        # La nota interna no cuenta: la agencia no la ve.
+        r = await lucia.post(f"/calendario/versiones/{v2}/decision",
+                             json={"decision": "avanzar", "notaInterna": "Falta el PDF"})
+        assert r.status_code == 422, r.text
+        assert (await _detalle(lucia, tarea_id))["fases"][0]["versiones"][1]["estado"] == "revision"
+        # Diciendo qué falta, sí: le llega a la agencia con el aviso.
+        r = await _decidir(lucia, v2, "avanzar", comentario="Falta el PDF con las medidas")
+        assert r.status_code == 200 and r.json()["resultado"] == "avanzar", r.text
+        avisos = [n for n in await _avisos(d, d.a1, tarea_id) if n.origen_ref.endswith(":avanzar")]
+        assert len(avisos) == 2 and "Falta el PDF con las medidas" in avisos[-1].mensaje, [n.mensaje for n in avisos]
     correr(prueba)
 
 

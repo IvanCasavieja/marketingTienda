@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ArrowRight, Check, Columns2, ExternalLink, Link2, Loader2, Lock, MousePointerClick, RotateCcw, ShieldCheck, Sparkles, Trash2,
 } from 'lucide-react'
@@ -8,8 +9,8 @@ import { toast } from 'sonner'
 import { entregasApi } from '@/lib/api'
 import { imagenParaComparar } from '@/lib/calendario/comparar'
 import {
-  botonGrandeAlRevisar, fechaYHora, textoDeAprobar, versionConLoPedido, type DetalleEntregas, type Marca, type TipoDecision,
-  type Version,
+  avanzarSinDecirQueFalta, botonGrandeAlRevisar, faltanAlAprobar, fechaYHora, textoDeAprobar, versionConLoPedido,
+  type DetalleEntregas, type Marca, type TipoDecision, type Version,
 } from '@/lib/calendario/entregas'
 import {
   VEREDICTO_IA, cambiosPorMarca, marcaDesdeObservacion, puntosParaMostrar, textoConArchivo, tieneLugar,
@@ -124,6 +125,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   onListo: () => void
   onCancelar: () => void
 }) {
+  const { t } = useTranslation()
   const fase = detalle.fases.find(f => f.id === version.faseId)
   const nombre = (id: number | null) => (id != null ? detalle.personas[String(id)] : null) ?? 'Alguien'
   const [activa, setActiva] = useState(version.imagenes[0]?.id ?? '')
@@ -135,6 +137,11 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   const [ladoMovil, setLadoMovil] = useState<'anterior' | 'nueva'>('nueva')
   const [enviando, setEnviando] = useState<TipoDecision | null>(null)
   const [confirmandoSalir, setConfirmandoSalir] = useState(false)
+  // Aprobar con piezas del pedido que faltan: primero se pregunta (H-023).
+  const [confirmandoAprobar, setConfirmandoAprobar] = useState(false)
+  const idPregunta = useId()
+  // El comentario para la agencia: «Avanzar» con todo entregado lleva acá (H-036).
+  const campoComentario = useRef<HTMLTextAreaElement>(null)
   // Lo que encontró la IA. Solo se pide si el servidor dice que esta persona
   // lo puede ver (aprobadores y quien gestiona; nunca quien entrega).
   const verIA = !!detalle.puedo.verRevisionIA
@@ -274,6 +281,8 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
   // Lo que hay que mirar, todo junto en el costado (24/11/2026): si algo
   // está mal, el bloque va con borde rojo.
   const faltanPiezas = (version.faltan?.length ?? 0) > 0
+  // Lo que falta, para la pregunta antes de aprobar (H-023).
+  const faltanSiAprueba = faltanAlAprobar('aprobada', version.faltan)
   // El botón grande (25/11/2026): Avanzar, salvo que ya estén todas las piezas.
   const grande = botonGrandeAlRevisar(
     detalle.tarea.piezas?.length ?? 0, version.imagenes.length, version.faltan, detalle.limites.imagenes,
@@ -381,6 +390,25 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
       toast.error(detalleDeError(e) ?? 'No se pudo guardar la decisión. Probá de nuevo.')
       setEnviando(null)
     }
+  }
+
+  /** Los botones de decidir pasan por acá: aprobar con piezas del pedido que
+   *  faltan primero pregunta (H-023 de la auditoría del 25/11/2026: aprobaba
+   *  sin preguntar y la pieza no llegaba nunca); avanzar con todas las
+   *  piezas pide decir qué falta (H-036: a la agencia le llegaba «entregá lo
+   *  que falta» y no faltaba nada). */
+  function elegir(decision: TipoDecision) {
+    if (enviando) return
+    if (faltanAlAprobar(decision, version.faltan)) {
+      setConfirmandoAprobar(true)
+      return
+    }
+    if (decision === 'avanzar' && avanzarSinDecirQueFalta(grande, comentario)) {
+      toast.error(t('calendario.revisar.avanzarConTodo'))
+      campoComentario.current?.focus()
+      return
+    }
+    void decidir(decision)
   }
 
   function cancelar() {
@@ -767,6 +795,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
         <label className="block">
           <span className="etiqueta-campo">Comentario para la agencia (opcional)</span>
           <textarea
+            ref={campoComentario}
             value={comentario}
             onChange={e => setComentario(e.target.value)}
             rows={2}
@@ -810,6 +839,41 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               Salir sin mandar
             </button>
           </div>
+        ) : confirmandoAprobar && faltanSiAprueba && !hayMarcas ? (
+          // Faltan piezas del pedido: antes de aprobar, se pregunta (H-023).
+          // El foco va a «Seguir revisando»: un Enter de más no aprueba.
+          <div className="flex flex-wrap items-center gap-2 py-1">
+            <p id={idPregunta} className="flex-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+              {t(faltanSiAprueba.otras > 0 ? 'calendario.revisar.faltanAlAprobarYOtras' : 'calendario.revisar.faltanAlAprobar',
+                faltanSiAprueba)}
+            </p>
+            <button
+              type="button"
+              autoFocus
+              aria-describedby={idPregunta}
+              onClick={() => setConfirmandoAprobar(false)}
+              className="min-h-[44px] rounded-xl px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {t('calendario.revisar.seguirRevisando')}
+            </button>
+            <button
+              type="button"
+              aria-describedby={idPregunta}
+              // Ese segundo toque tampoco se lleva el foco: si no, quedaba en
+              // «Aprobar igual» y un Enter después aprobaba sin haber elegido.
+              onMouseDown={e => { if (e.detail > 1) e.preventDefault() }}
+              onClick={e => {
+                // El segundo toque de un doble clic en «Aprobar y terminar»
+                // cae acá, donde estaba ese botón: no cuenta como respuesta.
+                if (e.detail > 1) return
+                setConfirmandoAprobar(false)
+                void decidir('aprobada')
+              }}
+              className="min-h-[44px] rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              {t('calendario.revisar.aprobarIgual')}
+            </button>
+          </div>
         ) : (
           <>
             <div className="mb-2 flex items-start gap-2">
@@ -841,7 +905,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
               <div className="flex flex-1 flex-col gap-1 sm:ml-auto sm:flex-none">
                 <div className="grid grid-cols-2 gap-2 sm:flex">
                   <BotonDecision
-                    onClick={() => void decidir('cambios')} cargando={enviando === 'cambios'}
+                    onClick={() => elegir('cambios')} cargando={enviando === 'cambios'}
                     deshabilitado={!!enviando || !hayParaQuienEntrega}
                     titulo={!hayParaQuienEntrega ? 'Primero marcá en la imagen o escribí en el comentario qué cambiar' : undefined}
                     clase="bg-rose-600 text-white hover:bg-rose-700"
@@ -850,7 +914,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                   />
                   {grande === 'avanzar' ? (
                     <BotonDecision
-                      onClick={() => void decidir('avanzar')} cargando={enviando === 'avanzar'}
+                      onClick={() => elegir('avanzar')} cargando={enviando === 'avanzar'}
                       deshabilitado={!!enviando || hayMarcas}
                       titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : 'Va bien: la agencia sigue con lo que falta'}
                       clase="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -859,7 +923,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                     />
                   ) : (
                     <BotonDecision
-                      onClick={() => void decidir('aprobada')} cargando={enviando === 'aprobada'}
+                      onClick={() => elegir('aprobada')} cargando={enviando === 'aprobada'}
                       deshabilitado={!!enviando || hayMarcas}
                       titulo={hayMarcas ? 'Con marcas, la pieza vuelve a la agencia: «Pedir cambios»' : undefined}
                       clase="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -872,7 +936,7 @@ export function Revisor({ detalle, version, anterior, onListo, onCancelar }: {
                     Aprobar y terminar»; si ya vino todo, al revés). */}
                 <button
                   type="button"
-                  onClick={() => void decidir(grande === 'avanzar' ? 'aprobada' : 'avanzar')}
+                  onClick={() => elegir(grande === 'avanzar' ? 'aprobada' : 'avanzar')}
                   disabled={!!enviando || hayMarcas}
                   className="flex min-h-[36px] items-center justify-end gap-1 self-end rounded-lg px-2 text-[13px] text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800"
                 >

@@ -261,9 +261,9 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
   const hayMateriales = imagenes.length > 0 || (link.trim() !== '' && !linkMalo) || zipDaImagenes
 
   /** Las piezas del pedido que no vienen en lo que se entrega: las imágenes
-   *  sueltas y todas las del ZIP, con su tamaño original. Si no se puede
-   *  saber (solo un link, algo del ZIP sin medir), ninguna. */
-  function loQueFalta(): Pieza[] {
+   *  sueltas y todas las del ZIP, con su tamaño original. Null si no se
+   *  puede saber (solo un link, algo del ZIP sin medir). */
+  function loQueFalta(): Pieza[] | null {
     const sueltas = imagenes
       .filter(im => im.deZip == null)
       .map(im => (im.ancho > 0 && im.alto > 0 ? { ancho: im.ancho, alto: im.alto } : null))
@@ -376,7 +376,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
    *  plataforma sola, siempre igual, y se avisa haya dicho algo la IA o no. */
   async function entregar() {
     if (!hayMateriales || linkMalo || ocupado) return
-    const faltan = loQueFalta()
+    const faltan = loQueFalta() ?? []
     const grandes = imagenes.map(im => im.grande)
     if (!hayQueControlar(grandes.length)
       || (yaControladas.current && mismasImagenes(yaControladas.current, grandes))) {
@@ -419,7 +419,7 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     controlando?.abort()
     setControlando(null)
     // Sin esperar a la IA. Lo que falta del pedido no la necesita: se avisa igual.
-    const faltan = loQueFalta()
+    const faltan = loQueFalta() ?? []
     if (faltan.length > 0) {
       setAvisos(soloLoQueFalta(faltan))
       return
@@ -437,11 +437,12 @@ export function FormularioEntrega({ detalle, onListo, onCancelar }: {
     form.append('corregidas', '[]')
     // Lo que falta del pedido y por qué (21/11/2026): lo ven quien aprueba y
     // la agencia, en la ronda. Se vuelve a mirar acá por si sacó o sumó algo.
+    // Si se pudo medir, la lista va siempre, también vacía: así quien revisa
+    // sabe que está todo. Si no se pudo, no va, y nadie dice que está todo
+    // (H-035 de la auditoría del 25/11/2026).
     const faltan = loQueFalta()
-    if (faltan.length > 0) {
-      form.append('faltan', JSON.stringify(faltan.map(p => p.nombre)))
-      if (porQue.trim()) form.append('porQueFaltan', porQue.trim())
-    }
+    if (faltan) form.append('faltan', JSON.stringify(faltan.map(p => p.nombre)))
+    if (faltan?.length && porQue.trim()) form.append('porQueFaltan', porQue.trim())
     imagenes.forEach((im, i) => {
       form.append('imagenes', im.grande, `imagen-${i + 1}.jpg`)
       form.append('miniaturas', im.mini, `miniatura-${i + 1}.jpg`)

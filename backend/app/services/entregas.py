@@ -187,10 +187,16 @@ LARGO_POR_QUE = 500
 
 def faltan_validas(texto: str | None) -> list[str] | None:
     """La lista de piezas que faltan, como llega en el formulario (JSON): los
-    nombres limpios, sin repetidos, en su orden. None si no falta nada.
-    ValueError con el mensaje para la persona. Pura."""
+    nombres limpios, sin repetidos, en su orden. La lista vacía es que la
+    pantalla midió y no falta ninguna; None (no vino), que no se pudo medir y
+    no se sabe. Hasta el 26/11/2026 las dos cosas se guardaban igual y al
+    revisar se leía «Ya están todas las piezas del pedido» con el carrito sin
+    venir (H-035 de la auditoría del 25/11/2026). ValueError con el mensaje
+    para la persona. Pura."""
+    if texto is None or not texto.strip():
+        return None
     try:
-        lista = json.loads(texto or "[]")
+        lista = json.loads(texto)
     except ValueError:
         lista = None
     if not isinstance(lista, list) or not all(isinstance(x, str) for x in lista):
@@ -204,7 +210,7 @@ def faltan_validas(texto: str | None) -> list[str] | None:
             raise ValueError(f"«{nombre[:30]}…» es demasiado largo para el nombre de una pieza")
         if nombre and nombre not in limpias:
             limpias.append(nombre)
-    return limpias or None
+    return limpias
 
 
 def por_que_faltan_valido(texto: str | None, faltan: list[str] | None) -> str | None:
@@ -499,6 +505,18 @@ def con_ok(momento: str, ronda: int) -> bool:
     'avanzar': con cambios el momento es 'cambios', y una fase nueva arranca
     sin rondas. Pura."""
     return momento == "produccion" and (ronda or 0) > 0
+
+
+def vinieron_todas(piezas_pedidas: int, imagenes: int, faltan: list[str] | None, tope: int = MAX_IMAGENES) -> bool:
+    """Si en una versión ya vinieron todas las piezas del pedido: el pedido
+    tiene piezas, la versión trae una imagen por pieza (hasta el tope de
+    imágenes: lo demás viene en el ZIP) y la pantalla midió al entregar que
+    no falta ninguna (`faltan` vacía; None es que no se pudo medir). Ahí,
+    «Avanzar» (seguir con lo que falta) va solo diciendo qué falta (H-036).
+    Lo mismo que botonGrandeAlRevisar en frontend/lib/calendario/entregas.ts.
+    Pura."""
+    alcanzan = imagenes > 0 and imagenes >= min(piezas_pedidas, tope)
+    return piezas_pedidas > 0 and alcanzan and faltan is not None and not faltan
 
 
 def nombre_de_fase_nueva(nombres: list[str]) -> str:

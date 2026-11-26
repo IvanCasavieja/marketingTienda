@@ -103,7 +103,14 @@ def test_lo_que_falta_se_guarda_limpio_y_sin_repetidos():
     assert reglas.faltan_validas(json.dumps(["Header (mobile)", "  Checkout ", "Header (mobile)", ""])) == [
         "Header (mobile)", "Checkout",
     ]
-    assert reglas.faltan_validas("[]") is None
+
+
+def test_no_falta_nada_no_es_lo_mismo_que_no_se_pudo_medir():
+    """H-035 (25/11/2026): al revisar decía «Ya están todas las piezas del
+    pedido» con el carrito sin venir. La lista vacía es que la pantalla midió
+    y no falta ninguna; si no vino (un ZIP que no se lee, un PDF), no se sabe."""
+    assert reglas.faltan_validas("[]") == []
+    assert reglas.faltan_validas(json.dumps(["", "  "])) == []
     assert reglas.faltan_validas("") is None
     assert reglas.faltan_validas(None) is None
 
