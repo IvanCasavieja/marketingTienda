@@ -16,7 +16,7 @@ import { camposVisibles, linkValido, nombreDeTarjeta, tiposDelMundo, valorParaLe
  * que estemos pidiendo"):
  *
  *   ¿Qué se pide?  Banners, Mailing, Redes… (con sus opciones) u Otra cosa
- *   ¿Quién la hace? Publicis, Another Monday, Diseñadores o alguien de Tienda
+ *   ¿Quién la hace? Cualquier agencia (GET /calendario/tableros) o alguien de Tienda
  *   Detalle · Archivos · Responsable de Tienda (si la hace una agencia) · Vence
  *
  * Es el mismo en una acción del calendario (NuevaTarea, en BloqueTareas) y en

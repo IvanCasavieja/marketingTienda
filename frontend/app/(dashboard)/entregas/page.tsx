@@ -10,8 +10,8 @@ import {
   numero, proximoPaso, type Columna, type Metricas, type Tarjeta, type TiemposDeAgencia, type TiemposDeEntrega,
 } from "@/lib/calendario/entregas";
 import {
-  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, OTRAS, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna,
-  ordenar, pestanasDeTableros, queHaceMover, seMovioElDedo, sePuedeSoltar, tableroDeTarjeta,
+  COLUMNAS_DEL_TABLERO, MS_PARA_ARRASTRAR_CON_EL_DEDO, PX_PARA_ARRASTRAR, conservarArchivadas, defColumna,
+  enLaPestana, ordenar, pestanasDeTableros, queHaceMover, seMovioElDedo, sePuedeSoltar,
 } from "@/lib/calendario/tablero";
 import { diaEnUruguay, hoyIso } from "@/lib/calendario/fechas";
 import { PERMISOS_CALENDARIO } from "@/lib/calendario/permisos";
@@ -21,7 +21,7 @@ import { mundoEfectivo, useMundoElegido } from "@/lib/mundos";
 const TODOS_LOS_MUNDOS = "todos";
 import { esExterno } from "@/lib/externos";
 import { useTableros } from "@/store/tiposDeTarea";
-import { useVistaEntregas } from "@/store/entregas";
+import { useTableroElegido, useVistaEntregas } from "@/store/entregas";
 import { TarjetaEntrega } from "@/components/calendario/entregas/TarjetaEntrega";
 import { NuevaTarjeta } from "@/components/calendario/entregas/NuevaTarjeta";
 import { hasPermission } from "@/lib/permissions";
@@ -98,8 +98,10 @@ export default function TableroPage() {
   const [datos, setDatos] = useState<Datos | null>(null);
   const [error, setError] = useState(false);
   const [pestana, setPestana] = useState<Columna | null>(null);
-  // Qué tablero mira el equipo (17/11/2026): Publicis, Another Monday o Diseñadores.
-  const [tableroElegido, setTablero] = useState<string | null>(null);
+  // Qué tablero mira el equipo: el de una agencia, u «Otras». Se recuerda el
+  // último que eligió (H-090, 26/11/2026).
+  const tableroElegido = useTableroElegido(s => s.elegido);
+  const setTablero = useTableroElegido(s => s.elegir);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [pidiendoCambios, setPidiendoCambios] = useState<Tarjeta | null>(null);
   const [verMetricas, setVerMetricas] = useState(false);
@@ -468,17 +470,15 @@ export default function TableroPage() {
   const hoy = datos?.hoy ?? hoyIso();
   const delMundo = datos && datos.mundo === claveTablero ? datos : null;
   const todas = delMundo?.tarjetas ?? [];
-  // Tres tableros (17/11/2026: "asignar a Publicis, asignar a Another Monday
-  // o asignar a diseñadores, esos son los 3"). El equipo los ve en pestañas;
-  // cada uno de esos equipos entra con su usuario y ve solo el suyo (eso lo
-  // recorta el servidor), así que a una cuenta externa no se le muestran.
-  const nombresDeTableros = tableros?.map(t => t.nombre) ?? [];
-  const pestanas = externo || !tableros ? [] : pestanasDeTableros(todas, nombresDeTableros);
+  // Una pestaña por agencia (26/11/2026, H-090: hasta acá eran los tres
+  // tableros del 17/11 y cualquier otra agencia caía en «Otras»). Cada
+  // agencia entra con su usuario y ve solo lo suyo (eso lo recorta el
+  // servidor), así que a una cuenta externa no se le muestran.
+  const pestanas = externo || !tableros ? [] : pestanasDeTableros(todas, tableros.map(t => t.nombre));
   const filtro = externo || pestanas.length === 0 ? null
     : pestanas.some(p => p.clave === tableroElegido) ? tableroElegido
       : (pestanas.find(p => p.cuantas > 0)?.clave ?? pestanas[0].clave);
-  const tarjetas = filtro == null ? todas
-    : todas.filter(t => (tableroDeTarjeta(t, nombresDeTableros) ?? OTRAS) === filtro);
+  const tarjetas = filtro == null ? todas : todas.filter(t => enLaPestana(t, filtro, pestanas));
   // Sin `puedo.decidir`: ver la nota en TarjetaEntrega (el respaldo no es "te toca").
   const meToca = (t: Tarjeta) => proximoPaso(t.entrega, t.asignadoA, yo, () => "", false, {
     entregoYo: t.puedo?.entregar, hace: t.hace,

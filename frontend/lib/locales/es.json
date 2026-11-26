@@ -1493,6 +1493,23 @@
   },
   "calendario": {
     "accessDenied": "No tenés acceso al calendario",
-    "loading": "Cargando el calendario…"
+    "loading": "Cargando el calendario…",
+    "quienLaHace": {
+      "titulo": "¿Quién la hace?",
+      "agencias": "Agencias",
+      "tienda": "Tienda Inglesa",
+      "cargando": "Cargando…",
+      "elegir": "Elegí quién la hace",
+      "sinUsuarios": "{{agencia}} (todavía sin usuarios)",
+      "deAfuera": "{{agencia}} (agencia de afuera)",
+      "quienLaHaceHoy": "Quien la hace hoy",
+      "pasaALaAgencia": "Pasa al tablero de {{agencia}} y le avisamos.",
+      "pasaALaAgenciaSinUsuarios": "Pasa al tablero de {{agencia}}: la va a ver cuando tenga usuarios.",
+      "pasaAPersona": "La hace {{persona}}.",
+      "dejaLaAgencia": "Sale del tablero de {{agencia}}: la hace {{persona}}."
+    },
+    "tarjetaSinAccion": {
+      "cambiar": "Cambiar quién la hace, el nombre, la fecha o el responsable"
+    }
   }
 }

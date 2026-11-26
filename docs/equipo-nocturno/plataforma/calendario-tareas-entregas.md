@@ -17,18 +17,13 @@ Acá se escriben sin el prefijo.
 - **Solo hay UNA persona interna.** Con eso no se puede probar: una cadena de varios aprobadores, la
   vista Equipo con varias personas, ni que alguien apruebe una pieza que se hizo uno mismo (la regla
   es "nadie decide sobre lo que subió"). Para eso hay que crear más usuarios en `/admin` (otra zona).
-- **Importante (sospecha fuerte):** el README del equipo nocturno dice "pedirle una pieza a «Agencia
-  de prueba»" desde la pestaña Tareas. Pero «Crear tarea» → «¿Quién la hace?» ofrece **solo los tres
-  tableros fijos** (Publicis, Another Monday, Diseñadores; `GET /calendario/tableros` en
-  `backend/app/core/tableros.py`) más la gente de Tienda. «Agencia de prueba» no aparece. Caminos que
-  sí funcionan según el código:
-  1. Crear la tarea para «Publicis» y, en la tarea ya creada (desplegada), en el selector
-     «Quién la hace», elegir «Agencia de prueba (Agencia de prueba)». Sale un `confirm` ("Se la sacás
-     a Publicis…"); al aceptar, el servidor la pasa a la agencia «Agencia de prueba» y su cuenta la ve.
-  2. Armar una plantilla (las plantillas listan como agencias las empresas de las cuentas externas,
-     incluida «Agencia de prueba») y usarla en la acción.
-  3. Por API: `POST /calendario/barras/{id}/tareas` con `para: "agencia", agencia: "Agencia de prueba"`.
-  En el tablero del equipo esas tarjetas caen en la pestaña **«Otras»** (no son de los tres tableros).
+- **Pedirle una pieza a «Agencia de prueba»:** desde el 26/11/2026 (H-018 y H-090) «¿Quién la
+  hace?», en «Crear tarea» y en «Nueva tarjeta», ofrece los tres tableros fijos (Publicis, Another
+  Monday, Diseñadores, aunque no tengan cuentas) y además cualquier otra agencia con cuentas, también
+  una recién dada de alta (`GET /calendario/tableros`). Una tarjeta sin acción se pasa a otra agencia
+  desde la tarjeta («Cambiar quién la hace…»; `PATCH /calendario/tareas/{id}` con `agencia`). En el
+  tablero del equipo cada agencia tiene su pestaña; «Otras» queda para lo de Tienda y lo de
+  agencias de afuera. Antes «Agencia de prueba» no aparecía y sus tarjetas caían en «Otras».
 - **La IA está simulada** (`scripts/servidor_ia_simulada.py`): el control previo, la revisión de la
   pieza y el dictado contestan con reglas. Sirve para ver pantallas y permisos, no para juzgar lo que
   diría Claude.
@@ -366,8 +361,6 @@ Acá se escriben sin el prefijo.
 - **Puntos a mirar:**
   - **Borrar una tarea con entregas borra sus imágenes y ZIP en cascada** (el botón dice "Borrar con
     sus entregas", pero no "y las imágenes que mandó la agencia").
-  - «Agencia de prueba» no aparece en «¿Quién la hace?» (ver arriba). En general, cualquier agencia que
-    no sea una de las tres solo se puede elegir por plantilla o reasignando después.
   - Inconsistencia: el servidor y las plantillas siguen aceptando "Otra agencia (fuera de la
     plataforma)" (`para = 'fuera'`), pero «Crear tarea» ya no la ofrece.
   - El aviso "te pidió" a la agencia sale en el alta, **antes** de que terminen de subir los archivos:
@@ -564,8 +557,9 @@ Acá se escriben sin el prefijo.
   - Cabecera con ícono, título, bajada (para la agencia: "Lo que te pidieron… para mandarla a revisar,
     soltala en «Esperando feedback» y subí los materiales") y el **buscador** ("Buscar: Ciberlunes -
     Banners").
-  - Para el equipo, **pestañas de tableros**: Publicis, Another Monday, Diseñadores y «Otras» (si hay
-    tarjetas de otras agencias o de Tienda), cada una con su número.
+  - Para el equipo, **pestañas de tableros**: una por agencia (los tres de siempre, las demás con
+    cuentas y cualquiera que tenga tarjetas) y «Otras» (si hay tarjetas de Tienda o de agencias de
+    afuera), cada una con su número. Recuerda la última que se eligió (26/11/2026).
   - Las cinco columnas con su número y bajada; tarjetas con: acción (y color del mundo), nombre, tipo
     corto, opciones pedidas, fases compactas si hay varias, para cuándo ("Para el 25/11 · 3 días antes
     del Ciberlunes", rojo si venció), quién la hace (el equipo ve el nombre de la agencia), a quién le toca
@@ -620,7 +614,6 @@ Acá se escriben sin el prefijo.
     arrastre).
   - Después de la primera carga, si se corta la conexión **no se avisa**: el tablero queda viejo en
     silencio (solo hay mensaje si nunca cargó).
-  - Las tarjetas de agencias que no son las tres (como «Agencia de prueba») van a «Otras».
 
 ---
 
@@ -795,8 +788,6 @@ Acá se escriben sin el prefijo.
 - **Puntos a mirar:**
   - Con alcance habilitado, la agencia ve los nombres y piezas de **todas** las acciones de su ventana, no
     solo las suyas (es el diseño de la 0070, pero conviene tenerlo presente al probar permisos).
-  - Si la empresa de la cuenta no coincide con uno de los tres tableros, el equipo no puede elegirla en
-    «Crear tarea».
 
 ---
 
@@ -819,8 +810,8 @@ Acá se escriben sin el prefijo.
      pidió: Ciberlunes 2026 - Banners (Header, Slider). Es para el …" en la campanita de **cada cuenta de
      Publicis** (sin mail); aviso al responsable de Tienda (con mail si lo tiene prendido); el semáforo de
      la acción cuenta la tarea pendiente.
-   - **5b (entorno de pruebas):** despliega la tarea, en «Quién la hace» elige «Agencia de prueba (Agencia
-     de prueba)», acepta el `confirm`. La tarjeta pasa a la agencia de prueba (pestaña «Otras» del equipo).
+   - **5b (entorno de pruebas):** en «¿Quién la hace?» elige directo «Agencia de prueba» (está desde el
+     26/11/2026). La tarjeta va a la pestaña «Agencia de prueba» del equipo.
 6. **Agencia** entra con su cuenta → cae en **«Tablero de Agencia de prueba»**. Ve la tarjeta en
    Ingresado y el aviso en la campanita. Toca la tarjeta: lee «Lo que se pidió» y baja el Excel.
 7. Arrastra la tarjeta a **En proceso** (arrancar). Después la arrastra a **Esperando feedback** (o toca
