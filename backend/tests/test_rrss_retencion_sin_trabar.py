@@ -9,16 +9,25 @@ contra Postgres:
 - compactar no hace fila: si alguien está usando la tabla (una placa a medio
   validar), no la toca y avisa. Antes VACUUM FULL esperaba su turno y,
   mientras esperaba, trababa a todos los que llegaban después, hasta la
-  lista de validaciones.
+  lista de validaciones;
+- lo que no se pudo compactar (en uso, o falló) se intenta en la pasada
+  siguiente, y lo recién borrado se compacta enseguida y otra vez en la
+  siguiente: con una transacción más vieja abierta, VACUUM FULL se guardaba
+  lo recién borrado y el lugar no volvía;
+- el lazo arranca con las tres tablas por compactar, por si el proceso
+  anterior no llegó.
 """
 import asyncio
 import os
 import time
+import types
 
 import pytest
 
 URL = os.environ.get("TEST_DATABASE_URL")
 con_base = pytest.mark.skipif(not URL, reason="Sin TEST_DATABASE_URL: esta prueba necesita una base Postgres")
+
+MB = 1024 * 1024
 
 
 async def _que_hizo(coro, segundos: float):
@@ -73,3 +82,210 @@ def test_compactar_no_hace_fila_detras_de_una_placa_a_medio_validar(monkeypatch)
 
     asyncio.run(prueba())
 
+
+# ---------------------------------------------------------------- lo que queda por compactar
+
+class _Borra:
+    """La sesión de la purga, de mentira: cada DELETE «borra» lo que diga la
+    lista, en orden."""
+
+    def __init__(self, cuantas):
+        self._cuantas = iter(cuantas)
+
+    def __call__(self):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def execute(self, *_a, **_k):
+        return types.SimpleNamespace(rowcount=next(self._cuantas))
+
+    async def commit(self):
+        pass
+
+
+def test_una_tabla_en_uso_o_que_fallo_se_compacta_en_la_pasada_siguiente(monkeypatch):
+    """Antes, si compactar fallaba (o, desde ahora, si la tabla estaba en uso),
+    nadie lo volvía a intentar hasta que se borrara otra validación: el lugar
+    podía quedar tomado días. Ahora queda para la pasada siguiente, y una vez
+    compactada no se vuelve a trabar."""
+    import app.services.rrss.retencion as retencion
+    from app.services.espacio import TablaEnUso
+
+    imagenes, paginas, validaciones = retencion.TABLAS
+    tropiezos = {imagenes: TablaEnUso("en uso"), paginas: RuntimeError("se cortó la conexión")}
+    intentos = []
+
+    async def compactar(tabla):
+        intentos.append(tabla)
+        if tabla in tropiezos:
+            raise tropiezos.pop(tabla)  # solo la primera vez
+        return 10 * MB, MB
+
+    monkeypatch.setattr(retencion, "AsyncSessionLocal", _Borra([0, 0, 0]))
+    monkeypatch.setattr(retencion, "compactar", compactar)
+    pendientes = set(retencion.TABLAS)
+
+    def pasada():
+        intentos.clear()
+        return asyncio.run(retencion.purgar_validaciones_vencidas(24, pendientes))
+
+    pasada()
+    assert intentos == [imagenes, paginas, validaciones]
+    assert pendientes == {imagenes, paginas}, "la que estaba en uso y la que falló quedan para la próxima"
+    pasada()
+    assert intentos == [imagenes, paginas] and pendientes == set()
+    pasada()
+    assert intentos == [], "sin nada borrado ni pendiente no se traba ninguna tabla"
+
+
+def test_lo_recien_borrado_se_compacta_enseguida_y_otra_vez_en_la_pasada_siguiente(monkeypatch):
+    """La segunda vez es la que devuelve el lugar si en la primera había una
+    transacción más vieja abierta (ver la prueba contra Postgres de abajo)."""
+    import app.services.rrss.retencion as retencion
+
+    intentos = []
+
+    async def compactar(tabla):
+        intentos.append(tabla)
+        return MB, MB
+
+    monkeypatch.setattr(retencion, "AsyncSessionLocal", _Borra([3, 0, 0]))
+    monkeypatch.setattr(retencion, "compactar", compactar)
+    pendientes: set[str] = set()
+
+    def pasada():
+        intentos.clear()
+        return asyncio.run(retencion.purgar_validaciones_vencidas(24, pendientes))
+
+    assert pasada() == 3
+    assert intentos == list(retencion.TABLAS) and pendientes == set(retencion.TABLAS)
+    assert pasada() == 0
+    assert intentos == list(retencion.TABLAS) and pendientes == set()
+    assert pasada() == 0
+    assert intentos == []
+
+
+def test_el_lazo_arranca_con_las_tres_tablas_por_compactar(monkeypatch):
+    """Si el proceso anterior borró y no llegó a compactar (estaban en uso, o
+    Render lo reinició en el medio), nadie se acordaba: la primera pasada de
+    cada arranque compacta las tres."""
+    import app.services.rrss.retencion as retencion
+
+    class _Basta(Exception):
+        pass
+
+    vistas = []
+
+    async def purgar(horas, pendientes=None):
+        vistas.append(None if pendientes is None else set(pendientes))
+        return 0
+
+    async def dormir(_segundos):
+        raise _Basta
+
+    monkeypatch.setattr(retencion, "purgar_validaciones_vencidas", purgar)
+    monkeypatch.setattr(retencion, "asyncio", types.SimpleNamespace(sleep=dormir))
+    with pytest.raises(_Basta):
+        asyncio.run(retencion.run_purga_rrss_loop())
+    assert vistas == [set(retencion.TABLAS)]
+
+
+@con_base
+def test_el_lugar_vuelve_aunque_hubiera_una_transaccion_abierta_al_borrar(monkeypatch):
+    """VACUUM FULL se guarda las filas que todavía podría ver una transacción
+    empezada antes del borrado, en cualquier base del servidor: cualquier
+    pedido que estuviera guardando algo en ese momento. Con una así abierta,
+    la compactación de la misma pasada no devolvía nada, la siguiente ya no
+    borraba y nadie volvía a compactar: el lugar no volvía (visto el
+    26/11/2026). Ahora la pasada siguiente compacta otra vez y vuelven los 4 MB
+    de la validación vieja: lo que mira el freno (pg_database_size) baja."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import delete, text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    import app.core.database as database
+    import app.services.rrss.retencion as retencion
+    from app.models.rrss_validacion import RrssValidacion, RrssValidacionImagen, RrssValidacionPagina
+    from app.services import espacio
+
+    class _Basta(Exception):
+        pass
+
+    async def prueba():
+        motor = create_async_engine(URL, connect_args={"statement_cache_size": 0})
+        sesiones = async_sessionmaker(motor, expire_on_commit=False)
+        monkeypatch.setattr(retencion, "AsyncSessionLocal", sesiones)
+        monkeypatch.setattr(database, "engine", motor)
+
+        async def tamano():
+            async with sesiones() as db:
+                return await espacio.tamano_de_la_base(db)
+
+        vid = None
+        vieja = None
+        try:
+            async with sesiones() as db:
+                v = RrssValidacion(nombre_mailing="vieja.pdf", estado="completada", config={},
+                                   mailing={"productos": []},
+                                   created_at=datetime.now(timezone.utc) - timedelta(hours=30))
+                db.add(v)
+                await db.flush()
+                vid = v.id
+                # Imágenes de verdad: bytes que no se comprimen.
+                db.add(RrssValidacionPagina(validacion_id=vid, numero=0, ancho=10, alto=10,
+                                            imagen=os.urandom(2 * MB)))
+                db.add(RrssValidacionImagen(validacion_id=vid, orden=0, nombre_archivo="placa.jpg", estado="ok",
+                                            resultado={"filas": []}, vista=os.urandom(2 * MB)))
+                await db.commit()
+            lleno = await tamano()
+
+            # Alguien está guardando algo (su transacción ya tiene número) cuando pasa la purga.
+            vieja = await motor.connect()
+            await vieja.execute(text("SELECT txid_current()"))
+
+            medidas = []
+
+            async def entre_pasadas(_segundos):
+                medidas.append(await tamano())
+                if len(medidas) == 2:
+                    raise _Basta
+                # Esa persona termina. Y se espera a que termine toda transacción
+                # más vieja que el borrado: en las pruebas, las de otras bases del
+                # mismo servidor; en producción, la pasada siguiente es una hora
+                # después.
+                await vieja.rollback()
+                async with motor.connect() as c:
+                    marca = (await c.execute(text("SELECT txid_current()"))).scalar_one()
+                    await c.commit()
+                for _ in range(300):
+                    async with motor.connect() as c:
+                        horizonte = (await c.execute(
+                            text("SELECT txid_snapshot_xmin(txid_current_snapshot())"))).scalar_one()
+                    if horizonte > marca:
+                        return
+                    await asyncio.sleep(0.2)
+                pytest.skip("Otra base de este servidor tiene una transacción abierta hace más de un minuto")
+
+            monkeypatch.setattr(retencion, "asyncio", types.SimpleNamespace(sleep=entre_pasadas))
+            with pytest.raises(_Basta):
+                await retencion.run_purga_rrss_loop()
+
+            primera, segunda = medidas
+            assert lleno - primera < MB, "la premisa: con esa transacción abierta, compactar enseguida no alcanza"
+            assert lleno - segunda >= 3 * MB, f"en la pasada siguiente volvieron {(lleno - segunda) / MB:.1f} MB de 4"
+        finally:
+            if vieja is not None:
+                await vieja.close()
+            if vid is not None:
+                async with sesiones() as db:
+                    await db.execute(delete(RrssValidacion).where(RrssValidacion.id == vid))
+                    await db.commit()
+            await motor.dispose()
+
+    asyncio.run(prueba())
