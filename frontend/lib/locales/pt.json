@@ -1424,6 +1424,15 @@
     },
     "tarjetaSinAccion": {
       "cambiar": "Mudar quem faz, o nome, a data ou o responsável"
+    },
+    "borrar": {
+      "si": "Sim, apagar",
+      "siConTarjeta": "Sim, apagar com o cartão",
+      "tareaConEntregas": "Não dá para apagar: já tem entregas, e o que foi entregue nunca é apagado porque é o histórico das peças.",
+      "tareaSiYaNoVa": "Se não for mais necessária, marque como feita: o cartão vai para Arquivado com tudo o que foi entregue.",
+      "accionConEntregas_one": "“{{nombre}}” não pode ser excluída: uma das tarefas já tem entregas, e o que foi entregue nunca é apagado porque é o histórico das peças. Se não for mais necessária, quem gerencia as tarefas pode marcá-la como feita: o cartão vai para Arquivado com tudo o que foi entregue.",
+      "accionConEntregas_other": "“{{nombre}}” não pode ser excluída: {{count}} das tarefas já têm entregas, e o que foi entregue nunca é apagado porque é o histórico das peças. Se não for mais necessária, quem gerencia as tarefas pode marcá-las como feitas: os cartões vão para Arquivado com tudo o que foi entregue.",
+      "entendido": "Entendi"
     }
   }
 }

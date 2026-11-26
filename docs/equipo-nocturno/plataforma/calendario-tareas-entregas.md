@@ -231,7 +231,9 @@ Acá se escriben sin el prefijo.
     plantilla ancladas se corren solas y sale un toast con cuántas).
   - Eliminar → pide confirmación en el pie: "¿Eliminar <nombre>? Se van con ella N tareas, N piezas y N
     avisos (y el pedido de fotos). No se puede deshacer." → `DELETE /calendario/barras/{id}` (queda en
-    auditoría `calendario.borrar`).
+    auditoría `calendario.borrar`). Si alguna tarea ya tiene entregas, no se ofrece: el pie (ámbar)
+    dice "«<nombre>» no se puede eliminar: una de sus tareas ya tiene entregas…" y qué hacer, con
+    «Entendido»; el servidor contesta 409 igual (H-001, 26/11/2026).
   - Cerrar con `Esc`, la X, «Cancelar» o tocando afuera.
 - **Estados:** «Crear/Guardar» apagado si falta el nombre o las fechas no son válidas (fin antes del
   inicio, año irreal); el resumen de fechas se pone rojo. Error del servidor: toast. Fuera del alcance
@@ -242,11 +244,9 @@ Acá se escriben sin el prefijo.
 - **Código:** `frontend/components/calendario/EditorBarra.tsx`, `store.ts` (`guardarBarra`,
   `borrarBarra`); servidor `calendario.py` (`crear_barra`, `cambiar_barra`, `borrar_barra`).
 - **Puntos a mirar:**
-  - **Eliminar una acción borra en cascada sus tareas y, con ellas, las entregas con sus imágenes y
-    ZIP** (`ondelete="CASCADE"` en `calendario_entregas`, `calendario_versiones`,
-    `calendario_version_imagenes`, `calendario_version_zips`). La confirmación dice "N tareas", no que
-    se van imágenes entregadas por la agencia. Choca con la regla "las imágenes de las entregas no se
-    borran nunca" (sospecha fuerte).
+  - Resuelto (H-001, 26/11/2026): eliminar una acción con una tarea ya entregada se llevaba en cascada
+    las imágenes y los ZIP de la agencia. Ahora `borrar_barra` no la elimina (409, y la pantalla ni lo
+    ofrece). Queda en el calendario: si ya no va, quien gestiona las tareas las da por hechas.
   - Tocar afuera cierra sin preguntar y se pierde lo escrito.
   - Los campos de fecha son nativos (`type="date"`) acá, y en otros lugares se usa `CampoFecha`.
 
@@ -340,8 +340,9 @@ Acá se escriben sin el prefijo.
   - Vencimiento → `PATCH … {vence}` (suelta el ancla). Nombre (Enter guarda, Esc cancela) y detalle →
     `PATCH`.
   - Ordenar arrastrando la manija ⋮⋮ (mouse o dedo) o con `↑` `↓` → `PUT /calendario/barras/{id}/tareas/orden`.
-  - Borrar → confirmación en el mismo botón ("Sí, borrar" o "Borrar con sus entregas") → `DELETE
-    /calendario/tareas/{id}`.
+  - Borrar → confirmación en el mismo botón ("Sí, borrar" o "Sí, borrar con su tarjeta") → `DELETE
+    /calendario/tareas/{id}`. Con algo ya entregado no se borra: «Borrar» muestra "No se puede borrar:
+    ya tiene entregas…" y que se puede dar por hecha (el servidor contesta 409; H-001, 26/11/2026).
   - Plantilla sugerida → `POST /calendario/barras/{id}/plantilla`; «Ahora no» se guarda solo en el
     navegador (`calendario-plantillas-descartadas`).
   - Archivos de una tarea ya creada: `GET /calendario/tareas/{id}/adjuntos`, bajar `GET
@@ -359,8 +360,8 @@ Acá se escriben sin el prefijo.
   servidor `calendario.py` (`crear_tarea`, `cambiar_tarea`, `borrar_tarea`, `ordenar_tareas`,
   `_nacer_tarjetas`), `services/tipos_de_tarea.py`, `api/routes/adjuntos.py`, `services/adjuntos.py`.
 - **Puntos a mirar:**
-  - **Borrar una tarea con entregas borra sus imágenes y ZIP en cascada** (el botón dice "Borrar con
-    sus entregas", pero no "y las imágenes que mandó la agencia").
+  - Resuelto (H-001, 26/11/2026): borrar una tarea con entregas se llevaba sus imágenes y ZIP en
+    cascada. Ahora `borrar_tarea` no la borra si ya se entregó algo (aunque sea solo un link).
   - Inconsistencia: el servidor y las plantillas siguen aceptando "Otra agencia (fuera de la
     plataforma)" (`para = 'fuera'`), pero «Crear tarea» ya no la ofrece.
   - El aviso "te pidió" a la agencia sale en el alta, **antes** de que terminen de subir los archivos:

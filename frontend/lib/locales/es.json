@@ -1511,6 +1511,15 @@
     },
     "tarjetaSinAccion": {
       "cambiar": "Cambiar quién la hace, el nombre, la fecha o el responsable"
+    },
+    "borrar": {
+      "si": "Sí, borrar",
+      "siConTarjeta": "Sí, borrar con su tarjeta",
+      "tareaConEntregas": "No se puede borrar: ya tiene entregas, y lo entregado no se borra nunca porque es el histórico de las piezas.",
+      "tareaSiYaNoVa": "Si ya no va, dala por hecha: su tarjeta pasa a Archivado con todo lo entregado.",
+      "accionConEntregas_one": "«{{nombre}}» no se puede eliminar: una de sus tareas ya tiene entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas la puede dar por hecha: su tarjeta pasa a Archivado con todo lo entregado.",
+      "accionConEntregas_other": "«{{nombre}}» no se puede eliminar: {{count}} de sus tareas ya tienen entregas, y lo entregado no se borra nunca porque es el histórico de las piezas. Si ya no va, quien gestiona las tareas las puede dar por hechas: sus tarjetas pasan a Archivado con todo lo entregado.",
+      "entendido": "Entendido"
     }
   }
 }

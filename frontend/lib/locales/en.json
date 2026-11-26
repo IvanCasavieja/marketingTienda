@@ -1424,6 +1424,15 @@
     },
     "tarjetaSinAccion": {
       "cambiar": "Change who does it, the name, the date or the person in charge"
+    },
+    "borrar": {
+      "si": "Yes, delete",
+      "siConTarjeta": "Yes, delete it and its card",
+      "tareaConEntregas": "It can't be deleted: it already has deliveries, and delivered work is never deleted because it's the history of the pieces.",
+      "tareaSiYaNoVa": "If it's no longer needed, mark it as done: its card goes to Archived with everything delivered.",
+      "accionConEntregas_one": "“{{nombre}}” can't be deleted: one of its tasks already has deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark it as done: its card goes to Archived with everything delivered.",
+      "accionConEntregas_other": "“{{nombre}}” can't be deleted: {{count}} of its tasks already have deliveries, and delivered work is never deleted because it's the history of the pieces. If it's no longer needed, whoever manages tasks can mark them as done: their cards go to Archived with everything delivered.",
+      "entendido": "Got it"
     }
   }
 }

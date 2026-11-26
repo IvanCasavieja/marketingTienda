@@ -910,6 +910,21 @@ async def cambiar_barra(
     return out
 
 
+async def _exigir_que_no_haya_entregas(db: AsyncSession, tareas, *, accion: bool) -> None:
+    """Un 409 que dice por qué, si en `tareas` (ids o una subconsulta) ya se
+    entregó algo: las tareas cuelgan de la acción, y sus entregas de ellas,
+    con ON DELETE CASCADE, así que borrar cualquiera de las dos se llevaba
+    las imágenes y los ZIP que mandó la agencia, que no se borran nunca
+    (H-001, 26/11/2026; ver reglas_entregas.por_que_no_se_borra).
+
+    Quien llama ya bloqueó esas tareas: `entregar` y `sumar_archivos` también
+    las bloquean, así que una entrega que llega en el medio espera a que esto
+    termine o ya se ve acá; no puede colarse entre mirar y borrar."""
+    motivo = reglas_entregas.por_que_no_se_borra(*await reglas_entregas.lo_entregado(db, tareas), accion=accion)
+    if motivo:
+        raise HTTPException(status_code=409, detail=motivo)
+
+
 @router.delete("/barras/{barra_id}")
 async def borrar_barra(
     barra_id: str,
@@ -934,6 +949,12 @@ async def borrar_barra(
     # editarla o copiarla ("No lo ve" tiene la ventana vacía: tampoco pasa).
     if not alcance.toca(barra.desde, barra.hasta, alcance.ventana_de(current_user)):
         raise HTTPException(status_code=404, detail=_YA_NO_EXISTE)
+    # Con una tarea que ya tiene entregas, la acción no se elimina: se las
+    # llevaría. Sus tareas se bloquean después de la acción, el mismo orden
+    # que al moverla (cambiar_barra).
+    sus_tareas = select(CalendarioTarea.id).where(CalendarioTarea.barra_id == barra_id)
+    await db.execute(sus_tareas.with_for_update())
+    await _exigir_que_no_haya_entregas(db, sus_tareas, accion=True)
     # Queda quién la borró y qué era: con varias personas en el mismo
     # calendario, "¿quién sacó tal acción?" es la pregunta que va a aparecer.
     db.add(AuditLog(
@@ -2064,11 +2085,15 @@ async def borrar_tarea(
     current_user: User = Depends(require_permission("calendario.view")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Borra la tarea y todo lo que cuelga de ella."""
+    """Borra la tarea y todo lo que cuelga de ella, salvo que ya tenga algo
+    entregado: eso no se borra nunca (H-001), y se le dice a quien borra qué
+    hacer en su lugar."""
     _exigir_gestion_de_tareas(current_user)
+    # Bloqueada antes de mirar si tiene entregas (ver _exigir_que_no_haya_entregas).
     mundo = await _exigir_mundo_de(db, (await db.execute(
-        select(CalendarioTarea.barra_id).where(CalendarioTarea.id == tarea_id)
+        select(CalendarioTarea.barra_id).where(CalendarioTarea.id == tarea_id).with_for_update()
     )).scalar_one_or_none(), current_user)
+    await _exigir_que_no_haya_entregas(db, [tarea_id], accion=False)
     await db.execute(delete(CalendarioTarea).where(CalendarioTarea.id == tarea_id))
     rev = await _nueva_revision(db, mundo)
     await db.commit()
