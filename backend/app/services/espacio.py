@@ -62,10 +62,13 @@ async def tamano_de_la_base(db: AsyncSession) -> int:
 
 # Las tablas que se pueden compactar: las que la plataforma vacía sola (la
 # purga de cenefas) y las de Clientes VIP, que cada carga reemplaza (26/11/2026:
-# recargar 2025 y enero-octubre 2026 dejó 22 MB de filas viejas). Por nombre
+# recargar 2025 y enero-octubre 2026 dejó 22 MB de filas viejas). Y las
+# plantillas de cenefa, cuando sobra lugar de las borradas (ver
+# compactar_plantillas_si_sobra_lugar en services/cenefas/jobs.py). Por nombre
 # fijo, nunca algo que venga de afuera.
 TABLAS_COMPACTABLES = frozenset({
-    "cenefa_jobs", "vip_cliente_mes", "vip_clientes", "vip_mes_dimension", "vip_detalle",
+    "cenefa_jobs", "cenefa_templates_v2",
+    "vip_cliente_mes", "vip_clientes", "vip_mes_dimension", "vip_detalle",
 })
 
 
