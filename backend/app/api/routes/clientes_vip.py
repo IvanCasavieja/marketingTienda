@@ -13,6 +13,7 @@
   POST /clientes-vip/cargas                — empezar una carga (los meses que trae el archivo)
   POST /clientes-vip/cargas/{id}/filas     — una tanda del resumen (hasta 5.000 filas)
   POST /clientes-vip/cargas/{id}/terminar  — los totales del mes; rehace la foto de cada cliente
+                                             (y después compacta lo que reemplazó)
   POST /clientes-vip/cargas/{id}/detalle   — una parte (gzip) del detalle para Valentina
   GET  /clientes-vip/detalle               — qué detalle hay (por carga y tabla)
   GET  /clientes-vip/detalle/{carga}/{tabla} — bajarlo (gzip)
@@ -26,7 +27,7 @@ devuelve nada a quien no tiene el permiso, ni a las cuentas externas.
 """
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
@@ -41,7 +42,7 @@ from app.models.clientes_vip import (
 )
 from app.models.user import User
 from app.services import clientes_vip as vip
-from app.services.espacio import hay_lugar
+from app.services.espacio import compactar_en_segundo_plano, hay_lugar, transaccion_actual
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/clientes-vip", tags=["clientes-vip"])
@@ -445,7 +446,7 @@ class Cierre(BaseModel):
 
 
 @router.post("/cargas/{carga_id}/terminar")
-async def terminar_carga(carga_id: int, body: Cierre, db: AsyncSession = Depends(get_db),
+async def terminar_carga(carga_id: int, body: Cierre, tareas: BackgroundTasks, db: AsyncSession = Depends(get_db),
                          user: User = Depends(puede_cargar)):
     carga = await _carga_abierta(db, carga_id)
     meses = {m: vip.mes_de(m) for m in carga.meses}
@@ -456,16 +457,25 @@ async def terminar_carga(carga_id: int, body: Cierre, db: AsyncSession = Depends
         dims.append({"mes": meses[d.mes], "dimension": d.dimension, "valor": d.valor.strip()[:120],
                      "venta": round(d.venta), "margen": round(d.margen), "unidades": round(d.unidades),
                      "tickets": d.tickets, "clientes": d.clientes})
+    # Las tablas en las que esta carga reemplazó lo que ya había: Postgres
+    # guarda para sí el lugar de las filas viejas (el 26/11/2026, recargar 2025
+    # y enero-octubre 2026 dejó 22 MB así). Se compactan después de responder.
+    reemplazadas: set[str] = set()
     # El detalle de las cargas anteriores cuyos meses están todos en esta se va
     # (ocupa lugar y ya no vale): el de esta carga los reemplaza.
     viejas = (await db.execute(select(VipCarga.id, VipCarga.meses).where(VipCarga.id != carga.id))).all()
     tapadas = [i for i, ms in viejas if ms and set(ms) <= set(carga.meses)]
-    if tapadas:
-        await db.execute(delete(VipDetalle).where(VipDetalle.carga_id.in_(tapadas)))
+    if tapadas and (await db.execute(delete(VipDetalle).where(VipDetalle.carga_id.in_(tapadas)))).rowcount:
+        reemplazadas.add("vip_detalle")
     # Lo de estos meses que no vino en esta carga (de una carga anterior) se va.
-    await db.execute(delete(VipClienteMes).where(VipClienteMes.mes.in_(list(meses.values())),
-                                                 VipClienteMes.carga_id != carga.id))
-    await db.execute(delete(VipMesDimension).where(VipMesDimension.mes.in_(list(meses.values()))))
+    # Lo que sí vino ya pisó a lo de antes, fila por fila, al subir las tandas.
+    pisadas = any(ms and set(ms) & set(carga.meses) for _, ms in viejas)
+    sobrantes = await db.execute(delete(VipClienteMes).where(VipClienteMes.mes.in_(list(meses.values())),
+                                                             VipClienteMes.carga_id != carga.id))
+    if pisadas or sobrantes.rowcount:
+        reemplazadas.add("vip_cliente_mes")
+    if (await db.execute(delete(VipMesDimension).where(VipMesDimension.mes.in_(list(meses.values()))))).rowcount:
+        reemplazadas.add("vip_mes_dimension")
     if dims:
         tabla = VipMesDimension.__table__
         stmt = pg_insert(tabla)
@@ -474,11 +484,21 @@ async def terminar_carga(carga_id: int, body: Cierre, db: AsyncSession = Depends
             set_={c: stmt.excluded[c] for c in ("venta", "margen", "unidades", "tickets", "clientes")},
         )
         await db.execute(stmt, dims)
+    # La foto de cada cliente se rehace entera: si había una, queda reemplazada.
+    if await db.scalar(select(VipCliente.id_cliente).limit(1)) is not None:
+        reemplazadas.add("vip_clientes")
     clientes = await vip.recalcular(db)
     carga.estado = "lista"
     carga.clientes = body.clientes or clientes
     carga.venta = round(body.venta)
     carga.terminada_at = vip.ahora()
+    # Antes del commit, y no después: una lectura después del commit deja
+    # abierta una transacción hasta que termina el pedido, que es después de
+    # las tareas de fondo, y no deja compactar vip_clientes.
+    segmentos = await vip.segmentos(db)
+    xid = await transaccion_actual(db) if reemplazadas else None
     await db.commit()
+    if reemplazadas:
+        tareas.add_task(compactar_en_segundo_plano, sorted(reemplazadas), xid)
     # El informe lo escribe Valentina desde la nube: en su próxima vuelta ve la carga nueva.
-    return {"id": carga.id, "clientes": clientes, "filas": carga.filas, "segmentos": await vip.segmentos(db)}
+    return {"id": carga.id, "clientes": clientes, "filas": carga.filas, "segmentos": segmentos}

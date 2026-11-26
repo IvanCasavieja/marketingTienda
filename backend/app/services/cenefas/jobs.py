@@ -10,7 +10,7 @@ from sqlalchemy import or_, select, update
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.services.espacio import MB, compactar
+from app.services.espacio import compactar_en_segundo_plano, transaccion_actual
 from app.models.cenefa_job import CenefaJob
 from app.models.cenefa_template_v2 import CenefaTemplateV2
 from app.services.cenefas.component_renderer import patch_image_overrides, render_template_to_pptx
@@ -712,16 +712,14 @@ async def purgar_archivos_vencidos(horas: int) -> tuple[int, int]:
                 staged_data=None, staged_source_pptx=None, staged_excel_bytes=None,
             )
         )
+        purgados, vencidos = r1.rowcount or 0, r2.rowcount or 0
+        xid = await transaccion_actual(db) if purgados or vencidos else None
         await db.commit()
-    purgados, vencidos = r1.rowcount or 0, r2.rowcount or 0
-    if purgados or vencidos:
-        # Sin esto el lugar no vuelve: Postgres lo guarda para sí.
-        try:
-            antes, despues = await compactar("cenefa_jobs")
-            logger.info("purga_cenefas: cenefa_jobs compactada de %.1f a %.1f MB",
-                        antes / MB, despues / MB)
-        except Exception as exc:
-            logger.error("purga_cenefas: no se pudo compactar cenefa_jobs -- %s", exc)
+    if xid is not None:
+        # Sin esto el lugar no vuelve: Postgres lo guarda para sí. No hace
+        # fila detrás de quien esté usando la tabla (eso colgaba las pantallas
+        # de cenefas): si sigue en uso, queda para la próxima purga. Nunca falla.
+        await compactar_en_segundo_plano(["cenefa_jobs"], xid)
     return purgados, vencidos
 
 
