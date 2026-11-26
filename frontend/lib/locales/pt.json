@@ -543,10 +543,10 @@
       "verifDetalle": "Abra o arquivo e confira. Ao confirmar, o arquivo fica guardado para ver quando quiser e a rodada conta como verificada no relatório. Sem confirmar, o arquivo é apagado em 7 dias — os números permanecem.",
       "verifSi": "Sim, saíram bem",
       "verifNo": "Não, saíram com erro",
-      "verifOk": "{{n}} rodada(s) verificadas — o arquivo fica guardado",
-      "verifHecha": "Rodada verificada: o arquivo fica guardado e conta no relatório.",
+      "verifOk": "{{n}} rodada(s) verificadas: contam no relatório",
+      "verifHecha": "Rodada verificada: conta no relatório. O arquivo é apagado em 24 horas: baixe antes se precisar.",
       "verifMalTitulo": "Marcado para revisar",
-      "verifMalDetalle": "Não fica guardado para sempre: segue a retenção normal (apagado em 7 dias). Corrija e confirme de novo quando estiver certo.",
+      "verifMalDetalle": "Não conta no relatório. Corrija e confirme de novo quando estiver certo.",
       "verifVolverAPreguntar": "Perguntar de novo",
       "revision": {
         "barra": "{{count}} coisas para revisar antes de confirmar",

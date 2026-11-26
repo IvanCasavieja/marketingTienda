@@ -59,10 +59,13 @@ class Settings(BaseSettings):
     CLAVE_AGENCIA_DE_PRUEBA: str = ""
     CLAVE_LOCAL_DE_PRUEBA: str = ""
 
-    # Retención de archivos de cenefas (0 = desactivada). El PPTX de una
-    # corrida SIN verificar se borra a los N días; el número de la corrida
-    # queda para siempre, y el archivo de una corrida VERIFICADA también.
-    CENEFAS_RETENCION_DIAS: int = 7
+    # Retención de archivos de cenefas (0 = desactivada). El archivo de TODA
+    # corrida, verificada o no, se borra a las N horas; el número de la
+    # corrida (y si alguien la verificó) queda para siempre. Ivan
+    # (26/11/2026), con la base en 397,9 de 400 MB y 203 MB de corridas: «que
+    # quede guardado a lo sumo un día y nada más». Nombre nuevo (antes
+    # CENEFAS_RETENCION_DIAS) para que no lo pise una variable vieja de Render.
+    CENEFAS_RETENCION_HORAS: int = 24
 
     # Fotos de colocación (las que suben los locales, ver
     # services/colocacion.py). Se borran a los N días de que termina la acción
