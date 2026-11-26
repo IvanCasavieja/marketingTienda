@@ -3,6 +3,7 @@
 // Web Worker, lib/clientes-vip/lector.worker.ts), muestra qué trae y sube solo
 // el resumen, en tandas. Ver lib/clientes-vip/resumen.ts.
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FileUp, Loader2, X, CheckCircle2, AlertTriangle } from "lucide-react";
 import { clientesVipApi } from "@/lib/api";
 import { extractErrorDetail } from "@/lib/errors";
@@ -21,6 +22,32 @@ type Paso =
   | { tipo: "subiendo"; hecho: number; total: number }
   | { tipo: "listo"; clientes: number; meses: string[] }
   | { tipo: "error"; mensaje: string };
+
+/** Las filas que no entran, con su número y el porqué, para saber cuál
+ *  corregir en el archivo (H-088, 26/11/2026: con una fecha «30/13/2019» se
+ *  rebotaba la carga entera sin decir qué fila era). */
+function FilasQueNoEntran({ r }: { r: Resumen }) {
+  const { t } = useTranslation();
+  const resto = r.descartadas - r.primerasDescartadas.length;
+  return (
+    <div className="mt-3 text-sm text-amber-700 dark:text-amber-400">
+      <p>{t("clientesVip.carga.noEntran", { count: r.descartadas, n: numero(r.descartadas) })}</p>
+      <ul className="mt-1 pl-5 list-disc space-y-0.5">
+        {r.primerasDescartadas.map((d) => (
+          <li key={`${d.archivo}|${d.fila}`}>
+            {d.archivo
+              ? t("clientesVip.carga.filaDe", { fila: numero(d.fila), archivo: d.archivo })
+              : t("clientesVip.carga.fila", { fila: numero(d.fila) })}
+            {": "}
+            {t(`clientesVip.carga.motivo.${d.motivo}`, { dato: d.dato })}
+          </li>
+        ))}
+        {resto > 0 && <li>{t("clientesVip.carga.yMas", { count: resto, n: numero(resto) })}</li>}
+      </ul>
+      <p className="mt-1">{t(r.filas.length ? "clientesVip.carga.queHacer" : "clientesVip.carga.ningunaSirve")}</p>
+    </div>
+  );
+}
 
 async function conReintento<T>(fn: () => Promise<T>, veces = 3): Promise<T> {
   for (let i = 1; ; i++) {
@@ -144,25 +171,25 @@ export default function CargarArchivo({
       {paso.tipo === "revisar" && (() => {
         const r = paso.resumen;
         const pisa = r.meses.filter((m) => mesesCargados.includes(m));
+        const hayFilas = r.filas.length > 0;
         return (
           <div>
-            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            {hayFilas && <dl className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
               <div><dt className="text-slate-500">Meses</dt><dd className="font-medium text-slate-900 dark:text-slate-100">{mesLargo(r.meses[0])}{r.meses.length > 1 ? ` a ${mesLargo(r.meses[r.meses.length - 1])}` : ""}</dd></div>
               <div><dt className="text-slate-500">Clientes</dt><dd className="font-medium text-slate-900 dark:text-slate-100">{numero(r.clientes)}</dd></div>
               <div><dt className="text-slate-500">Venta</dt><dd className="font-medium text-slate-900 dark:text-slate-100">{plata(r.venta)}</dd></div>
               <div><dt className="text-slate-500">Filas del archivo</dt><dd className="font-medium text-slate-900 dark:text-slate-100">{numero(r.filasArchivo)}</dd></div>
-            </dl>
-            {r.descartadas > 0 && (
-              <p className="mt-3 text-xs text-amber-700 dark:text-amber-400">{numero(r.descartadas)} filas sin cliente o sin fecha no se tuvieron en cuenta.</p>
-            )}
+            </dl>}
+            {r.descartadas > 0 && <FilasQueNoEntran r={r} />}
             {pisa.length > 0 && (
               <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
                 Ya había datos de {pisa.length === 1 ? mesLargo(pisa[0]) : `${pisa.length} de estos meses`}: se reemplazan por los de este archivo.
               </p>
             )}
             <div className="mt-5 flex gap-2">
-              <button onClick={() => subir(paso.archivo, r, paso.detalle)} className="btn-primary text-sm">Cargar {r.meses.length === 1 ? "el mes" : `los ${r.meses.length} meses`}</button>
-              <button onClick={() => setPaso({ tipo: "elegir" })} className="px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Elegir otro</button>
+              {hayFilas && <button onClick={() => subir(paso.archivo, r, paso.detalle)} className="btn-primary text-sm">Cargar {r.meses.length === 1 ? "el mes" : `los ${r.meses.length} meses`}</button>}
+              <button onClick={() => setPaso({ tipo: "elegir" })}
+                      className={hayFilas ? "px-3 py-2 rounded-lg text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" : "btn-primary text-sm"}>Elegir otro</button>
             </div>
           </div>
         );

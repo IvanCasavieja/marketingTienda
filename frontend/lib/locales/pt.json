@@ -1408,5 +1408,25 @@
   "calendario": {
     "accessDenied": "Você não tem acesso ao calendário",
     "loading": "Carregando o calendário…"
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} linha não vai ser carregada:",
+      "noEntran_other": "{{n}} linhas não vão ser carregadas:",
+      "fila": "Linha {{fila}}",
+      "filaDe": "Linha {{fila}} de {{archivo}}",
+      "motivo": {
+        "sinCliente": "não tem número de cliente.",
+        "sinFecha": "não tem data.",
+        "fechaIlegible": "não dá para entender a data “{{dato}}”.",
+        "mesInexistente": "a data “{{dato}}” tem um mês que não existe.",
+        "fechaVieja": "a data “{{dato}}” é anterior a 2000: confira o ano.",
+        "fechaFutura": "a data “{{dato}}” ainda não chegou."
+      },
+      "yMas_one": "E mais {{n}} linha.",
+      "yMas_other": "E mais {{n}} linhas.",
+      "queHacer": "Para incluí-las, corrija no arquivo e carregue de novo. Se não, carregue o resto.",
+      "ningunaSirve": "Não sobrou nenhuma linha para carregar: corrija o arquivo e carregue de novo."
+    }
   }
 }

@@ -1408,5 +1408,25 @@
   "calendario": {
     "accessDenied": "You don't have access to the calendar",
     "loading": "Loading the calendar…"
+  },
+  "clientesVip": {
+    "carga": {
+      "noEntran_one": "{{n}} row won't be loaded:",
+      "noEntran_other": "{{n}} rows won't be loaded:",
+      "fila": "Row {{fila}}",
+      "filaDe": "Row {{fila}} in {{archivo}}",
+      "motivo": {
+        "sinCliente": "it has no customer number.",
+        "sinFecha": "it has no date.",
+        "fechaIlegible": "the date \"{{dato}}\" can't be read.",
+        "mesInexistente": "the date \"{{dato}}\" has a month that doesn't exist.",
+        "fechaVieja": "the date \"{{dato}}\" is before 2000: check the year.",
+        "fechaFutura": "the date \"{{dato}}\" hasn't come yet."
+      },
+      "yMas_one": "And {{n}} more row.",
+      "yMas_other": "And {{n}} more rows.",
+      "queHacer": "To include them, fix them in the file and load it again. If not, load the rest.",
+      "ningunaSirve": "There are no rows left to load: fix the file and load it again."
+    }
   }
 }
