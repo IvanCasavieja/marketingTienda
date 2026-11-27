@@ -1,0 +1,81 @@
+{
+ "agente": "dogti",
+ "fecha": "2026-11-27 12:16",
+ "modelo": "claude-sonnet-5",
+ "casos": 13,
+ "repeticiones": 3,
+ "corridas": 39,
+ "errores": 0,
+ "metricas": {
+  "monto": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "moneda": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "proveedor_marca": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "tipo_sugerido": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "numero_factura": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "factura_entera_bien": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "no_inventa": {
+   "aciertos": 33,
+   "casos": 33,
+   "porcentaje": 100.0
+  },
+  "confianza_alta_acierta": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "vigencia_desde": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "vigencia_hasta": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "duda_cuando_no_es_factura": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  }
+ },
+ "casos_perfectos": 100.0,
+ "consistencia": 100.0,
+ "tokens_entrada": 137289,
+ "tokens_salida": 13781,
+ "costo_usd": 0.412388,
+ "costo_por_caso_usd": 0.0106,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 5.4,
+ "segundos_p90": 6.2,
+ "fallas": {}
+}

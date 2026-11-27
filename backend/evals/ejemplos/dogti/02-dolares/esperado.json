@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Bodega Cerro Alto",
+ "numero_factura": "B-000087",
+ "fecha": "2026-10-15",
+ "monto": 4453.61,
+ "moneda": "USD",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

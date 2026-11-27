@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Northwind Media LLC",
+ "numero_factura": "INV-2026-0417",
+ "fecha": "2026-11-03",
+ "monto": 2450.0,
+ "moneda": "USD",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

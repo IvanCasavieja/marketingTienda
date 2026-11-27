@@ -1,0 +1,8 @@
+{
+ "perfil": "equipo",
+ "tipo": "herramienta",
+ "pregunta": "¿En qué quedó el último debate de campañas?",
+ "espera_herramienta": [
+  "resumen_ultimo_debate"
+ ]
+}

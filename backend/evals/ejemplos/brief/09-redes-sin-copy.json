@@ -1,0 +1,11 @@
+{
+ "texto": "hagan un reel de las ofertas de frutas y verduras, el copy lo paso mañana",
+ "tipo": "redes",
+ "esperado": {
+  "formato": [
+   "reel"
+  ],
+  "copy": null,
+  "fecha": null
+ }
+}

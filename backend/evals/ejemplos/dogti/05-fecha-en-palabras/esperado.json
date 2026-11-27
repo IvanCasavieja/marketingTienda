@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Limpieza Total SRL",
+ "numero_factura": "A 009911",
+ "fecha": "2026-10-07",
+ "monto": 78446.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

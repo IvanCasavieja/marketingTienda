@@ -1,0 +1,19 @@
+{
+ "texto": "a ver este a ver necesito este cenefas no perdón sí cenefas para pañales tres por dos tres por dos en pañales eh para todos los locales tamaño a cuatro",
+ "tipo": "cenefa",
+ "esperado": {
+  "medidas": [
+   "A4"
+  ],
+  "cantidad": null,
+  "precio_mecanica": [
+   "3x2",
+   "pañales"
+  ],
+  "vigencia": null,
+  "legales": null,
+  "locales": [
+   "todos"
+  ]
+ }
+}

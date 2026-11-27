@@ -1,0 +1,9 @@
+{
+ "perfil": "equipo",
+ "tipo": "herramienta",
+ "pregunta": "¿Qué acciones tenemos esta semana?",
+ "espera_herramienta": [
+  "calendario_acciones",
+  "calendario_carga"
+ ]
+}

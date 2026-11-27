@@ -1,0 +1,21 @@
+{
+ "texto": "necesito doscientas no perdón trescientas cenefas de quesos al veinte por ciento",
+ "tipo": "cenefa",
+ "esperado": {
+  "cantidad": {
+   "contiene": [
+    "300"
+   ],
+   "no_contiene": [
+    "200"
+   ]
+  },
+  "precio_mecanica": [
+   "20%",
+   "quesos"
+  ],
+  "medidas": null,
+  "vigencia": null,
+  "locales": null
+ }
+}

@@ -1,0 +1,8 @@
+{
+ "perfil": "local",
+ "tipo": "herramienta",
+ "pregunta": "¿Ya está confirmado mi pedido de cenefas de este mes?",
+ "espera_herramienta": [
+  "redexpres_pedidos"
+ ]
+}

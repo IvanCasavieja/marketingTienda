@@ -1,0 +1,74 @@
+{
+ "agente": "revisor",
+ "fecha": "2026-11-27 12:16",
+ "modelo": "claude-opus-5-5",
+ "casos": 14,
+ "repeticiones": 3,
+ "corridas": 42,
+ "errores": 0,
+ "metricas": {
+  "sana_sin_falsa_alarma": {
+   "aciertos": 15,
+   "casos": 15,
+   "porcentaje": 100.0
+  },
+  "sana_sin_ninguna_observacion": {
+   "aciertos": 15,
+   "casos": 15,
+   "porcentaje": 100.0
+  },
+  "encuentra_el_error": {
+   "aciertos": 25,
+   "casos": 27,
+   "porcentaje": 92.6
+  },
+  "encuentra_ortografia": {
+   "aciertos": 9,
+   "casos": 9,
+   "porcentaje": 100.0
+  },
+  "lo_marca_importante": {
+   "aciertos": 23,
+   "casos": 27,
+   "porcentaje": 85.2
+  },
+  "encuentra_precio_vigencia": {
+   "aciertos": 8,
+   "casos": 9,
+   "porcentaje": 88.9
+  },
+  "encuentra_legal": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "encuentra_marca": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "encuentra_codigo": {
+   "aciertos": 2,
+   "casos": 3,
+   "porcentaje": 66.7
+  }
+ },
+ "casos_perfectos": 85.7,
+ "consistencia": 85.7,
+ "tokens_entrada": 300678,
+ "tokens_salida": 7023,
+ "costo_usd": 1.343172,
+ "costo_por_caso_usd": 0.032,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 3.0,
+ "segundos_p90": 4.4,
+ "fallas": {
+  "07-vigencia": {
+   "encuentra_el_error, encuentra_precio_vigencia, lo_marca_importante": 1
+  },
+  "10-qr-tapado": {
+   "encuentra_el_error, encuentra_codigo, lo_marca_importante": 1,
+   "lo_marca_importante": 2
+  }
+ }
+}

@@ -1,0 +1,14 @@
+{
+ "tipo_pieza": "redes",
+ "mundo": "tienda_inglesa",
+ "accion": "Oferta de la semana: vinos",
+ "tarea": "Placa de redes",
+ "brief": {
+  "detalle": "Placa cuadrada de oferta: Vino Tinto Reserva 750 ml a $ 199. Titular: OFERTA DE LA SEMANA.",
+  "precio": "$ 199",
+  "legales": "Válido del 28/11 al 30/11/2026 o hasta agotar stock. No acumulable con otras promociones."
+ },
+ "esperado": {
+  "sana": true
+ }
+}

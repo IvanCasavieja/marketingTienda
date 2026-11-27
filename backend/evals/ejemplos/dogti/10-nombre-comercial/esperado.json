@@ -1,0 +1,13 @@
+{
+ "proveedor_marca": [
+  "Café Molino",
+  "Molinos del Este S.A."
+ ],
+ "numero_factura": "A 004410",
+ "fecha": "2026-11-14",
+ "monto": 46360.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

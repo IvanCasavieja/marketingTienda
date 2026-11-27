@@ -9,3 +9,6 @@ dist/
 *.egg-info/
 .pytest_cache/
 backups/
+
+# Evals: los casos reales nunca van al repo
+evals/datos/

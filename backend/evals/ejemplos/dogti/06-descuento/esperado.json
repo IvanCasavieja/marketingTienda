@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Yerba Don Ramón",
+ "numero_factura": "A 770021",
+ "fecha": "2026-11-20",
+ "monto": 164700.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

@@ -1,0 +1,16 @@
+{
+ "texto": "un post para facebook con el texto este finde todo el vino al treinta por ciento, para el viernes",
+ "tipo": "redes",
+ "esperado": {
+  "formato": [
+   "facebook"
+  ],
+  "copy": [
+   "vino",
+   "30"
+  ],
+  "fecha": [
+   "viernes"
+  ]
+ }
+}

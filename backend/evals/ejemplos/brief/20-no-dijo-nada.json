@@ -1,0 +1,12 @@
+{
+ "texto": "no sé, después te digo bien qué necesito",
+ "tipo": "cenefa",
+ "esperado": {
+  "medidas": null,
+  "cantidad": null,
+  "precio_mecanica": null,
+  "vigencia": null,
+  "legales": null,
+  "locales": null
+ }
+}

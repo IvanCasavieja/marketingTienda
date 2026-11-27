@@ -1,0 +1,16 @@
+{
+ "texto": "una historia de instagram para el sábado quince de noviembre que diga llegó el verano a tienda inglesa",
+ "tipo": "redes",
+ "esperado": {
+  "formato": [
+   "historia",
+   "instagram"
+  ],
+  "copy": [
+   "llegó el verano"
+  ],
+  "fecha": [
+   "15/11"
+  ]
+ }
+}

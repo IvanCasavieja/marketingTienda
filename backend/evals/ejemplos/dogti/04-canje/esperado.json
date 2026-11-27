@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Radio Costa FM",
+ "numero_factura": "C 000312",
+ "fecha": "2026-11-01",
+ "monto": 146400.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "canje",
+ "vigencia_desde": "2026-11-01",
+ "vigencia_hasta": "2027-01-31"
+}

@@ -1,0 +1,67 @@
+{
+ "agente": "dogti",
+ "fecha": "2026-11-27 15:33",
+ "modelo": "claude-sonnet-5",
+ "casos": 31,
+ "repeticiones": 3,
+ "corridas": 93,
+ "errores": 0,
+ "metricas": {
+  "monto": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "moneda": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "proveedor_marca": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "tipo_sugerido": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "numero_factura": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "factura_entera_bien": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "no_inventa": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "confianza_alta_acierta": {
+   "aciertos": 2,
+   "casos": 2,
+   "porcentaje": 100.0
+  }
+ },
+ "casos_perfectos": 100.0,
+ "consistencia": 93.5,
+ "tokens_entrada": 365598,
+ "tokens_salida": 40268,
+ "costo_usd": 1.133876,
+ "costo_por_caso_usd": 0.0122,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 6.1,
+ "segundos_p90": 20.8,
+ "fallas": {},
+ "datos": "propios"
+}

@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Frigorífico Norte S.A.",
+ "numero_factura": "A 031415",
+ "fecha": "2026-11-18",
+ "monto": 58316.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

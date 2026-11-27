@@ -1,0 +1,20 @@
+{
+ "texto": "un mail para el día del padre asunto regalos para papá con hasta cuarenta por ciento off va a toda la base sale el jueves doce de junio a las diez de la mañana y el botón que diga ver ofertas",
+ "tipo": "mailing",
+ "esperado": {
+  "asunto": [
+   "regalos",
+   "papá",
+   "40%"
+  ],
+  "segmento": [
+   "toda la base"
+  ],
+  "fecha_envio": [
+   "12/06"
+  ],
+  "llamado_accion": [
+   "ver ofertas"
+  ]
+ }
+}

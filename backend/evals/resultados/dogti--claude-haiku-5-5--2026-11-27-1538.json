@@ -1,0 +1,122 @@
+{
+ "agente": "dogti",
+ "fecha": "2026-11-27 15:38",
+ "modelo": "claude-haiku-5-5",
+ "casos": 31,
+ "repeticiones": 3,
+ "corridas": 93,
+ "errores": 0,
+ "metricas": {
+  "monto": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "moneda": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "proveedor_marca": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "tipo_sugerido": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "numero_factura": {
+   "aciertos": 58,
+   "casos": 93,
+   "porcentaje": 62.4
+  },
+  "factura_entera_bien": {
+   "aciertos": 58,
+   "casos": 93,
+   "porcentaje": 62.4
+  },
+  "no_inventa": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "confianza_alta_acierta": {
+   "aciertos": 39,
+   "casos": 49,
+   "porcentaje": 79.6
+  }
+ },
+ "casos_perfectos": 45.2,
+ "consistencia": 48.4,
+ "tokens_entrada": 359460,
+ "tokens_salida": 46544,
+ "costo_usd": 0.059218,
+ "costo_por_caso_usd": 0.0006,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 3.8,
+ "segundos_p90": 5.5,
+ "fallas": {
+  "caso-01": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-02": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 3
+  },
+  "caso-03": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "caso-04": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-05": {
+   "numero_factura, factura_entera_bien": 1,
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "caso-06": {
+   "numero_factura, factura_entera_bien": 1,
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "caso-07": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1,
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-08": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-09": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-10": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "caso-11": {
+   "numero_factura, factura_entera_bien": 2
+  },
+  "caso-12": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "caso-13": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "caso-14": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "caso-15": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "caso-16": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "caso-17": {
+   "numero_factura, factura_entera_bien": 3
+  }
+ },
+ "datos": "propios"
+}

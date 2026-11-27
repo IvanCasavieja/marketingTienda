@@ -1,0 +1,27 @@
+{
+ "texto": "necesito cenefas para el ciberlunes dos por uno en vinos del veintiocho al treinta de noviembre son doscientas de treinta por diez centímetros para cuarenta locales y no lleva legales",
+ "tipo": "cenefa",
+ "esperado": {
+  "medidas": [
+   "30",
+   "10"
+  ],
+  "cantidad": [
+   "200"
+  ],
+  "precio_mecanica": [
+   "2x1",
+   "vinos"
+  ],
+  "vigencia": [
+   "28/11",
+   "30/11"
+  ],
+  "legales": [
+   "no lleva"
+  ],
+  "locales": [
+   "40"
+  ]
+ }
+}

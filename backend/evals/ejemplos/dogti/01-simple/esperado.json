@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Lácteos del Sur S.A.",
+ "numero_factura": "A 001234",
+ "fecha": "2026-11-03",
+ "monto": 103700.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

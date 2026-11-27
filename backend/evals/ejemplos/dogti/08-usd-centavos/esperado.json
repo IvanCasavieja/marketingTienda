@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Importadora Atlántica",
+ "numero_factura": "E 000009",
+ "fecha": "2026-10-30",
+ "monto": 2317.99,
+ "moneda": "USD",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

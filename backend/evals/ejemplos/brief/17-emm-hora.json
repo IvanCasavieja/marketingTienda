@@ -1,0 +1,16 @@
+{
+ "texto": "mail para clientes nuevos, asunto bienvenido a tienda inglesa, sale el martes a las ocho de la noche",
+ "tipo": "mailing",
+ "esperado": {
+  "asunto": [
+   "bienvenid"
+  ],
+  "segmento": [
+   "nuevos"
+  ],
+  "fecha_envio": [
+   "martes"
+  ],
+  "llamado_accion": null
+ }
+}

@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Galletas La Estrella Ltda.",
+ "numero_factura": "A 045600",
+ "fecha": "2026-09-28",
+ "monto": 112545.92,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

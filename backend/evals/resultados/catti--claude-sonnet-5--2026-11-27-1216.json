@@ -1,0 +1,61 @@
+{
+ "agente": "catti",
+ "fecha": "2026-11-27 12:16",
+ "modelo": "claude-sonnet-5",
+ "casos": 10,
+ "repeticiones": 3,
+ "corridas": 30,
+ "errores": 0,
+ "metricas": {
+  "oferta_precio": {
+   "aciertos": 27,
+   "casos": 27,
+   "porcentaje": 100.0
+  },
+  "descripcion": {
+   "aciertos": 30,
+   "casos": 30,
+   "porcentaje": 100.0
+  },
+  "no_inventa_precio_anterior": {
+   "aciertos": 21,
+   "casos": 21,
+   "porcentaje": 100.0
+  },
+  "placa_entera_bien": {
+   "aciertos": 30,
+   "casos": 30,
+   "porcentaje": 100.0
+  },
+  "precio_anterior": {
+   "aciertos": 9,
+   "casos": 9,
+   "porcentaje": 100.0
+  },
+  "tachado": {
+   "aciertos": 9,
+   "casos": 9,
+   "porcentaje": 100.0
+  },
+  "mecanica": {
+   "aciertos": 9,
+   "casos": 9,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  }
+ },
+ "casos_perfectos": 100.0,
+ "consistencia": 100.0,
+ "tokens_entrada": 206760,
+ "tokens_salida": 13238,
+ "costo_usd": 0.5459,
+ "costo_por_caso_usd": 0.0182,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 6.2,
+ "segundos_p90": 7.5,
+ "fallas": {}
+}
