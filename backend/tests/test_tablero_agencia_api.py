@@ -4328,6 +4328,31 @@ def test_aprobar_y_entregar_dejan_leidos_tus_avisos_de_la_tarjeta():
     correr(prueba)
 
 
+def test_arrastrar_a_finalizado_deja_leidos_tus_avisos_de_la_tarjeta():
+    # H-124 (27/11/2026): arrastrar de Esperando feedback a Finalizado es
+    # aprobar, y deja leído el «Te toca revisarla». La campanita del menú
+    # vuelve a preguntar el número al moverla: tiene que dar lo mismo.
+    async def prueba(d):
+        tarea_id, _ = await _pedir_banners(d, d.lucia)
+        a1, lucia = Cliente(d.http, d.a1), Cliente(d.http, d.lucia)
+        assert (await _entregar_link(a1, tarea_id, f"ve-1-{d.sufijo}")).status_code == 201
+        assert [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, d.lucia, tarea_id))] == [
+            f"revisar-{d.lucia.id}"]
+        antes = (await lucia.get("/notificaciones/no-leidas/count")).json()["count"]
+
+        r = await lucia.post(f"/calendario/tareas/{tarea_id}/mover", json={"desde": "esperando", "a": "finalizado"})
+        assert r.status_code == 200, r.text
+        assert r.json()["columna"] == "finalizado"
+        assert _sin_leer(await _avisos(d, d.lucia, tarea_id)) == []
+        # El número que pide la campanita bajó exactamente ese aviso.
+        no_leidos = len([n for n in await _avisos(d, d.lucia) if not n.leida])
+        despues = (await lucia.get("/notificaciones/no-leidas/count")).json()["count"]
+        assert despues == no_leidos == antes - 1
+        # A quien la hizo le llega el «aprobó», sin leer.
+        assert "aprobada" in [n.origen_ref.split(":")[-1] for n in _sin_leer(await _avisos(d, d.a1, tarea_id))]
+    correr(prueba)
+
+
 def test_abrir_la_tarjeta_marca_solo_mis_avisos_de_esa_tarjeta():
     async def prueba(d):
         tarea_id, _ = await _pedir_banners(d, d.lucia)

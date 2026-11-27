@@ -22,6 +22,7 @@ import { veCalendario } from "@/lib/alcance";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
 import { useAvisos } from "@/store/avisos";
+import { useVistaEntregas } from "@/store/entregas";
 import { useMenuLateral } from "@/store/menuLateral";
 import { useLocalesDelMundo, usePendientesDeFotos } from "@/lib/colocacion/store";
 import { borrarTodosLosBorradores } from "@/components/calendario/entregas/borradores";
@@ -302,6 +303,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       window.removeEventListener("focus", contar);
     };
   }, [setNotifCount]);
+
+  // Y cada vez que en el tablero o en la ficha se movió, entregó o decidió
+  // algo (`cambios` sube): mover una tarjeta a Finalizado deja leídos tus
+  // avisos de esa tarjeta, y el número tardaba hasta un minuto en bajar
+  // (H-124 del cuaderno). Es una sola pregunta por movimiento, no un sondeo.
+  const cambiosDelTablero = useVistaEntregas((s) => s.cambios);
+  useEffect(() => {
+    if (cambiosDelTablero === 0) return;
+    watchlistApi.notificacionesNoLeidasCount()
+      .then(({ data }) => setNotifCount(data.count))
+      .catch(() => {});
+  }, [cambiosDelTablero, setNotifCount]);
 
   // El de idioma también se cierra al tocar afuera o con Escape.
   useEffect(() => {
