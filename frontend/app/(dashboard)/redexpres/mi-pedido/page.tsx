@@ -155,6 +155,14 @@ export default function MiPedidoPage() {
     }
   }
 
+  // La tecla «-», «.» o «e» no se escribe (Safari en iOS manda "" con un
+  // «-» a medio escribir), pero se avisa por qué no aparece.
+  function bloquearTeclaNoCantidad(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!TECLAS_NO_CANTIDAD.has(e.key)) return;
+    e.preventDefault();
+    toast.warning(t("redexpres.soloEnteros"), { id: "cantidades" });
+  }
+
   function handleCellChange(localNombre: string, colKey: string, value: string) {
     // Las cantidades son enteros desde 0 y sin pasar el tope (H-085): se
     // corrige al escribir y se avisa una sola vez (mismo id, no se apilan).
@@ -330,7 +338,7 @@ export default function MiPedidoPage() {
                           type={col.isText ? "text" : "number"}
                           inputMode={col.isText ? undefined : "numeric"}
                           step={col.isText ? undefined : 1}
-                          onKeyDown={col.isText ? undefined : (e) => { if (TECLAS_NO_CANTIDAD.has(e.key)) e.preventDefault(); }}
+                          onKeyDown={col.isText ? undefined : bloquearTeclaNoCantidad}
                           min={0}
                           max={col.max}
                           value={getCellValue(miRow, col.key)}
