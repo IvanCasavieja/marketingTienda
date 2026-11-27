@@ -77,6 +77,10 @@ def test_con_el_lote_cerrado_se_reintentan_solo_las_que_fallaron(monkeypatch):
         r = await _placa(http, cabeza, vid, 1)
         assert r.status_code == 400
         assert "cerrada" in r.json()["detail"]
+        # Un `orden` fuera del rango de la columna no llega a la base (daba 500).
+        for fuera in (2**40, -1):
+            r = await _placa(http, cabeza, vid, fuera)
+            assert r.status_code == 422, (fuera, r.status_code, r.text)
         assert llamadas == ["placa0.jpg", "placa1.jpg", "placa0.jpg"], "CatTi miró placas que no tocaba"
 
     asyncio.run(_con_la_app(prueba))

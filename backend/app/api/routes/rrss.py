@@ -255,7 +255,9 @@ async def validar_imagen(
     request: Request,
     validacion_id: int,
     archivo: UploadFile = File(...),
-    orden: int = Form(0),
+    # El rango de la columna (integer): un número más grande llegaba a la base
+    # y daba 500; así se rechaza antes, con 422.
+    orden: int = Form(0, ge=0, le=2**31 - 1),
     current_user: User = Depends(require_permission("rrss.validate")),
     db: AsyncSession = Depends(get_db),
 ):
