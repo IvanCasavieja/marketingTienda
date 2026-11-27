@@ -263,13 +263,26 @@ async def validar_imagen(
     inicio = time.perf_counter()
     v = await _get_validacion_or_404(db, validacion_id)
     _exigir_dueno(v, current_user)
-    if v.estado != "en_proceso":
+    # La placa que ya ocupa este `orden`, si hay: la nueva la reemplaza (ver abajo).
+    estado_anterior = await db.scalar(
+        select(RrssValidacionImagen.estado).where(
+            RrssValidacionImagen.validacion_id == v.id, RrssValidacionImagen.orden == orden,
+        ).limit(1)
+    )
+    # Con el lote cerrado solo se vuelve a mirar una placa que dio error
+    # («Reintentar las que fallaron»): antes cada una volvía con «ya está
+    # cerrada» y la única salida era rehacer todo (H-122). Una placa nueva no
+    # se suma a un lote cerrado, y una que ya salió bien no se reenvía para no
+    # gastar tokens de nuevo. Al terminar, la pantalla vuelve a cerrar el lote
+    # y el resumen se recalcula con lo nuevo.
+    if v.estado != "en_proceso" and estado_anterior != "error":
         raise HTTPException(status_code=400, detail="Esta validación ya está cerrada")
 
     total = await db.scalar(
         select(func.count()).select_from(RrssValidacionImagen).where(RrssValidacionImagen.validacion_id == v.id)
     )
-    if (total or 0) >= _MAX_IMAGENES_POR_VALIDACION:
+    # Reemplazar una placa no suma: con el lote lleno, reintentar una igual se puede.
+    if estado_anterior is None and (total or 0) >= _MAX_IMAGENES_POR_VALIDACION:
         raise HTTPException(status_code=400, detail=f"Máximo {_MAX_IMAGENES_POR_VALIDACION} placas por validación")
     if not archivos.acepta_placa(archivo.filename or "", archivo.content_type or ""):
         raise HTTPException(
