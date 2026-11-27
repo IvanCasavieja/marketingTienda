@@ -45,7 +45,9 @@ def modelo_actual() -> str:
 
 async def correr(caso: dict, cliente) -> tuple[dict, int, int]:
     from app.services import revision_ia as r
-    imagenes = [r.preparar_imagen(None, f.read_bytes(), mimetypes.guess_type(f.name)[0] or "image/png")
+    # El nombre de cada imagen es "<orden>-<id>": en los casos reales, el id de la base (el de las marcas).
+    imagenes = [r.preparar_imagen(f.stem.split("-", 1)[-1], f.read_bytes(),
+                                  mimetypes.guess_type(f.name)[0] or "image/png")
                 for f in caso["imagenes"]]
     contexto = r.Contexto(
         tipo_pieza=caso.get("tipo_pieza", "redes"), brief=caso.get("brief", {}),
@@ -56,9 +58,40 @@ async def correr(caso: dict, cliente) -> tuple[dict, int, int]:
     return {"observaciones": observaciones}, uso.input_tokens, uso.output_tokens
 
 
+CERCA = 0.2  # qué tan cerca (en fracción de la imagen) tiene que estar la observación de la marca
+
+
+def _encuentra(marca: dict, obs: list[dict]) -> bool:
+    """Una observación de la IA en la misma imagen y cerca de la marca de la persona,
+    o del mismo tipo si la IA no la pudo ubicar."""
+    for o in obs:
+        if o.get("imagenId") != marca["imagen_id"]:
+            continue
+        if o.get("x") is None or o.get("y") is None:
+            if o.get("tipo") == marca.get("tipo"):
+                return True
+            continue
+        if ((o["x"] - marca["x"]) ** 2 + (o["y"] - marca["y"]) ** 2) ** 0.5 <= CERCA:
+            return True
+    return False
+
+
+def _puntuar_real(esperado: dict, obs: list[dict]) -> dict:
+    importantes = [o for o in obs if o.get("gravedad") == "importante"]
+    verificables = [mk for mk in esperado["marcas"] if mk["verificable"]]
+    if esperado["aprobada"] and not esperado["marcas"]:
+        return {"real_aprobada_sin_falsa_alarma": not importantes}
+    if not verificables:
+        return {}  # solo pedidos de diseño: el revisor no los mira
+    halladas = [_encuentra(mk, obs) for mk in verificables]
+    return {"real_encuentra_alguna_marca": any(halladas), "real_encuentra_todas_las_marcas": all(halladas)}
+
+
 def puntuar(caso: dict, salida: dict) -> dict:
     obs = salida["observaciones"]
     esperado = caso["esperado"]
+    if esperado.get("real"):
+        return _puntuar_real(esperado, obs)
     if esperado.get("sana"):
         return {"sana_sin_falsa_alarma": not any(o.get("gravedad") == "importante" for o in obs),
                 "sana_sin_ninguna_observacion": not obs}

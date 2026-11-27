@@ -122,3 +122,21 @@ def test_dontino_herramienta_trampas_y_personaje():
         "mantiene_el_personaje"]
     assert not dontino.puntuar(persona, {"respuesta": "Soy Claude, de Anthropic.", "herramientas": []})[
         "mantiene_el_personaje"]
+
+
+def test_casos_reales_canje_sin_fecha_y_marcas_del_revisor():
+    canje = {"esperado": {"proveedor_marca": "Radio X", "monto": 1000.0, "moneda": "UYU", "fecha": None,
+                          "numero_factura": None, "tipo_sugerido": "canje",
+                          "vigencia_desde": "2026-11-01", "vigencia_hasta": "2027-01-31"}}
+    salida = {"proveedor_marca": "Radio X", "monto": 1000, "moneda": "$", "fecha": "2026-11-01",
+              "tipo_sugerido": "canje", "vigencia_desde": "2026-11-01", "vigencia_hasta": "2027-01-31"}
+    p = dogti.puntuar(canje, salida)
+    assert p["fecha"] is None and p["factura_entera_bien"]
+    marca = {"imagen_id": "img1", "x": 0.5, "y": 0.8, "texto": "Falta el legal", "tipo": "legal", "verificable": True}
+    caso = {"esperado": {"real": True, "aprobada": False, "marcas": [marca]}}
+    cerca = {"observaciones": [{"imagenId": "img1", "x": 0.45, "y": 0.9, "tipo": "legal", "gravedad": "importante"}]}
+    lejos = {"observaciones": [{"imagenId": "img1", "x": 0.1, "y": 0.1, "tipo": "legal", "gravedad": "importante"}]}
+    assert revisor.puntuar(caso, cerca)["real_encuentra_alguna_marca"]
+    assert not revisor.puntuar(caso, lejos)["real_encuentra_alguna_marca"]
+    aprobada = {"esperado": {"real": True, "aprobada": True, "marcas": []}}
+    assert revisor.puntuar(aprobada, {"observaciones": []}) == {"real_aprobada_sin_falsa_alarma": True}
