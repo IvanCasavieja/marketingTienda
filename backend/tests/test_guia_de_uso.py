@@ -180,3 +180,16 @@ def test_al_local_no_le_dice_que_cambie_la_contrasena():
     assert "la cambia quien administra Core Tienda" in del_local
     assert "cambiar la contraseña" in perfil(EQUIPO, False)
     assert "cambiar la contraseña" in perfil(AGENCIA, False)
+
+
+def test_al_local_no_le_dice_que_la_contrasena_vence():
+    # H-084: el usuario del local no tiene que cambiar la contraseña cada 60
+    # días (core/deps.py lo deja afuera); el equipo y la agencia sí.
+    def entrar(usuario, tiene_local):
+        basico = guia.secciones_para(usuario, tiene_local)[0]
+        return " ".join(p for parte in basico.partes if parte.titulo == "Entrar" for p in parte.puntos)
+
+    assert "60 días" not in entrar(LOCAL, True)
+    assert "¿Olvidaste tu contraseña?" in entrar(LOCAL, True)
+    assert "60 días" in entrar(EQUIPO, False)
+    assert "60 días" in entrar(AGENCIA, False)

@@ -71,7 +71,14 @@ SECCIONES: tuple[Seccion, ...] = (
                 "Entrás con tu mail y tu contraseña. Cada 60 días la plataforma te pide cambiarla.",
                 "¿Te la olvidaste? En la entrada tocá **¿Olvidaste tu contraseña?** y te llega un link por mail "
                 "(dura una hora).",
-            )),
+            ), quienes=frozenset({EQUIPO, AGENCIA})),
+            # El usuario del local no vence a los 60 días (core/deps.py deja
+            # afuera a las sucursales, H-084). Recuperarla por mail sí le sirve.
+            Parte("Entrar", (
+                "Entrás con el mail y la contraseña de tu local.",
+                "¿Te la olvidaste? En la entrada tocá **¿Olvidaste tu contraseña?** y te llega un link por mail "
+                "(dura una hora).",
+            ), quienes=frozenset({LOCAL})),
             Parte("El mundo", (
                 "Cada negocio es un **mundo**: Tienda Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda "
                 "Farma. Si tenés más de uno, elegís en cuál trabajar al entrar y lo cambiás con **Cambiar mundo**.",
