@@ -1,0 +1,10 @@
+{
+ "proveedor_marca": "Bebidas del Plata S.A.",
+ "numero_factura": "A 120045",
+ "fecha": "2026-08-12",
+ "monto": 1525000.0,
+ "moneda": "UYU",
+ "tipo_sugerido": "movimiento",
+ "vigencia_desde": null,
+ "vigencia_hasta": null
+}

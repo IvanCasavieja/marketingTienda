@@ -1,0 +1,15 @@
+{
+ "texto": "armame un mail para los clientes con tarjeta contándoles de las cuotas sin recargo en electro, el asunto sería doce cuotas sin recargo en electro",
+ "tipo": "mailing",
+ "esperado": {
+  "asunto": [
+   "12 cuotas",
+   "electro"
+  ],
+  "segmento": [
+   "tarjeta"
+  ],
+  "fecha_envio": null,
+  "llamado_accion": null
+ }
+}

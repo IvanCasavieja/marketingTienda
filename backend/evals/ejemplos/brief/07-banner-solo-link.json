@@ -1,0 +1,11 @@
+{
+ "texto": "necesito un banner que mande a tiendainglesa punto com punto uy barra navidad, después te paso el resto",
+ "tipo": "banner_web",
+ "esperado": {
+  "medidas": null,
+  "link": [
+   "navidad"
+  ],
+  "fechas": null
+ }
+}

@@ -1,0 +1,22 @@
+{
+ "texto": "cenefas de veinticinco por ciento de descuento con scotiabank en toda la perfumería son cinco por local en los locales de montevideo, legales válido hasta agotar stock",
+ "tipo": "cenefa",
+ "esperado": {
+  "medidas": null,
+  "cantidad": [
+   "5",
+   "local"
+  ],
+  "precio_mecanica": [
+   "25%",
+   "scotiabank"
+  ],
+  "vigencia": null,
+  "legales": [
+   "agotar stock"
+  ],
+  "locales": [
+   "montevideo"
+  ]
+ }
+}

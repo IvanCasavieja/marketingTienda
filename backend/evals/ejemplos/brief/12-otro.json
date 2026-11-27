@@ -1,0 +1,11 @@
+{
+ "texto": "necesito que me armen un afiche para la cartelera del comedor avisando que el viernes hay asado para el equipo",
+ "tipo": "otro",
+ "esperado": {
+  "texto": [
+   "afiche",
+   "viernes",
+   "asado"
+  ]
+ }
+}

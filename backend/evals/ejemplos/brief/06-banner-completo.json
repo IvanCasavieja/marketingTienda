@@ -1,0 +1,17 @@
+{
+ "texto": "banner para la home de mil novecientos veinte por seiscientos pixeles que lleve a la sección de bebidas del primero al quince de diciembre",
+ "tipo": "banner_web",
+ "esperado": {
+  "medidas": [
+   "1920",
+   "600"
+  ],
+  "link": [
+   "bebidas"
+  ],
+  "fechas": [
+   "1/12",
+   "15/12"
+  ]
+ }
+}

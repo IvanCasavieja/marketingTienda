@@ -1,0 +1,54 @@
+{
+ "agente": "revisor",
+ "fecha": "2026-11-27 11:33",
+ "modelo": "claude-opus-5-5",
+ "casos": 8,
+ "errores": 0,
+ "metricas": {
+  "sana_sin_falsa_alarma": {
+   "aciertos": 2,
+   "casos": 2,
+   "porcentaje": 100.0
+  },
+  "sana_sin_ninguna_observacion": {
+   "aciertos": 2,
+   "casos": 2,
+   "porcentaje": 100.0
+  },
+  "encuentra_el_error": {
+   "aciertos": 6,
+   "casos": 6,
+   "porcentaje": 100.0
+  },
+  "encuentra_ortografia": {
+   "aciertos": 2,
+   "casos": 2,
+   "porcentaje": 100.0
+  },
+  "lo_marca_importante": {
+   "aciertos": 6,
+   "casos": 6,
+   "porcentaje": 100.0
+  },
+  "encuentra_precio_vigencia": {
+   "aciertos": 2,
+   "casos": 2,
+   "porcentaje": 100.0
+  },
+  "encuentra_legal": {
+   "aciertos": 1,
+   "casos": 1,
+   "porcentaje": 100.0
+  },
+  "encuentra_marca": {
+   "aciertos": 1,
+   "casos": 1,
+   "porcentaje": 100.0
+  }
+ },
+ "tokens_entrada": 55056,
+ "tokens_salida": 1507,
+ "costo_usd": 0.250364,
+ "segundos_por_caso": 3.9,
+ "fallas": {}
+}
