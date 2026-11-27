@@ -71,7 +71,14 @@ SECCIONES: tuple[Seccion, ...] = (
                 "Entrás con tu mail y tu contraseña. Cada 60 días la plataforma te pide cambiarla.",
                 "¿Te la olvidaste? En la entrada tocá **¿Olvidaste tu contraseña?** y te llega un link por mail "
                 "(dura una hora).",
-            )),
+            ), quienes=frozenset({EQUIPO, AGENCIA})),
+            # El usuario del local no vence a los 60 días (core/deps.py deja
+            # afuera a las sucursales, H-084). Recuperarla por mail sí le sirve.
+            Parte("Entrar", (
+                "Entrás con el mail y la contraseña de tu local.",
+                "¿Te la olvidaste? En la entrada tocá **¿Olvidaste tu contraseña?** y te llega un link por mail "
+                "(dura una hora).",
+            ), quienes=frozenset({LOCAL})),
             Parte("El mundo", (
                 "Cada negocio es un **mundo**: Tienda Inglesa, Tienda Express, Redexpres, Tienda Viajes y Tienda "
                 "Farma. Si tenés más de uno, elegís en cuál trabajar al entrar y lo cambiás con **Cambiar mundo**.",
@@ -84,6 +91,12 @@ SECCIONES: tuple[Seccion, ...] = (
                 "tengas habilitado.",
                 "En el celular, lo principal está en la barra de abajo y el resto en **Más**.",
             ), quienes=frozenset({EQUIPO})),
+            # Fija abajo del menú desde H-126 (antes, al final de Herramientas,
+            # donde nadie la encontraba).
+            Parte("Administración", (
+                "Si administrás la plataforma, **Administración** (usuarios y permisos) está fija abajo del menú, "
+                "arriba de tu nombre.",
+            ), quienes=frozenset({EQUIPO}), permisos=("platform.admin",)),
             Parte("El menú", (
                 "Tu menú es corto: **Mi tablero** (y el **Calendario**, si te lo habilitaron) y esta guía.",
                 "En el celular, todo está en la barra de abajo.",
@@ -101,7 +114,15 @@ SECCIONES: tuple[Seccion, ...] = (
             Parte("Tu perfil", (
                 "Tocando tu nombre, abajo del menú: cambiar la contraseña y prender o apagar los avisos por mail.",
                 "Al lado están el modo oscuro y el idioma.",
-            )),
+            ), quienes=frozenset({EQUIPO, AGENCIA})),
+            # El usuario de un local lo comparte todo el personal: la contraseña
+            # no se cambia desde el perfil (el servidor lo rechaza, auth.py), la
+            # cambia quien administra Core Tienda (H-084).
+            Parte("Tu perfil", (
+                "Tocando tu nombre, abajo del menú: prender o apagar los avisos por mail.",
+                "La contraseña de tu local la cambia quien administra Core Tienda: si hace falta cambiarla, pedíselo.",
+                "Al lado están el modo oscuro y el idioma.",
+            ), quienes=frozenset({LOCAL})),
         ),
     ),
     Seccion(
@@ -214,9 +235,11 @@ SECCIONES: tuple[Seccion, ...] = (
                 "**Archivado**: las finalizadas pasan solas a los 10 días.",
             )),
             Parte("Qué podés hacer", (
-                "Pestañas por tablero: Publicis, Another Monday, Diseñadores y Otras.",
-                "Arrastrar una tarjeta (con el dedo, mantenela apretada) o usar **Mover a…**. Moverla a mano no "
-                "entrega ni aprueba nada: solo la acomoda.",
+                "Una pestaña por agencia, con su nombre. **Otras** junta las tarjetas de Tienda o de alguien de "
+                "afuera, y aparece solo si hay alguna.",
+                "Arrastrar una tarjeta (con el dedo, mantenela apretada) o usar **Mover a…** la cambia de columna. "
+                "Ojo: llevarla a **Finalizado** la da por aprobada y le avisa a quien la hace; si todavía no la "
+                "miraste, abrila y revisala antes.",
                 "Buscar por nombre arriba (busca también en lo archivado).",
                 "Archivar algo que no se terminó es cancelarlo; se puede sacar del archivo.",
                 "Tocar una tarjeta abre su ficha.",
@@ -530,7 +553,7 @@ SECCIONES: tuple[Seccion, ...] = (
         permisos=("platform.admin",),
         resumen="Quién entra y qué puede hacer cada uno.",
         partes=(
-            Parte("En Administrador", (
+            Parte("En Administración", (
                 "Alta, edición, desactivar y eliminar cuentas (de a una o varias), con filtros por rol y en orden "
                 "alfabético.",
                 "Cada persona tiene su rol de arranque, sus permisos, sus mundos y hasta dónde ve el calendario "

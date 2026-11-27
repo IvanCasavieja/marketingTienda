@@ -1110,11 +1110,8 @@ export default function AdminPage() {
               <input type="checkbox" className="mt-0.5" checked={form.clave_fija}
                 onChange={(e) => setForm((f) => ({ ...f, clave_fija: e.target.checked }))} />
               <span>
-                <span className="font-medium text-slate-800 dark:text-slate-200">Cuenta de agente: no pedir cambio de contraseña</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400">
-                  Ni la primera vez ni cada 60 días. Para cuentas que entran solas, como la de Valentina.
-                  Usá una contraseña aleatoria y guardala bien.
-                </span>
+                <span className="font-medium text-slate-800 dark:text-slate-200">{t("admin.cuentaAutomatica")}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{t("admin.cuentaAutomaticaBajada")}</span>
               </span>
             </label>
           )}
@@ -1318,9 +1315,9 @@ export default function AdminPage() {
                     )}
                     {u.es_externo && <MarcaExterna empresa={u.empresa} />}
                     {u.clave_fija && (
-                      <span title="Cuenta de agente: no se le pide cambiar la contraseña"
+                      <span title={t("admin.cuentaAutomaticaMarcaAyuda")}
                         className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                        <Bot size={11} aria-hidden /> Agente
+                        <Bot size={11} aria-hidden /> {t("admin.cuentaAutomaticaMarca")}
                       </span>
                     )}
                     {/* Se marca lo que se sale de lo normal: alguien del equipo

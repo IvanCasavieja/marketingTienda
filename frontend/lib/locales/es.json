@@ -36,7 +36,6 @@
     "comercial": "COMERCIAL",
     "loyalty": "LOYALTY",
     "guia": "GUÍA",
-    "configuracion": "CONFIGURACIÓN",
     "redexpres": "Redexpres",
     "cenefas": "Cenefas",
     "convertidor": "Convertidor de Excel",
@@ -48,7 +47,6 @@
     "clientesVip": "Clientes VIP",
     "guiaUso": "Guía de uso",
     "planillaPedidos": "Planilla de pedidos",
-    "administrador": "Administrador",
     "lightMode": "Modo claro",
     "darkMode": "Modo oscuro",
     "toggleToLight": "Cambiar a modo claro",
@@ -73,7 +71,10 @@
     "ocultarMenu": "Ocultar menú",
     "mostrarMenu": "Mostrar menú",
     "mas": "Más",
-    "navegacion": "Navegación principal"
+    "navegacion": "Navegación principal",
+    "administracion": "Administración",
+    "usuariosYPermisos": "Usuarios y permisos",
+    "verMasMenu": "Ver más del menú"
   },
   "login": {
     "welcome": "Bienvenido",
@@ -568,7 +569,7 @@
     }
   },
   "admin": {
-    "title": "Panel de Administrador",
+    "title": "Administración",
     "subtitle": "Gestión de usuarios, roles y permisos",
     "newUser": "Nuevo usuario",
     "accessDenied": "Acceso denegado — solo administradores",
@@ -576,6 +577,10 @@
     "usersTitle": "Usuarios ({{count}})",
     "inactive": "INACTIVO",
     "noRole": "Sin rol",
+    "cuentaAutomatica": "Cuenta automática (no es una persona): no pedir cambio de contraseña",
+    "cuentaAutomaticaBajada": "Ni la primera vez ni cada 60 días. Para un programa que entra solo, sin nadie detrás; nunca para una persona. Usá una contraseña aleatoria y guardala bien.",
+    "cuentaAutomaticaMarca": "Automática",
+    "cuentaAutomaticaMarcaAyuda": "Cuenta automática (no es una persona): no se le pide cambiar la contraseña",
     "lastLoginWithCount": "Último ingreso: {{date}} · {{count}} ingresos",
     "neverLoggedIn": "Nunca ingresó",
     "viewActivity": "Ver actividad",
@@ -618,7 +623,7 @@
       "newRole": "Nuevo rol",
       "system": "SISTEMA",
       "permCount": "{{count}} permiso",
-      "permCount_plural": "{{count}} permisos",
+      "permCount_other": "{{count}} permisos",
       "more": "+{{count}} más",
       "edit": "Editar rol",
       "delete": "Eliminar rol"
@@ -648,7 +653,7 @@
       "descriptionPlaceholder": "Breve descripción del rol…",
       "permissionsLabel": "Permisos",
       "permsSelected": "{{count}} permiso seleccionado",
-      "permsSelected_plural": "{{count}} permisos seleccionados",
+      "permsSelected_other": "{{count}} permisos seleccionados",
       "saveChanges": "Guardar cambios",
       "createRole": "Crear rol",
       "nameRequired": "El nombre del rol es obligatorio",
@@ -674,7 +679,7 @@
     "auditLog": {
       "title": "Auditoría",
       "entryCount": "{{count}} registro",
-      "entryCount_plural": "{{count}} registros",
+      "entryCount_other": "{{count}} registros",
       "loadError": "No se pudo cargar el historial de auditoría.",
       "empty": "Sin actividad registrada todavía.",
       "tableHeaders": {
@@ -748,6 +753,8 @@
     "footerConfirmados": "{{count}} de {{total}} locales confirmados",
     "footerAutosave": "Los cambios se guardan automáticamente al dejar de escribir",
     "limiteMaximo": "Máximo {{max}} por sucursal",
+    "soloEnteros": "Solo números enteros, sin signo ni decimales",
+    "revisaCantidades": "No se guardó: revisá las cantidades",
     "errorGuardarLocal": "Error al guardar {{local}}",
     "pedidoConfirmado": "Pedido confirmado",
     "errorConfirmar": "Error al confirmar",
@@ -917,7 +924,7 @@
     },
     "merge": {
       "bannerTitle": "{{count}} posible producto duplicado detectado — mismo producto con dos SKUs",
-      "bannerTitle_plural": "{{count}} posibles productos duplicados detectados — mismo producto con dos SKUs",
+      "bannerTitle_other": "{{count}} posibles productos duplicados detectados — mismo producto con dos SKUs",
       "review": "Revisar",
       "notSameProduct": "No es el mismo producto",
       "modalTitle": "Unificar productos",
@@ -1309,7 +1316,7 @@
     "upload": {
       "title": "Subir factura",
       "analyze": "Analizar {{count}} factura con DogTi",
-      "analyze_plural": "Analizar {{count}} facturas con DogTi",
+      "analyze_other": "Analizar {{count}} facturas con DogTi",
       "addFile": "Agregar archivo",
       "removeFile": "Quitar",
       "filesHint": ".pdf · hasta {{max}} archivos",
@@ -1323,7 +1330,7 @@
       "allResolvedTitle": "Listo",
       "allResolvedSub": "Revisaste las {{count}} facturas de esta carga.",
       "processing": "DogTi está leyendo {{count}} factura…",
-      "processing_plural": "DogTi está leyendo {{count}} facturas…",
+      "processing_other": "DogTi está leyendo {{count}} facturas…",
       "extractError": "DogTi no pudo leer este PDF — completá los datos a mano.",
       "reviewTitle": "Revisar antes de confirmar",
       "analysisTitle": "Análisis de DogTi",
@@ -1368,7 +1375,6 @@
     "noResults": "No se encontraron entradas.",
     "empty": "Todavía no hay nada cargado — se completa al usar el Convertidor de Excel.",
     "totalCount": "{{count}} entrada",
-    "totalCount_plural": "{{count}} entradas",
     "pageOf": "Página {{page}} de {{total}}",
     "edit": "Editar",
     "editSuccess": "Descripción actualizada",
@@ -1421,7 +1427,7 @@
       "otros": "Otros"
     },
     "chainNoData": "cadena sin datos",
-    "chainNoData_plural": "cadenas sin datos",
+    "chainNoData_other": "cadenas sin datos",
     "noResultsTooltip": "Respondió pero sin resultados",
     "noResponseTooltip": "Sin respuesta — posible bloqueo geográfico o timeout",
     "allBranches": "Todas las sucursales",
@@ -1463,7 +1469,7 @@
       "emptyStart": "Todavía no seguís ningún producto. Andá a",
       "emptyEnd": ", abrí el gráfico comparativo y tocá la estrellita en cualquier producto para empezar a seguirlo.",
       "productCount": "{{count}} producto",
-      "productCount_plural": "{{count}} productos",
+      "productCount_other": "{{count}} productos",
       "deleteList": "Eliminar lista",
       "emptyList": "Esta lista todavía no tiene productos.",
       "lastCheck": "Último chequeo",
@@ -1573,5 +1579,9 @@
       "queHacer": "Si querés que entren, corregilas en el archivo y cargalo de nuevo. Si no, cargá el resto.",
       "ningunaSirve": "No queda ninguna fila para cargar: corregí el archivo y cargalo de nuevo."
     }
+  },
+  "perfil": {
+    "claveDelLocalTitulo": "La contraseña del local",
+    "claveDelLocal": "La contraseña de tu local la cambia quien administra Core Tienda. Si hace falta cambiarla, pedíselo."
   }
 }

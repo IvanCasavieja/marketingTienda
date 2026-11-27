@@ -640,7 +640,7 @@ export default function PreciosPage() {
                     className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors mt-0.5"
                   >
                     {showDiagnostico ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    {totalDiagnostico} {totalDiagnostico === 1 ? t("precios.chainNoData") : t("precios.chainNoData_plural")}
+                    {totalDiagnostico} {t("precios.chainNoData", { count: totalDiagnostico })}
                   </button>
                   {showDiagnostico && (
                     <div className="flex flex-wrap gap-1.5 mt-1.5">

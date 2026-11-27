@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -22,6 +22,7 @@ import { veCalendario } from "@/lib/alcance";
 import { MARCA, MARCA_BAJADA, inicioDe, mundoEfectivo, mundosDe, rutaEnMundo, useMundoElegido } from "@/lib/mundos";
 import { useCalendario } from "@/lib/calendario/store";
 import { useAvisos } from "@/store/avisos";
+import { useVistaEntregas } from "@/store/entregas";
 import { useMenuLateral } from "@/store/menuLateral";
 import { useLocalesDelMundo, usePendientesDeFotos } from "@/lib/colocacion/store";
 import { borrarTodosLosBorradores } from "@/components/calendario/entregas/borradores";
@@ -188,9 +189,6 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     { href: "/facturacion/cuentas",     label: t("sidebar.facturacionCuentas"), icon: Landmark, section: t("sidebar.facturacion"),  perm: "facturacion.manage" },
     { href: "/precios",                 label: t("sidebar.buscarPrecios"), icon: Tag,          section: t("sidebar.comercial"),     perm: "precios.search" },
     { href: "/precios/listas",          label: t("sidebar.listasMonitoreo"), icon: Star,       section: t("sidebar.comercial"),     perm: "precios.search" },
-    ...(hasPermission(currentUser, "platform.admin")
-      ? [{ href: "/admin", label: t("sidebar.administrador"), icon: ShieldCheck, section: t("sidebar.configuracion") }]
-      : []),
     { href: "/home",                    label: t("sidebar.asistente", "Don Tino, el asistente"), icon: MessageCircle, section: t("sidebar.guia"), perm: "ai.don_tino" },
     { href: "/ayuda",                   label: t("sidebar.guiaUso"),   icon: HelpCircle,      section: t("sidebar.guia") },
   ];
@@ -222,6 +220,47 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
     localStorage.setItem("core-tienda-herramientas", abiertas ? "1" : "0");
   }
 
+
+  // Administración va fija abajo del menú, arriba del perfil (H-126): metida
+  // al final de Herramientas, en una notebook quedaba debajo del borde y
+  // nadie la encontraba. No está en `herramientasAll` para no estar dos veces.
+  // El servidor igual exige `platform.admin` en todo lo de /admin.
+  const verAdministracion = !externo && hasPerm("platform.admin");
+  const enAdministracion = pathname === "/admin" || pathname.startsWith("/admin/");
+
+  // Si el menú no entra en la pantalla, abajo aparece un degradé con una
+  // flecha (H-126): antes no había ninguna señal de que seguía. Se recalcula
+  // al desplazar, al cambiar el alto (abrir Herramientas, achicar la ventana)
+  // y cuando cambia la lista.
+  const navRef = useRef<HTMLElement>(null);
+  const [haySiguiente, setHaySiguiente] = useState(false);
+  const medirMenu = useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    setHaySiguiente(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
+  }, []);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    medirMenu();
+    el.addEventListener("scroll", medirMenu, { passive: true });
+    if (typeof ResizeObserver === "undefined") return () => el.removeEventListener("scroll", medirMenu);
+    // El nav y lo de adentro: el alto del contenido cambia sin que cambie el
+    // del nav (por ejemplo, al abrir Herramientas).
+    const observador = new ResizeObserver(medirMenu);
+    observador.observe(el);
+    Array.from(el.children).forEach((hijo) => observador.observe(hijo));
+    return () => {
+      el.removeEventListener("scroll", medirMenu);
+      observador.disconnect();
+    };
+  }, [medirMenu, verHerramientas, nav.length, nucleo.length]);
+  function verMasDelMenu() {
+    const el = navRef.current;
+    if (!el) return;
+    const sinMovimiento = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollBy({ top: el.clientHeight * 0.8, behavior: sinMovimiento ? "auto" : "smooth" });
+  }
 
   // Lo de las fotos de colocación: a un local, cuántas le faltan subir (se
   // pregunta al entrar y cada 2 minutos con la pestaña a la vista); a quien
@@ -264,6 +303,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
       window.removeEventListener("focus", contar);
     };
   }, [setNotifCount]);
+
+  // Y cada vez que en el tablero o en la ficha se movió, entregó o decidió
+  // algo (`cambios` sube): mover una tarjeta a Finalizado deja leídos tus
+  // avisos de esa tarjeta, y el número tardaba hasta un minuto en bajar
+  // (H-124 del cuaderno). Es una sola pregunta por movimiento, no un sondeo.
+  const cambiosDelTablero = useVistaEntregas((s) => s.cambios);
+  useEffect(() => {
+    if (cambiosDelTablero === 0) return;
+    watchlistApi.notificacionesNoLeidasCount()
+      .then(({ data }) => setNotifCount(data.count))
+      .catch(() => {});
+  }, [cambiosDelTablero, setNotifCount]);
 
   // El de idioma también se cierra al tocar afuera o con Escape.
   useEffect(() => {
@@ -423,8 +474,10 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           )
         )}
 
-        {/* Main nav */}
-        <nav className="px-3 flex-1 overflow-y-auto pb-2" aria-label={MARCA}>
+        {/* Main nav. La señal de "el menú sigue" va afuera de lo que se
+            desplaza, así no le cambia el alto ni lo hace saltar. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        <nav ref={navRef} className="px-3 flex-1 overflow-y-auto pb-2" aria-label={MARCA}>
           {/* El núcleo: calendario y tareas */}
           <div className="space-y-1 pt-1">
             {nucleo.map(({ href, label, icon: Icon, numero }) => {
@@ -502,9 +555,57 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
             </>
           )}
         </nav>
+        {haySiguiente && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-11 items-end justify-center bg-gradient-to-t from-white to-transparent dark:from-navy-900 md:h-10">
+            {/* El círculo se ve chico, pero en el celular se toca en 44 px. */}
+            <button
+              type="button"
+              onClick={verMasDelMenu}
+              aria-label={t("sidebar.verMasMenu", "Ver más del menú")}
+              title={t("sidebar.verMasMenu", "Ver más del menú")}
+              className="group pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full md:h-8 md:w-8"
+            >
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition group-hover:bg-slate-100 group-hover:text-slate-900 group-active:scale-95 dark:border-white/10 dark:bg-navy-900 dark:text-slate-300 dark:group-hover:bg-white/10 dark:group-hover:text-white">
+                <ChevronDown size={16} aria-hidden />
+              </span>
+            </button>
+          </div>
+        )}
+        </div>
 
         {/* Perfil (la campanita está arriba a la derecha desde el 18/11/2026) */}
         <div className="border-t border-slate-300 px-3 pt-3 dark:border-white/5">
+          {verAdministracion && (
+            <Link
+              href="/admin"
+              onClick={handleNavClick}
+              aria-current={enAdministracion ? "page" : undefined}
+              className={clsx(
+                "group mb-1 flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-all duration-150",
+                enAdministracion
+                  ? "bg-brand-50 text-brand-700 dark:bg-brand-600 dark:text-white"
+                  : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5 dark:hover:text-slate-100"
+              )}
+            >
+              <span className={clsx(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                enAdministracion
+                  ? "bg-white text-brand-700 dark:bg-white/20 dark:text-white"
+                  : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300"
+              )}>
+                <ShieldCheck size={16} aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold">{t("sidebar.administracion", "Administración")}</span>
+                <span className={clsx(
+                  "block truncate text-[11px]",
+                  enAdministracion ? "text-brand-600 dark:text-white/80" : "text-slate-500 dark:text-slate-400"
+                )}>
+                  {t("sidebar.usuariosYPermisos", "Usuarios y permisos")}
+                </span>
+              </span>
+            </Link>
+          )}
           <div className="relative flex items-center gap-1.5">
             <Link
               href="/perfil"

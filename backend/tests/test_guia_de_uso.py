@@ -93,6 +93,14 @@ def test_no_quedan_cosas_que_ya_no_existen():
     rrss_texto = guia.como_texto((rrss,))
     assert "Historial" not in rrss_texto
     assert "**Las de hoy**" in rrss_texto and "24 horas" in rrss_texto
+    # El tablero (H-005, 27/11/2026): mover a Finalizado aprueba la tarjeta y
+    # le avisa a quien la hace; la Guía decía que «no entrega ni aprueba nada».
+    # Y las pestañas son una por agencia, no los tres tableros fijos de antes.
+    tablero = guia.como_texto(tuple(s for s in guia.SECCIONES if s.clave == "tablero"))
+    assert "no entrega ni aprueba nada" not in tablero
+    assert "y Otras" not in tablero
+    assert "**Finalizado** la da por aprobada" in tablero
+    assert "Una pestaña por agencia" in tablero
 
 
 def test_don_tino_lleva_la_misma_guia():
@@ -143,3 +151,45 @@ def test_la_agencia_llega_a_la_guia_y_a_nada_mas_nuevo():
 
     assert externos.ruta_permitida("/api/v1/guia", "/api/v1")
     assert not externos.ruta_permitida("/api/v1/guiax", "/api/v1")
+
+
+def test_administracion_se_explica_solo_a_quien_administra():
+    # H-126: Administración está fija abajo del menú. La Guía lo dice con la
+    # misma palabra que el menú y la página, y solo a quien la tiene.
+    def menu(usuario):
+        basico = guia.secciones_para(usuario, False)[0]
+        return " ".join(p for parte in basico.partes for p in parte.puntos)
+
+    assert "**Administración**" in menu(_usuario(super_=True))
+    assert "**Administración**" in menu(_usuario("calendario.view", "platform.admin"))
+    assert "**Administración**" not in menu(EQUIPO)
+    assert "**Administración**" not in menu(AGENCIA)
+    assert "**Administración**" not in guia.como_json(guia.secciones_para(LOCAL, True)).__str__()
+    assert "En Administrador" not in guia.como_texto()
+
+
+def test_al_local_no_le_dice_que_cambie_la_contrasena():
+    # H-084: el usuario del local es compartido y el servidor no le deja
+    # cambiar la contraseña. La Guía le dice quién la cambia, no que la cambie él.
+    def perfil(usuario, tiene_local):
+        basico = guia.secciones_para(usuario, tiene_local)[0]
+        return " ".join(p for parte in basico.partes if parte.titulo == "Tu perfil" for p in parte.puntos)
+
+    del_local = perfil(LOCAL, True)
+    assert "cambiar la contraseña" not in del_local
+    assert "la cambia quien administra Core Tienda" in del_local
+    assert "cambiar la contraseña" in perfil(EQUIPO, False)
+    assert "cambiar la contraseña" in perfil(AGENCIA, False)
+
+
+def test_al_local_no_le_dice_que_la_contrasena_vence():
+    # H-084: el usuario del local no tiene que cambiar la contraseña cada 60
+    # días (core/deps.py lo deja afuera); el equipo y la agencia sí.
+    def entrar(usuario, tiene_local):
+        basico = guia.secciones_para(usuario, tiene_local)[0]
+        return " ".join(p for parte in basico.partes if parte.titulo == "Entrar" for p in parte.puntos)
+
+    assert "60 días" not in entrar(LOCAL, True)
+    assert "¿Olvidaste tu contraseña?" in entrar(LOCAL, True)
+    assert "60 días" in entrar(EQUIPO, False)
+    assert "60 días" in entrar(AGENCIA, False)
