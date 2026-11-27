@@ -5,7 +5,7 @@ plataforma con las cuentas del equipo, la agencia y un local. Lo mantiene el
 Equipo nocturno cada noche (ver `.claude/skills/cuaderno-de-hallazgos/SKILL.md`
 en `main`). Gravedad: 🔴 bloquea · 🟠 traba · 🟡 desprolijo · ⚪ detalle.
 
-**Resumen:** 96 abiertos (87 confirmados, 1 pedido de Ivan, 8 para confirmar) · 2 en curso (las tarjetas, las arregla Claude, pedido de Ivan del 26/11) · 26 hechos (16 entraron a `main` el 26/11 con los PR #93, #94, #99 y #100) · 1 descartado. Última noche: 26/11/2026 (jueves, recorrido de Sofía: ciclo completo con la agencia en el celular, Cenefas Rompe Precios y barrido con datos): 6 nuevos con Martina y Lucía (H-111 🟠, H-115 🟠, H-113 🟡, H-114 🟡, H-116 🟡, H-112 ⚪), siguen H-018, H-090, H-083, H-094, H-097 y otros 8; H-098 no se repitió. Antes, el mismo día: corrida especial «cada proceso, de punta a punta» (57 procesos, 4 agentes + barrido; sin cambios de código): 27 nuevos abiertos (🟠 8 · 🟡 16 · ⚪ 3) + H-110 ya resuelto en `main` por #90, 54 siguen pasando (H-012 y H-005 confirmados, H-023 sube a 🟠, H-018 se agrava), ya no pasan H-037, H-038, H-042 y H-081 (#86), la parte «Más» de H-025 y la de la Guía de H-014. `main` con el CI en rojo desde #90/#91 (H-083). Mapa de la noche: `procesos-2026-11-26/`.
+**Resumen:** 102 abiertos (93 confirmados, 1 pedido de Ivan, 8 para confirmar) · 2 en curso (las tarjetas, las arregla Claude, pedido de Ivan del 26/11) · 27 hechos · 1 descartado. Última noche: 27/11/2026 (viernes): recorrido de Sofía (ciclo completo con la agencia en el celular, Administración/perfil/Guía/Don Tino/olvidé mi contraseña/conectar calendario, barrido con datos sin alertas 🔴/🟠) + Martina a ciegas (agencia corrigiendo en el celular: lograda en 19 pasos; jefa dando acceso a una persona nueva: abandonada) + Lucía (hojas restantes). 7 nuevos: H-126 🟠, H-123 🟡, H-124 🟡, H-127 🟡, H-125 ⚪, H-128 ⚪, H-129 ⚪. H-005 confirmado en pantalla; H-003 y H-069 suman; ya no pasa H-108; H-090 confirmado arreglado. Desde la noche anterior en `main` solo entró el #101 (no cierra hallazgos abiertos). Antes: 26/11 noche, 6 nuevos (H-111…H-116).
 
 > Arranque (24/11/2026): los confirmados salen del primer recorrido de prueba
 > del entorno y de leer el código; los «para confirmar» salen del mapa de la
@@ -29,6 +29,8 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 > **Pedido de Ivan (26/11, por mail), primero en la lista (Ivan lo confirmó: «implementenlo cuando hagan las siguientes mejoras»):** H-113, que se vea quién de Tienda aprobó la entrega («súmenlo también, está bueno saber quién aprueba la tarea de la agencia»). Va la noche después de que entre «Tarjetas por pieza» a `main` (Tomás: rehace ese bloque; hoy no está subida). Y su aviso: «estamos trabajando en el repo en este momento»: la noche no toca archivos de nada «En curso», aunque no haya rama visible.
 >
 > Orden del 26/11 noche (lo que no está en curso ni en el PR #93): 1) la campanita y la ficha dicen lo mismo que pasó (H-111, H-113); 2) Cenefas sin dudas al cargar (H-115, H-112); 3) local y Redexpres (H-085, H-099, H-086, H-084); 4) palabras de las versiones (H-097) y miniaturas (H-114) después de «Tarjetas por pieza»; 5) lo visual (H-116, H-069, H-003…).
+
+> **Orden del 27/11 noche** (varias mejoras por noche, en una sola rama; fuera de lo que toca «Tarjetas»: ficha, revisión y entrega, H-089, H-094, H-097, H-113, H-114, H-123, H-127, H-128): 1) Administración a la vista en el menú (H-126); 2) arrastrar a Finalizado no aprueba sin mirar + la Guía dice la verdad (H-005, H-124); 3) Mi pedido no acepta negativos sin avisar (H-085); 4) el local no llena «Cambiar contraseña» para nada (H-084); 5) «Reintentar las que fallaron» en RRSS (H-122); 6) carteles «sin acceso» con la palabra justa y un solo estilo (H-003); 7) Administración en palabras (H-061, H-125).
 
 ### H-089 · «Comparar con la versión 1» pone lado a lado dos piezas distintas
 - **Gravedad:** 🟠 Traba · **Quién:** equipo (quien revisa) · **Dónde:** ficha de la tarjeta → Revisar ahora → «Comparar con la versión 1», notebook
@@ -63,7 +65,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la agencia tiene que traducir; «fase» y «Entrega 2» no son palabras de la gente (la gente dice «ronda» o «cambio»).
 - **Cómo repetirlo:** reabrir una tarjeta aprobada y mirar la tarjeta y el aviso de la agencia.
 - **Evidencia:** capturas m-agencia2 y 033 de Lucía; 062 de Martina.
-- **Visto:** 26/11 (Lucía, Martina y Ramiro) · procesos P19, P25, P29 · 26/11 noche (sigue: «Revisar la versión 1 de Entrega», «¡Aprobada! Era la última fase», avisos «versión 2 de Entrega»)
+- **Visto:** 26/11 (Lucía, Martina y Ramiro) · procesos P19, P25, P29 · 26/11 noche (sigue: «Revisar la versión 1 de Entrega», «¡Aprobada! Era la última fase», avisos «versión 2 de Entrega») · 27/11 (sigue: aviso «entregó la versión 1 de Entrega en…», «Revisar la versión 1 de Entrega», «¡Aprobada! Era la última fase»)
 
 ### H-094 · La revisión con IA dice «encontró 2 cosas» y muestra una; el control previo no avisa la medida que falta
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo y agencia · **Dónde:** revisión de la versión (equipo) y control previo al entregar (agencia)
@@ -72,15 +74,66 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** pedido con dos medidas escritas a mano → la agencia entrega una sola → mirar el control previo y después la revisión.
 - **Evidencia:** capturas 039, 049 y 052 de Sofía; 027 de Martina.
 - **Ojo:** la IA de pruebas es simulada: lo que se juzga es el conteo y el chequeo de medidas (que no depende de la IA), no lo que «ve».
-- **Visto:** 26/11 (Sofía y Martina) · procesos P19, P26 · 26/11 noche (sigue: a la agencia le muestra 1 cosa; al equipo «La IA encontró 3 cosas» en v1 y «4 cosas» en v2, con una sola tarjeta a la vista. El control previo **sí** avisó «Pieza que falta: Dobles (mobile) 315×405» antes de mandar: esa parte ya no pasa)
+- **Visto:** 26/11 (Sofía y Martina) · procesos P19, P26 · 26/11 noche (sigue: a la agencia le muestra 1 cosa; al equipo «La IA encontró 3 cosas» en v1 y «4 cosas» en v2, con una sola tarjeta a la vista. El control previo **sí** avisó «Pieza que falta: Dobles (mobile) 315×405» antes de mandar: esa parte ya no pasa) · 27/11 (sigue: «La IA encontró 2 cosas para mirar» con una sola en la lista; el control previo de la agencia sí avisó la pieza que faltaba, Dobles mobile 315×405)
 
-### H-005 · Mover una tarjeta a «Finalizado» la aprueba aunque no haya nada entregado, y no avisa a nadie
+### H-005 · Arrastrar una tarjeta a «Finalizado» la aprueba sin preguntar ni mirar la entrega (y la Guía dice que no aprueba)
 - **Gravedad:** 🟠 · **Quién:** equipo, agencia · **Dónde:** tablero `/entregas`
 - **Sospecha (código):** arrastrar de «Esperando feedback» a «Finalizado» la da por aprobada aunque quien arrastra no sea aprobador, y no se le avisa a nadie (ni a la agencia). Arrastrarla a «En proceso» no le dice a la agencia qué cambiar.
 - **Fuente:** `plataforma/calendario-tareas-entregas.md`, tablero y recorrido 8.
 - **Auditoría 25/11:** arrastrar una tarjeta de la agencia de Ingresado a Finalizado no hizo nada y nadie dijo por qué; no había una en «Esperando feedback» para probar.
 - **Confirmado del lado del servidor (Ramiro, 26/11):** una tarjeta de Publicis en «Ingresado», sin versiones, movida a «finalizado» queda aprobada y «avisados: 0». No se verificó si la pantalla pide confirmación al soltar (falta probarlo arrastrando) · proceso P27
-- **Visto:** 26/11 (Ramiro: confirmado del lado del servidor)
+- **Confirmado en pantalla (Sofía, 27/11):** el equipo arrastra la tarjeta «Black Friday viernes - Redes sociales» (v1 recién entregada, sin abrir) de «Esperando feedback» a «Finalizado». No pregunta nada: sale «Aprobada: quedó en Finalizado. Le avisamos a quien la hizo.» (lo de «no avisa a nadie» ya no pasa). Dos cosas más: **la Guía dice lo contrario** («Moverla a mano no entrega ni aprueba nada: solo la acomoda», H-124), y **la campanita sigue contando «Te toca revisarla»** de esa entrega ya aprobada (lo mismo que H-111, que se arregló para abrir, decidir o entregar, pero no para arrastrar).
+- **Por qué importa:** un arrastre sin querer (o con el dedo en el celular, que también arrastra) aprueba una pieza que nadie miró, y la agencia recibe «aprobada». Quien lee la Guía cree que arrastrar es seguro.
+- **Evidencia:** ![H-005](recorridos/2026-11-27/H-005.jpg) ![H-005 campanita](recorridos/2026-11-27/H-005-campanita.jpg)
+- **Idea de arreglo:** al soltar en «Finalizado» abrir la revisión (o pedir «¿Aprobar sin revisar?»), y que aprobar por arrastre limpie los avisos como H-111.
+- **Visto:** 26/11 (Ramiro: confirmado del lado del servidor) · 27/11 (Sofía: confirmado en pantalla)
+
+### H-124 · La Guía dice que mover una tarjeta «no aprueba nada» y que los tableros son «Publicis, Another Monday, Diseñadores y Otras»
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (y quien llega nuevo) · **Dónde:** Guía de uso `/ayuda` → «Tableros: las piezas con las agencias», notebook
+- **Qué ve una persona:** busca «aprobar» en la Guía y lee «Moverla a mano no entrega ni aprueba nada: solo la acomoda»; en el tablero, arrastrarla a «Finalizado» la aprueba y le avisa a la agencia (H-005). La misma ficha dice «Pestañas por tablero: Publicis, Another Monday, Diseñadores y Otras», pero desde el #99 cada agencia tiene su pestaña con su nombre («Agencia de prueba», «Agencia Norte») y «Otras» ya no está.
+- **Por qué importa:** la Guía es lo que se lee para no equivocarse; acá le asegura a la persona que arrastrar es seguro justo en lo único que no lo es.
+- **Cómo repetirlo:** equipo → Guía de uso → buscar «aprobar» → «Qué podés hacer».
+- **Evidencia:** ![H-124](recorridos/2026-11-27/H-124.jpg)
+- **Idea de arreglo:** corregir esos dos renglones (y, si se arregla H-005, que la Guía diga lo que quede).
+- **Visto:** 27/11 (Sofía)
+
+### H-123 · Al pedir cambios con una marca y un comentario, la agencia lee «Lo que hay que corregir (1)» y la marca queda abajo de la imagen
+- **Gravedad:** 🟡 Desprolijo · **Quién:** agencia · **Dónde:** ficha de la tarjeta (Volvió con cambios), celular
+- **Qué ve una persona:** el equipo marcó un punto en la imagen («El fondo tiene que ser negro, no azul») y escribió un comentario general («Falta el doble mobile 315×405»). La agencia, en el celular, ve arriba «Lo que hay que corregir (1)» con el comentario solo; el texto de la marca 1 recién aparece después de la imagen y de las miniaturas, fuera de la pantalla. En el formulario de «Entregar versión 2» sí aparecen las dos cosas juntas.
+- **Por qué importa:** el «(1)» le dice que hay una sola cosa; quien corrige desde el celular puede mandar la versión 2 con el fondo todavía azul y volver a dar otra vuelta.
+- **Cómo repetirlo:** equipo → Revisar ahora → tocar la imagen y escribir en la marca + escribir el comentario para la agencia → Pedir cambios; agencia en el celular → abrir la tarjeta.
+- **Evidencia:** ![H-123](recorridos/2026-11-27/H-123.jpg) ![H-123 abajo](recorridos/2026-11-27/H-123-abajo.jpg)
+- **Ojo:** está en la ficha que rehace «Tarjetas» (En curso): confirmar cuando entre antes de tocarlo.
+- **Idea de arreglo:** contar marcas + comentario («Lo que hay que corregir (2)») y listar los textos de las marcas ahí arriba.
+- **Visto:** 27/11 (Sofía)
+
+### H-127 · En la ficha, tocar otra miniatura cambia la imagen grande que quedó fuera de la pantalla
+- **Gravedad:** 🟡 Desprolijo · **Quién:** agencia (y equipo) · **Dónde:** ficha de la tarjeta (Volvió con cambios), celular
+- **Qué ve una persona:** con la imagen grande ya pasada al bajar, toca la segunda miniatura y no ve que cambie nada; la marca «1 … imagen 1» sigue escrita debajo mientras la grande muestra la imagen 2.
+- **Por qué importa:** no sabe cuál está mirando ni a qué imagen va la marca.
+- **Cómo repetirlo:** agencia en el celular → tarjeta con cambios y 2 imágenes → bajar → tocar la otra miniatura.
+- **Evidencia:** ![H-127](recorridos/2026-11-27/H-127.jpg) (capturas 004/005 de Martina)
+- **Ojo:** ficha que rehace «Tarjetas» (En curso): confirmar cuando entre.
+- **Visto:** 27/11 (Martina a ciegas)
+
+### H-128 · Al entregar, el cartel «se achican a 1600 px… subí el ZIP o pegá el link» no dice si el original es obligatorio
+- **Gravedad:** ⚪ Detalle · **Quién:** agencia · **Dónde:** Entregar la versión, celular
+- **Qué ve una persona:** cartel amarillo (de advertencia) que pide el ZIP o el link al original; no sabe si sin eso puede entregar.
+- **Por qué importa:** duda en el momento de mandar; un amarillo sugiere que algo está mal.
+- **Cómo repetirlo:** agencia → tarjeta → Entregar.
+- **Evidencia:** ![H-128](recorridos/2026-11-27/H-128.jpg)
+- **Ojo:** formulario de entrega, zona de «Tarjetas» (En curso).
+- **Visto:** 27/11 (Martina a ciegas)
+
+### H-126 · Quien administra no encuentra dónde dar de alta a una persona: «Administrador» está al fondo del menú, sin señal de que siga
+- **Gravedad:** 🟠 Traba · **Quién:** jefatura (quien administra) · **Dónde:** menú lateral → Herramientas, notebook 1366×768
+- **Qué ve una persona:** Martina (a ciegas, como la jefa) tenía que darle acceso a una diseñadora nueva. Abrió Herramientas: el menú muestra Materiales, Redes sociales y Medios hasta «Dashboard» y se corta, sin sombra, flecha ni barra que diga que hay más. «Administrador» está debajo de Medios, Loyalty, Finanzas y Comercial, en «Configuración». Probó Mi perfil (dice SUPER ADMIN y no ofrece sumar gente) y el botón «Equipo» del calendario (lleva a «Carga del equipo»). Abandonó en el paso 11 (1 de 7).
+- **Por qué importa:** dar de alta a una persona o a una agencia nueva es lo que Ivan quiere que sea fácil («varias agencias a la vez»); hoy depende de saber que hay que bajar el menú hasta el final.
+- **Cómo repetirlo:** equipo (superadmin) en notebook 1366×768 → abrir Herramientas → buscar Administración sin bajar el menú.
+- **Evidencia:** ![H-126](recorridos/2026-11-27/H-126.jpg) ![H-126 Equipo](recorridos/2026-11-27/H-126-equipo.jpg) (Sofía confirmó con el texto del menú, 27/11: «Configuración → Administrador» queda abajo de «Comercial»; en la captura de /admin el menú también se corta en «Dashboard»)
+- **Ojo:** la rueda de Martina movía el calendario, no el menú (límite de su herramienta); una persona con mouse puede bajar el menú, pero nada le avisa que hay más.
+- **Idea de arreglo:** subir «Administración» arriba de Herramientas para quien tiene el permiso (o fijo abajo, junto a Mi perfil), y que el menú muestre que sigue (sombra al pie).
+- **Visto:** 27/11 (Martina a ciegas; Sofía)
 
 ### H-098 · La pestaña abierta de la agencia no se pone al día sola
 - **Gravedad:** 🟡 Desprolijo · **Quién:** agencia · **Dónde:** Mi tablero `/entregas`, notebook
@@ -88,7 +141,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la agencia deja el tablero abierto todo el día y trabaja sobre algo viejo. (La ficha de la acción del equipo sí se pone al día en ~15 s.)
 - **Cómo repetirlo:** agencia con el tablero abierto → el equipo pide cambios → mirar la pestaña sin recargar.
 - **Evidencia:** captura 051 de Martina.
-- **Visto:** 26/11 (Martina a ciegas) · proceso P22 · 26/11 noche (**no se repitió**: con la ficha abierta en la pestaña de la agencia y en la del equipo, cada cambio del otro apareció solo al volver a la pestaña, sin recargar; si Martina tampoco lo ve, pasa a Hechos)
+- **Visto:** 26/11 (Martina a ciegas) · proceso P22 · 26/11 noche (**no se repitió**: con la ficha abierta en la pestaña de la agencia y en la del equipo, cada cambio del otro apareció solo al volver a la pestaña, sin recargar; si Martina tampoco lo ve, pasa a Hechos) · 27/11 (**no se repitió otra vez**: la ficha abierta en el celular de la agencia mostró sola, sin recargar, «Volvió con cambios» unos segundos después de que el equipo pidió cambios)
 
 ### H-113 · La versión aprobada dice «Aprobada · Agencia de prueba»: no se sabe quién de Tienda la aprobó
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (y jefatura) · **Dónde:** ficha de la tarjeta → Versiones, notebook
@@ -97,7 +150,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** ciclo completo hasta aprobar → abrir la tarjeta Finalizada → bajar a Versiones.
 - **Evidencia:** ![H-113](recorridos/2026-11-26/H-113.jpg)
 - **Idea de arreglo:** «Aprobada por Equipo nocturno · 26/11 02:15» en la línea de la versión (y en el aviso).
-- **Visto:** 26/11 noche (Martina a ciegas)
+- **Visto:** 26/11 noche (Martina a ciegas) · 27/11 (sigue: «v2 · 27/11 02:12 · Aprobada · Agencia de prueba»)
 - **Pedido de Ivan (26/11, mail):** «súmenlo también». Tomás: el dato ya se guarda (`CalendarioDecision.decidido_por_id`, `aprobador_id`) y viaja al front; `Decisiones()` lo muestra abajo de la imagen y el renglón de `Ronda()` muestra a la agencia. Solo pantalla + textos es/en/pt, sin migración. Después de «Tarjetas por pieza»; antes, ver si el bloque nuevo ya lo resuelve.
 
 ### H-114 · Las miniaturas de la entrega dicen solo la medida, no qué pieza es
@@ -139,7 +192,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** local → Mi perfil → completar los tres campos → Actualizar contraseña.
 - **Evidencia:** ![H-084](procesos-2026-11-26/img/H-084.jpg) (el mail de prueba tapado)
 - **Idea de arreglo:** para el local, en vez del formulario, un texto «Tu contraseña la cambia marketing: pedíselo a …».
-- **Visto:** 26/11 (Martina a ciegas) · procesos P03, P53
+- **Visto:** 26/11 (Martina a ciegas) · procesos P03, P53 · 27/11 (Lucía: sigue)
 
 ### H-012 · Pasado el bloqueo del login, un solo error vuelve a dejar a la persona 15 minutos afuera
 - **Gravedad:** 🟠 Traba · **Quién:** todos (sobre todo el encargado de local) · **Dónde:** `/login`
@@ -155,7 +208,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** local con el mes sin abrir → Mi pedido → tocar Octubre; el equipo abre el mes → campanita del local.
 - **Evidencia:** captura 007 de Martina.
 - **Lucía (26/11 noche):** en el celular los 12 meses son palabras grises sin borde, de 28 px de alto, y no marcan el mes en curso: no parecen tocables. ![H-099](recorridos/2026-11-26/H-099-meses.jpg)
-- **Visto:** 26/11 (Martina a ciegas) · proceso P40 · 26/11 noche (Lucía: meses en el celular)
+- **Visto:** 26/11 (Martina a ciegas) · proceso P40 · 26/11 noche (Lucía: meses en el celular) · 27/11 (Lucía: sigue)
 
 ### H-044 · En la Planilla de pedidos no hay cómo buscar un local entre 60
 - **Gravedad:** 🟠 Traba · **Quién:** equipo de Redexpres · **Dónde:** `/redexpres/planilla`, notebook
@@ -245,7 +298,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo → ir a `/materiales` en modo claro.
 - **Evidencia:** ![H-002](recorridos/2026-11-24/H-002.jpg) · contraste medido 1,1:1 (el mínimo es 4,5:1).
 - **Auditoría 25/11:** además, el texto de las tarjetas toca el borde (sin margen). ![H-002](auditoria-2026-11-25/img/H-002.jpg)
-- **Visto:** 24/11 · 25/11 (sigue en claro; en oscuro los títulos sí se leen) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
+- **Visto:** 24/11 · 25/11 (sigue en claro; en oscuro los títulos sí se leen) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue) · 27/11 (sigue: el barrido mide 1.1:1 en «Generar cenefas»)
 
 ### H-026 · En Campañas, Analytics y Conexiones el menú no marca dónde estás
 - **Gravedad:** 🟠 Traba · **Quién:** equipo · **Dónde:** `/campaigns`, `/canales`, `/settings`, notebook
@@ -319,7 +372,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** quien quedó mal escrito al darlo de alta depende de un admin.
 - **Cómo repetirlo:** cualquier cuenta → Mi perfil.
 - **Evidencia:** capturas 102 de Sofía; 012 y 020 de Martina.
-- **Visto:** 26/11 (Sofía y Martina) · proceso P53
+- **Visto:** 26/11 (Sofía y Martina) · proceso P53 · 27/11 (Lucía también; sigue)
 
 ### H-047 · «Otro» y «Otra cosa», uno al lado del otro, al pedir una tarea
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha → Crear tarea; Tablero → Nueva tarjeta, notebook
@@ -327,7 +380,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** hace dudar en el primer paso de pedir algo.
 - **Cómo repetirlo:** equipo → acción → Crear tarea.
 - **Evidencia:** ![H-047](auditoria-2026-11-25/img/H-047.jpg)
-- **Visto:** 25/11 (Sofía, Martina y Lucía) · 26/11 (sigue) · 26/11 noche (sigue)
+- **Visto:** 25/11 (Sofía, Martina y Lucía) · 26/11 (sigue) · 26/11 noche (sigue) · 27/11 (sigue)
 
 ### H-022 · En la tarea, quién la hace y el responsable se ven cortados
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la acción, tarea desplegada, `/calendario`, notebook 1366×768
@@ -345,7 +398,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** la marca de la empresa no se ve en su propia plataforma.
 - **Cómo repetirlo:** /login (notebook y celular), /mundos, cualquier menú.
 - **Evidencia:** ![login](auditoria-2026-11-25/img/mail-login.jpg) ![mundos](auditoria-2026-11-25/img/dis-mundos.jpg)
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 27/11 (Lucía también; sigue: el login y «Olvidaste tu contraseña» con el ícono de gráfico de barras)
 
 ### H-017 · Las pantallas viejas parecen otra aplicación (dos estilos visuales)
 - **Gravedad:** 🟡 Desprolijo · **Quién:** todos · **Dónde:** pantallas viejas (medios, materiales) vs. nuevas (calendario)
@@ -354,7 +407,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Confirmado (Lucía, 25/11):** cuatro estilos de encabezado (con ícono de color variable / sin ícono / centrado / con flecha atrás) y botón en degradé en Conexiones. Las nuevas (calendario, mis tareas, tablero, colocación, fotos, mi pedido) son una familia prolija; medios, finanzas y cenefas v2 parecen otra aplicación. Hojas equipo-notebook-claro-1 a 4.
 - **Auditoría 25/11:** ver la dirección de diseño y el pantalla por pantalla en `auditoria-2026-11-25/INFORME.md` (sección 3).
 - **Ivan (25/11):** «Hoy se ve muy "hecho con IA". Hay que trabajarlo para que tenga una identidad más propia.» Sigue la dirección del informe, con un cambio: Don Tino y el resto de los asistentes **mantienen su nombre y su identidad** aunque dejen de verse como robots (no se fusionan en «un solo asistente»). Pendiente que conteste: color de las acciones del calendario y azul de una vez.
-- **Visto:** 24/11 (código) · 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue)
+- **Visto:** 24/11 (código) · 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 27/11 (Lucía: sigue)
 
 ### H-029 · En el calendario compiten dos botones principales iguales
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/calendario`, notebook
@@ -362,7 +415,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** no queda claro cuál es la acción principal de la pantalla más usada.
 - **Cómo repetirlo:** equipo → /calendario con una acción en el mes.
 - **Evidencia:** hoja equipo-notebook-claro-1 (Lucía: V4-calendario-dos-principales)
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue) · 27/11 (sigue: «1 acciones»)
 
 ### H-052 · Tablero del equipo en el celular: el título en 8 renglones y ninguna tarjeta a la vista
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/entregas`, celular claro y oscuro
@@ -371,7 +424,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** equipo en el celular → Tablero.
 - **Evidencia:** ![H-052](auditoria-2026-11-25/img/H-052.jpg)
 - **Procesos 26/11:** captura 169 de Sofía; 043 de Lucía · proceso P27
-- **Visto:** 25/11 (Sofía y Lucía) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
+- **Visto:** 25/11 (Sofía y Lucía) · 26/11 (sigue) · 26/11 noche (Lucía: sigue) · 27/11 (mejoró: el título entra en una línea, pero la explicación ocupa 6 renglones y ninguna tarjeta se ve sin bajar)
 
 ### H-051 · Calendario en el celular: una semana a la vista y filtros que se cortan
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/calendario` y `/campaigns`, celular
@@ -396,7 +449,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** el mundo es lo primero que hay que saber (qué estoy mirando) y está cortado; dos botones para lo mismo confunden.
 - **Cómo repetirlo:** equipo → Tienda Inglesa → `/calendario` en 1366×768.
 - **Evidencia:** ![H-004](recorridos/2026-11-24/H-004.jpg)
-- **Visto:** 24/11 · 25/11 (Lucía: «Tienda In…» cortado en todas las pantallas del equipo, también en oscuro) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (Lucía: sigue)
+- **Visto:** 24/11 · 25/11 (Lucía: «Tienda In…» cortado en todas las pantallas del equipo, también en oscuro) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (Lucía: sigue) · 27/11 (Lucía: sigue)
 
 ### H-003 · Tres carteles distintos para decir «esto no es para vos»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** local, agencia, equipo con permisos limitados · **Dónde:** pantallas sin acceso (por ejemplo `/admin`, `/calendario`, `/entregas`, `/precios` con la cuenta del local)
@@ -407,7 +460,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** un solo cartel (el del candado, con botón) para todas.
 - **Auditoría 25/11:** sigue; además el local en /entregas deja un error en la consola (pide el tablero y recibe «no») y una dirección que no existe muestra otro cartel más, en inglés (H-058).
 - **Procesos 26/11:** Clientes VIP suma un cuarto estilo («Clientes VIP no es de Redexpres»); con un usuario sin permiso de calendario, «No tenés acceso al calendario» sigue sin salida (Sofía, Lucía, Ramiro) · procesos P49, P52, P55
-- **Visto:** 24/11 · 25/11 (sigue: en el local, /calendario, /mis-tareas y /entregas con escudo rojo sin botón; /mis-tareas dice «No tenés acceso al calendario.») (Lucía: en el local, Convertidor y /materiales dicen «No tenés acceso a las cenefas»; Diccionario «El diccionario no es de Redexpres» con otro dibujo y sin botón; hojas local-celular-claro-3 y local-notebook-oscuro-3) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (barrido: sigue igual en el local) · 26/11 noche (Lucía: además, el Convertidor le dice al local «No tenés acceso a las cenefas»)
+- **Visto:** 24/11 · 25/11 (sigue: en el local, /calendario, /mis-tareas y /entregas con escudo rojo sin botón; /mis-tareas dice «No tenés acceso al calendario.») (Lucía: en el local, Convertidor y /materiales dicen «No tenés acceso a las cenefas»; Diccionario «El diccionario no es de Redexpres» con otro dibujo y sin botón; hojas local-celular-claro-3 y local-notebook-oscuro-3) · 25/11 (auditoría) · 26/11 (sigue) · 26/11 noche (barrido: sigue igual en el local) · 26/11 noche (Lucía: además, el Convertidor le dice al local «No tenés acceso a las cenefas») · 27/11 (sigue: en el local, candado gris, escudo rojo sin botón y «no es de Redexpres» con punto rojo, en el mismo barrido) · 27/11 (Lucía: además, títulos con la palabra equivocada: /mis-tareas «No tenés acceso al calendario», /materiales y /materiales/convertidor «No tenés acceso a las cenefas», /canales «No tenés acceso a Analytics». Modelo a seguir: el de /redexpres/mi-pedido, «X no es de Y» + «Pasar a …») ![H-003](recorridos/2026-11-27/H-003-mis-tareas.jpg)
 
 ### H-058 · Una dirección que no existe muestra el 404 de fábrica, en inglés y sin salida
 - **Gravedad:** 🟡 Desprolijo · **Quién:** todos · **Dónde:** cualquier ruta inventada, notebook
@@ -439,7 +492,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** hay que acercarse para leer; no se distingue «apagado» de «no se lee».
 - **Cómo repetirlo:** abrir esas pantallas en claro.
 - **Evidencia:** barrido `equipo/notebook-claro/materiales__cenefas__v2__generar.jpg`, `analytics.jpg`, `facturacion__cuentas.jpg`; medida aprox. 2,5–2,6:1.
-- **Visto:** 25/11 (Lucía) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
+- **Visto:** 25/11 (Lucía) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue) · 27/11 (Lucía: el mail en Mi perfil, gris claro ~3,3–3,5:1 en claro)
 
 ### H-068 · El calendario de Redexpres encandila: amarillo flúo y títulos en mayúscula cortados
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/calendario` en Redexpres, notebook
@@ -457,7 +510,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** /ayuda; /login; /home → abrir Don Tino → preguntar.
 - **Evidencia:** ![guía](auditoria-2026-11-25/img/dis-ayuda.jpg) ![login](auditoria-2026-11-25/img/mail-login.jpg)
 - **Procesos 26/11:** **la Guía ya habla de calendario, tareas, tableros y agencias** (esa parte ya no pasa). Siguen «1.380 tokens» y «Powered by Claude Sonnet 5» en Don Tino, y al local le sugiere Google Ads/ROAS (Sofía, Lucía, Martina) · procesos P31, P32
-- **Visto:** 24/11 (código) · 25/11 (auditoría: confirmado en pantalla) · 26/11 (sigue en parte)
+- **Visto:** 24/11 (código) · 25/11 (auditoría: confirmado en pantalla) · 26/11 (sigue en parte) · 27/11 (Lucía también; sigue: Don Tino sugiere «¿Cómo sincronizo Google Ads?» y «¿Qué es el ROAS?», «1.380 tokens», «Powered by Claude Sonnet 5»)
 
 ### H-055 · El comentario de la agencia está en la ficha, pero el panel «Comentarios» dice que no hay
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo y agencia · **Dónde:** ficha de la tarjeta, notebook
@@ -466,7 +519,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** la agencia entrega con comentario → el equipo abre la tarjeta.
 - **Evidencia:** captura C/080 de la noche (Sofía).
 - **Procesos 26/11:** después de pedir cambios con comentario, el panel sigue mostrando solo «Sumé 1 archivo…» (captura 062 de Sofía) · proceso P22
-- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: con una marca y la nota de la agencia, «Comentarios» dice «Todavía no hay comentarios»)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: con una marca y la nota de la agencia, «Comentarios» dice «Todavía no hay comentarios») · 27/11 (sigue: con el pedido de cambios escrito, el panel «Comentarios» dice «Todavía no hay comentarios»)
 
 ### H-054 · «Cambiar el pedido» abre otro formulario, con otras palabras y las medidas vacías
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** ficha de la tarjeta → «Cambiar el pedido, las fases o quiénes aprueban», notebook
@@ -544,7 +597,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** /admin; /admin → Auditoría.
 - **Evidencia:** ![admin](auditoria-2026-11-25/img/dis-admin.jpg)
 - **Procesos 26/11:** el rol «Usuario» dice «Arranca sin permisos» y trae 15; la ficha de un usuario dice «Calendario: Todo» aunque no tenga el permiso de verlo (Sofía, Ramiro) · procesos P50, P52
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 27/11 (sigue: «15 permiso» en notebook, `calendario.view` y demás códigos en la ficha)
 
 ### H-065 · Un link de nueva contraseña vencido dice «Token inválido o expirado» y no da salida
 - **Gravedad:** 🟡 Desprolijo · **Quién:** todos · **Dónde:** `/reset-password?token=…`
@@ -553,7 +606,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** /reset-password?token=cualquiercosa → claves iguales → Guardar.
 - **Evidencia:** captura C/010 de la noche (Sofía).
 - **Procesos 26/11:** además «Olvidé mi contraseña» dice que la recuperación por mail no está activada (puede ser solo del entorno) · proceso P02
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 27/11 (sigue: «La recuperación por mail todavía no está activada», en el celular)
 
 ### H-057 · Mi pedido: tres casilleros se llaman «cenefa»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** local · **Dónde:** `/redexpres/mi-pedido`, celular
@@ -586,7 +639,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** parece un error de pantalla.
 - **Cómo repetirlo:** /facturacion → Subir factura.
 - **Evidencia:** ![H-046](auditoria-2026-11-25/img/H-046.jpg) (franja arriba)
-- **Visto:** 25/11 · 26/11 (sigue)
+- **Visto:** 25/11 · 26/11 (sigue) · 27/11 (sigue en «Editar usuario»)
 
 ### H-028 · El Dashboard de medios mezcla inglés y textos con errores
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo · **Dónde:** `/dashboard`, notebook y celular
@@ -636,7 +689,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** rompe el modo oscuro.
 - **Cómo repetirlo:** equipo, modo oscuro → /settings.
 - **Evidencia:** hoja equipo-notebook-oscuro (Lucía: V7-conexiones-oscuro)
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (Lucía: sigue) · 26/11 noche (Lucía: sigue) · 27/11 (Lucía: sigue)
 
 ### H-101 · Clientes VIP: letra gris clarito, «▲ 0,0%» en verde y dos «Cargar archivo»
 - **Gravedad:** 🟡 Desprolijo · **Quién:** equipo con Clientes VIP · **Dónde:** `/clientes-vip`, notebook
@@ -669,7 +722,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** promete algo que no tienen.
 - **Cómo repetirlo:** entrar con la agencia o el local.
 - **Evidencia:** hojas agencia-notebook-claro-1, local-notebook-claro-2
-- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue)
+- **Visto:** 25/11 (Lucía) · 25/11 (auditoría) · 26/11 (sigue) · 27/11 (Lucía también; sigue: la agencia en notebook, claro y oscuro)
 
 ### H-079 · Buscador de la agencia en el celular: dos cruces y «Arrastrá» donde se usa «Mover»
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia · **Dónde:** Mi tablero, celular
@@ -678,7 +731,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** agencia celular → escribir en el buscador.
 - **Evidencia:** capturas 001 y 010 de Martina.
 - **Procesos 26/11:** las dos cruces también en el buscador del tablero del equipo en la notebook (captura 106 de Sofía) · proceso P27
-- **Visto:** 25/11 (Martina a ciegas) · 26/11 (amplía)
+- **Visto:** 25/11 (Martina a ciegas) · 26/11 (amplía) · 27/11 (sigue: el tablero de la agencia en el celular dice «Arrastrá cada tarjeta»)
 
 ### H-078 · «Tablero»/«Tableros» y «Notificaciones»/«Avisos»
 - **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** menú, `/entregas`, barra de arriba y de abajo
@@ -686,7 +739,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** vocabulario que no se repite igual.
 - **Cómo repetirlo:** comparar menú y título; notebook y celular.
 - **Evidencia:** ![tablero](auditoria-2026-11-25/img/dis-tablero.jpg)
-- **Visto:** 25/11 (Lucía) · 26/11 (sigue)
+- **Visto:** 25/11 (Lucía) · 26/11 (sigue) · 27/11 (Lucía: sigue)
 
 ### H-072 · Los avisos verdes tapan la ✕ de la ficha
 - **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** ficha de la acción, notebook
@@ -694,7 +747,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Por qué importa:** hay que esperar para cerrar.
 - **Cómo repetirlo:** crear una tarea.
 - **Evidencia:** captura C/035 de la noche.
-- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: «Se adjuntó el archivo al pedido» tapa la ✕ de la ficha)
+- **Visto:** 25/11 · 26/11 (sigue) · 26/11 noche (sigue: «Se adjuntó el archivo al pedido» tapa la ✕ de la ficha) · 27/11 (sigue: «Se adjuntó el archivo al pedido» y «¡Aprobada!…» tapan la ✕)
 
 ### H-073 · La app no sigue el modo oscuro del celular
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia y local · **Dónde:** todo, celular en oscuro
@@ -752,21 +805,13 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Evidencia:** captura 010 de Lucía; 054 de Sofía.
 - **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P39
 
-### H-108 · Esc no cierra «Conectar mi calendario»
-- **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** `/calendario` → Conectar mi calendario
-- **Qué ve una persona:** la ventana con los pasos de Outlook/Google no se cierra con Esc (las demás sí).
-- **Por qué importa:** gesto que en el resto anda.
-- **Cómo repetirlo:** Calendario → Conectar mi calendario → Esc.
-- **Evidencia:** captura 091 de Sofía.
-- **Visto:** 26/11 (Sofía) · procesos P11, P54
-
 ### H-109 · Alta de agencia: al elegir «Otra agencia (nueva)…» el campo Contraseña se estira al doble
 - **Gravedad:** ⚪ Detalle · **Quién:** jefatura · **Dónde:** `/admin` → Nuevo usuario → Externa
 - **Qué ve una persona:** el campo de contraseña queda el doble de alto que los demás.
 - **Por qué importa:** se ve roto en el alta de una agencia nueva (lo que Ivan quiere que sea fácil).
 - **Cómo repetirlo:** /admin → Nuevo usuario → Externa → Otra agencia (nueva)….
 - **Evidencia:** captura 149 de Sofía.
-- **Visto:** 26/11 (Sofía) · proceso P51
+- **Visto:** 26/11 (Sofía) · proceso P51 · 27/11 (sigue)
 
 ### H-112 · Cenefas: antes de generar dice «Se van a generar 1 cenefas» con un Excel de 5 productos
 - **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** Cenefas → Rompe Precios `/materiales/cenefas?destino=rompe_precios`, notebook
@@ -777,6 +822,23 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** «Se van a generar 5 cenefas (1 plantilla)» y el botón «Revisar y generar», apagado sin vigencia.
 - **Ojo (26/11, PR #101):** Tienda Inglesa ya no tiene tipos de cenefa (Rompe Precios, Pruebas y los demás se borraron a pedido de Ivan; Redexpres quedó igual). Para repetirlo, creá un tipo nuevo en Tienda Inglesa o usá Redexpres; si ya no aplica, cerralo.
 - **Visto:** 26/11 noche (Sofía) · 26/11 noche (Martina: tampoco supo si la vigencia cuenta, ver H-115)
+
+### H-125 · Al dar de alta a alguien, la opción «Cuenta de agente… como la de Valentina» no se entiende
+- **Gravedad:** ⚪ Detalle · **Quién:** jefatura (quien administra) · **Dónde:** `/admin` → Nuevo usuario → Del equipo, notebook
+- **Qué ve una persona:** entre los campos de la persona nueva hay una casilla «Cuenta de agente: no pedir cambio de contraseña. Ni la primera vez ni cada 60 días. Para cuentas que entran solas, como la de Valentina.» Para quien administra en Tienda, «agente» y «Valentina» no dicen nada (Valentina es un agente del Escuadrón).
+- **Por qué importa:** quien da de alta a una compañera puede tildarla «por las dudas» y dejar una cuenta de persona sin cambio de contraseña nunca.
+- **Cómo repetirlo:** equipo → Administración → Nuevo usuario.
+- **Evidencia:** ![H-125](recorridos/2026-11-27/H-125.jpg)
+- **Idea de arreglo:** decirlo en palabras de la gente («Cuenta automática (no es una persona)…») sin nombres propios.
+- **Visto:** 27/11 (Sofía)
+
+### H-129 · Mi perfil: el círculo de iniciales dice «LD» en el menú y «L» en la tarjeta, y hay un escudito gris sin texto
+- **Gravedad:** ⚪ Detalle · **Quién:** todos · **Dónde:** `/perfil`, notebook
+- **Qué ve una persona:** la misma persona tiene dos «fotos» distintas (LD/AD abajo en el menú, L/A en la tarjeta, otro tamaño y color) y un escudito gris a la derecha que no dice qué es.
+- **Por qué importa:** se ve armado de partes; el ícono sin texto no se entiende.
+- **Cómo repetirlo:** local o agencia → Mi perfil.
+- **Evidencia:** ![H-129](recorridos/2026-11-27/H-129.jpg)
+- **Visto:** 27/11 (Lucía)
 
 ### H-071 · Para confirmar: las miniaturas de la entrega recortan la pieza
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia y equipo · **Dónde:** formulario de entrega y ficha
@@ -815,6 +877,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Sospecha (biblioteca de Lucía, `referencias/escritura.md`):** en Redexpres conviven «local» y «sucursal» para el mismo lugar; los criterios del recorrido toman «local». En Precios, «sucursal» es la de una cadena y está bien.
 - **Cómo confirmarlo:** recorrer Mi pedido, la planilla y las fotos y anotar dónde dice cada una.
 - **Fuente:** al escribir las bibliotecas (25/11).
+- **Visto:**27/11 (Lucía: sigue)
 
 ### H-120 · Para confirmar: botones y bordes de campos con poco contraste
 - **Gravedad:** 🟡 Desprolijo (accesibilidad) · **Quién:** todos, más en el celular con sol · **Dónde:** botones secundarios y bordes de campos
@@ -829,6 +892,15 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Fuente:** al escribir las bibliotecas (25/11); confirmado en el código el 26/11.
 
 ## Hechos
+
+### H-108 · Esc no cierra «Conectar mi calendario»
+- **Gravedad:** ⚪ Detalle · **Quién:** equipo · **Dónde:** `/calendario` → Conectar mi calendario
+- **Qué ve una persona:** la ventana con los pasos de Outlook/Google no se cierra con Esc (las demás sí).
+- **Por qué importa:** gesto que en el resto anda.
+- **Cómo repetirlo:** Calendario → Conectar mi calendario → Esc.
+- **Evidencia:** captura 091 de Sofía.
+- **Visto:** 26/11 (Sofía) · procesos P11, P54
+- **Estado:** ya no pasa (27/11/2026, Sofía): Esc cierra «Conectar mi calendario». ![H-108](recorridos/2026-11-27/H-108-ya-no-pasa.jpg)
 
 ### H-016 · Validación de redes deja borrar lo ajeno (y un borrado rechazado tira la lista)
 - **Gravedad:** 🟡 · **Quién:** equipo · **Dónde:** `/redes-sociales/validacion`
@@ -974,6 +1046,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Idea de arreglo:** una pestaña por agencia que tenga tarjetas, y recordar la última elegida. Va en paquete con H-018.
 - **Visto:** 26/11 (Lucía y Sofía) · procesos P27, P57 · 26/11 noche (Sofía: la tarjeta de Agencia de prueba aprobada sigue en «Otras»; el tablero vuelve a abrir en «Publicis 0») ![H-090](recorridos/2026-11-26/H-090.jpg)
 - **Estado:** hecho: en `main` desde el 26/11/2026 por el PR #99 (arreglos de los hallazgos del Escuadrón, rama `fix/hallazgos-del-escuadron`; cada grupo revisado en verde).
+- **Confirmado en pantalla (Sofía, 27/11):** el tablero del equipo muestra «Publicis · Another Monday · Diseñadores · Agencia de prueba 2 · Agencia Norte 0» (Agencia Norte, dada de alta esa noche en Administración, aparece sola con su nombre).
 
 ### H-083 · Las pruebas automáticas de `main` están en rojo desde el merge de #90 y #91
 - **Gravedad:** 🟠 Traba (no la ve nadie de promo y marca, pero todo PR nuevo nace en rojo) · **Quién:** el equipo que construye (Ivan y el Escuadrón) · **Dónde:** CI de GitHub, paso `npm run test:externos`
