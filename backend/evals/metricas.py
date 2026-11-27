@@ -59,7 +59,9 @@ def fecha_iso(v) -> str | None:
 
 def parecido(a, b, minimo: int = 90) -> bool:
     """El mismo texto aunque cambie el orden o sobre una palabra ('S.A.')."""
-    return fuzz.token_set_ratio(normalizar(a), normalizar(b)) >= minimo
+    # Sin signos: "CMIMPRESOS (Monfort Fernández)" tiene que poder parecerse a "Monfort Fernández".
+    limpio = lambda v: " ".join(re.sub(r"[^\w\s]", " ", normalizar(v)).split())
+    return fuzz.token_set_ratio(limpio(a), limpio(b)) >= minimo
 
 
 def contiene(texto, palabras: list[str]) -> bool:

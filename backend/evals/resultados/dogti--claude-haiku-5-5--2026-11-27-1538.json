@@ -1,0 +1,121 @@
+{
+ "agente": "dogti",
+ "fecha": "2026-11-27 15:38",
+ "modelo": "claude-haiku-5-5",
+ "casos": 31,
+ "repeticiones": 3,
+ "corridas": 93,
+ "errores": 0,
+ "metricas": {
+  "monto": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "moneda": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "proveedor_marca": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "tipo_sugerido": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "numero_factura": {
+   "aciertos": 58,
+   "casos": 93,
+   "porcentaje": 62.4
+  },
+  "factura_entera_bien": {
+   "aciertos": 58,
+   "casos": 93,
+   "porcentaje": 62.4
+  },
+  "no_inventa": {
+   "aciertos": 93,
+   "casos": 93,
+   "porcentaje": 100.0
+  },
+  "confianza_alta_acierta": {
+   "aciertos": 39,
+   "casos": 49,
+   "porcentaje": 79.6
+  }
+ },
+ "casos_perfectos": 45.2,
+ "consistencia": 48.4,
+ "tokens_entrada": 359460,
+ "tokens_salida": 46544,
+ "costo_usd": 0.059218,
+ "costo_por_caso_usd": 0.0006,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 3.8,
+ "segundos_p90": 5.5,
+ "fallas": {
+  "FC-A21745": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21746": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 3
+  },
+  "FC-A21750": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "FC-A21751": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21752": {
+   "numero_factura, factura_entera_bien": 1,
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "FC-A21753": {
+   "numero_factura, factura_entera_bien": 1,
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "FC-A21754": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1,
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21755": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21757": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21760": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "FC-A21761": {
+   "numero_factura, factura_entera_bien": 2
+  },
+  "FC-A21764": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "FC-A21765": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "FC-A21766": {
+   "numero_factura, factura_entera_bien": 1
+  },
+  "FC-A21767": {
+   "numero_factura, factura_entera_bien": 3
+  },
+  "FC-A21768": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "FC-A21770": {
+   "numero_factura, factura_entera_bien": 3
+  }
+ }
+}

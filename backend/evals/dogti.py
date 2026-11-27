@@ -44,12 +44,13 @@ def puntuar(caso: dict, salida: dict) -> dict:
         # Un documento que no es una factura: lo que se espera es que dude.
         return {"duda_cuando_no_es_factura": salida.get("confianza") != "alta"}
     nombres = e["proveedor_marca"] if isinstance(e["proveedor_marca"], list) else [e["proveedor_marca"]]
+    nombres = [x for x in nombres if x]
     # En un caso real puede faltar un dato (un canje no tiene fecha de factura): no se mide.
     p: dict = {
         "monto": m.mismo_monto(salida.get("monto"), e["monto"]) if e.get("monto") is not None else None,
         "moneda": m.moneda(salida.get("moneda")) == m.moneda(e["moneda"]) if e.get("moneda") else None,
         "fecha": m.fecha_iso(salida.get("fecha")) == m.fecha_iso(e["fecha"]) if e.get("fecha") else None,
-        "proveedor_marca": any(m.parecido(salida.get("proveedor_marca"), n) for n in nombres),
+        "proveedor_marca": any(m.parecido(salida.get("proveedor_marca"), n) for n in nombres) if nombres else None,
         "tipo_sugerido": salida.get("tipo_sugerido") == e.get("tipo_sugerido", "movimiento"),
     }
     if not m.vacio(e.get("numero_factura")):

@@ -92,6 +92,41 @@ async def facturas(limite: int) -> int:
         await db.close()
 
 
+def efacturas(carpeta: Path, proveedor: list[str] | None) -> int:
+    """e-Facturas uruguayas (formato DGI) en PDF, como llegan por mail. La
+    respuesta correcta sale del texto del propio PDF, con código y sin IA:
+    número (serie y número), fecha del documento, moneda y total a pagar. El
+    nombre del proveedor no tiene un lugar fijo en el formato: se pasa con
+    --proveedor (varios nombres válidos separados por |) o no se mide."""
+    import re
+
+    import pymupdf
+
+    def plata(t: str) -> float:
+        return float(t.replace(".", "").replace(",", "."))
+
+    n = 0
+    for pdf in sorted(carpeta.rglob("*.pdf")):
+        texto = pymupdf.open(pdf)[0].get_text()
+        numero = re.search(r"VENCIMIENTO\n([A-Z]{1,2})\n(\d+)\n", texto)
+        fecha = re.search(r"FECHA DE DOCUMENTO\n(\d{2}/\d{2}/\d{4})", texto)
+        moneda = re.search(r"MONEDA\n([A-Z$]{1,4})\n", texto)
+        total = re.search(r"TOTAL A PAGAR:\n([\d.]+,\d{2})", texto)
+        if not (numero and fecha and moneda and total):
+            print(f"  salteada (no es una e-Factura con el formato de la DGI): {pdf.name}")
+            continue
+        d, mes, a = fecha.group(1).split("/")
+        destino = DATOS / "dogti-reales" / pdf.stem.replace(" ", "-")
+        destino.mkdir(parents=True, exist_ok=True)
+        (destino / "factura.pdf").write_bytes(pdf.read_bytes())
+        _guardar(destino / "esperado.json", {
+            "proveedor_marca": proveedor or None, "numero_factura": f"{numero.group(1)} {numero.group(2)}",
+            "fecha": f"{a}-{mes}-{d}", "monto": plata(total.group(1)), "moneda": moneda.group(1),
+            "tipo_sugerido": "movimiento", "vigencia_desde": None, "vigencia_hasta": None})
+        n += 1
+    return n
+
+
 def historico() -> None:
     """DogTi en producción: lo que leyó contra lo que confirmó finanzas."""
     from evals import dogti, metricas
@@ -189,12 +224,18 @@ async def entregas(limite: int) -> int:
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("que", choices=["facturas", "entregas", "historico"])
+    ap.add_argument("que", choices=["facturas", "entregas", "historico", "efacturas"])
+    ap.add_argument("--carpeta", help="efacturas: la carpeta con los PDF")
+    ap.add_argument("--proveedor", help="efacturas: nombres válidos del proveedor, separados por |")
     ap.add_argument("--env", help="archivo con DATABASE_URL (la de producción) y ANTHROPIC_API_KEY")
     ap.add_argument("--limite", type=int, default=60, help="cuántas, de las más nuevas a las más viejas")
     a = ap.parse_args()
     if a.que == "historico":
         historico()
+        return
+    if a.que == "efacturas":
+        n = efacturas(Path(a.carpeta), a.proveedor.split("|") if a.proveedor else None)
+        print(f"{n} e-Facturas reales en {DATOS / 'dogti-reales'}")
         return
     import os
     if a.env:  # la base de verdad tiene que venir del archivo, no del relleno de las evals

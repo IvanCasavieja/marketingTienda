@@ -88,8 +88,30 @@ de la plataforma: el real es menor. El juez (Opus 5.5) se paga aparte.
    para pasarlos a esos modelos hay que cambiar a salida estructurada.
 
 Son casos sintéticos hechos para ser difíciles: sirven de piso y para
-comparar, no como medida final. El paso siguiente es correr la misma suite
-con casos reales.
+comparar, no como medida final.
+
+## Con material real (27/11/2026, 3 vueltas por caso)
+
+| Agente | Material | Modelo | Resultado |
+|---|---|---|---|
+| DogTi | 31 e-Facturas reales de un proveedor | Sonnet 5 (producción) | **100%** enteras bien (93 de 93 corridas) |
+| | | Haiku 5.5 | 62% enteras bien: el número de factura falla en el 38% de las corridas |
+| Revisor | 3 entregas reales de banners (36 piezas) | Opus 5.5 (producción) | 0 falsas alarmas en las 2 sanas; encontró en las 3 vueltas un error de ortografía real («Empandas») en un banner ya aprobado |
+
+La respuesta correcta de cada factura sale del texto del PDF, con código
+(`python -m evals.reales efacturas --carpeta <pdfs> --proveedor "<nombres>"`),
+no de la IA. Las facturas reales contradicen a las sintéticas en un punto:
+con Haiku daban 67% y con reales dan 62%, por otra causa (el número).
+
+Dos lecciones de calibrar con material real:
+- Al principio el banner con «Empandas» contaba como falsa alarma, porque se
+  supuso que lo aprobado no tenía errores. Lo tenía: se corrigió la etiqueta.
+- Haiku parecía confundir al proveedor; era el puntaje, que no toleraba los
+  paréntesis de «CMIMPRESOS (Monfort…)». Se arregló `metricas.parecido`.
+
+En producción todavía hay muy pocos datos (una factura confirmada y una
+entrega con marcas). Cuando haya más, `python -m evals.reales facturas` y
+`entregas` arman los casos directo de la base, en solo lectura.
 
 ## Armar casos reales
 

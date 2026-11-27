@@ -140,3 +140,8 @@ def test_casos_reales_canje_sin_fecha_y_marcas_del_revisor():
     assert not revisor.puntuar(caso, lejos)["real_encuentra_alguna_marca"]
     aprobada = {"esperado": {"real": True, "aprobada": True, "marcas": []}}
     assert revisor.puntuar(aprobada, {"observaciones": []}) == {"real_aprobada_sin_falsa_alarma": True}
+
+
+def test_proveedor_con_signos():
+    assert m.parecido("CMIMPRESOS (Monfort Fernandez Carlos Alexis)", "Monfort Fernandez Carlos Alexis")
+    assert not m.parecido("HENDERSON Y CIA SA", "Monfort Fernandez Carlos Alexis")
