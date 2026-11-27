@@ -100,3 +100,19 @@ def test_las_pantallas_pasan_el_numero_y_no_piden_el_plural_a_mano():
         assert re.search(rf't\("{re.escape(clave)}",\s*\{{\s*count:', fuente), (clave, archivo)
     assert not re.search(r't\(["\'][\w.]+_(plural|other|one)["\']', _fuentes()), "se pide una forma del plural a mano"
 
+
+def test_la_casilla_de_cuenta_automatica_habla_en_palabras_de_la_gente():
+    admin = (_FRONT / "app" / "(dashboard)" / "admin" / "page.tsx").read_text(encoding="utf-8")
+    assert 't("admin.cuentaAutomatica")' in admin and 't("admin.cuentaAutomaticaBajada")' in admin
+    # La marca de la lista de usuarios dice lo mismo que la casilla.
+    assert 't("admin.cuentaAutomaticaMarca")' in admin and 't("admin.cuentaAutomaticaMarcaAyuda")' in admin
+    for viejo in ('title="Cuenta de agente', "> Agente", "como la de Valentina", ">Cuenta de agente"):
+        assert viejo not in admin, viejo
+    for idioma in _IDIOMAS:
+        planas = _planas(idioma)
+        texto = " ".join(planas[f"admin.{c}"] for c in (
+            "cuentaAutomatica", "cuentaAutomaticaBajada", "cuentaAutomaticaMarca", "cuentaAutomaticaMarcaAyuda")).lower()
+        for palabra in ("agente", "agent", "valentina"):
+            assert palabra not in texto, (idioma, palabra)
+        # Tiene que quedar claro que no es para una persona.
+        assert any(p in texto for p in ("no es una persona", "not a person", "não é uma pessoa")), idioma
