@@ -220,9 +220,11 @@ SECCIONES: tuple[Seccion, ...] = (
                 "**Archivado**: las finalizadas pasan solas a los 10 días.",
             )),
             Parte("Qué podés hacer", (
-                "Pestañas por tablero: Publicis, Another Monday, Diseñadores y Otras.",
-                "Arrastrar una tarjeta (con el dedo, mantenela apretada) o usar **Mover a…**. Moverla a mano no "
-                "entrega ni aprueba nada: solo la acomoda.",
+                "Una pestaña por agencia, con su nombre. **Otras** junta las tarjetas de Tienda o de alguien de "
+                "afuera, y aparece solo si hay alguna.",
+                "Arrastrar una tarjeta (con el dedo, mantenela apretada) o usar **Mover a…** la cambia de columna. "
+                "Ojo: llevarla a **Finalizado** la da por aprobada y le avisa a quien la hace; si todavía no la "
+                "miraste, abrila y revisala antes.",
                 "Buscar por nombre arriba (busca también en lo archivado).",
                 "Archivar algo que no se terminó es cancelarlo; se puede sacar del archivo.",
                 "Tocar una tarjeta abre su ficha.",

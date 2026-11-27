@@ -93,6 +93,14 @@ def test_no_quedan_cosas_que_ya_no_existen():
     rrss_texto = guia.como_texto((rrss,))
     assert "Historial" not in rrss_texto
     assert "**Las de hoy**" in rrss_texto and "24 horas" in rrss_texto
+    # El tablero (H-005, 27/11/2026): mover a Finalizado aprueba la tarjeta y
+    # le avisa a quien la hace; la Guía decía que «no entrega ni aprueba nada».
+    # Y las pestañas son una por agencia, no los tres tableros fijos de antes.
+    tablero = guia.como_texto(tuple(s for s in guia.SECCIONES if s.clave == "tablero"))
+    assert "no entrega ni aprueba nada" not in tablero
+    assert "y Otras" not in tablero
+    assert "**Finalizado** la da por aprobada" in tablero
+    assert "Una pestaña por agencia" in tablero
 
 
 def test_don_tino_lleva_la_misma_guia():
