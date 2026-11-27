@@ -18,7 +18,7 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 
 - **Tarjetas** (ramas `feat/tarjetas-p1-back` y `feat/tarjetas-p1-front`, parte 1; la parte 2, armar el pedido pieza por pieza, viene después): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
 
-- **Noche del 27/11** (rama `nocturno/2026-11-27-noche-de-mejoras`, PR #102, 6 mejoras, cada una probada por Ramiro en VERDE). Siguen descriptos en Abiertos hasta que Ivan diga ok:
+- **Noche del 27/11** (rama `nocturno/2026-11-27-noche-de-mejoras`, PR #102, 6 mejoras, cada una probada por Ramiro en VERDE). **Ivan dijo ok (27/11, por mail) y entró a `main` (27/11).** La próxima noche los pasa a Hechos:
   1. H-126 · Administración fija abajo del menú y flecha de «el menú sigue».
   2. H-124 (y la parte de la campanita de H-005) · la Guía dice que llevar a Finalizado aprueba; el número de la campanita baja al mover. La pregunta al soltar en Finalizado (resto de H-005) queda para después de «Tarjetas» (Tomás).
   3. H-085 · Mi pedido y la Planilla solo aceptan enteros desde 0, con aviso.

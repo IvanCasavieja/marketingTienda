@@ -20,3 +20,8 @@ Lo que Ivan decidió al contestar los avisos del Equipo nocturno. Una línea por
 - **Quién aprobó (H-113):** «súmenlo también, está bueno saber quién aprueba la tarea de la agencia, aunque al tener siempre un responsable a cargo de cada tarea es como medio obvio quién lo hace». Va después de «Tarjetas por pieza».
 - **Cenefas (H-115, H-112):** «No entendí el punto de las cenefas, ninguno de los dos». Se le explicaron por mail; quedan en la lista después de H-113.
 - **Segunda respuesta (26/11):** «Está correcto lo que hablaste con Tomás acerca de quién aprobó, impleméntenlo cuando hagan las siguientes mejoras». «La vigencia no debería ser obligatoria, bajemos la importancia ya que muchas cenefas lo traen implícito en su diseño» (H-115 pasa a 🟡). Y: «las imágenes que están adjuntando al mail no están llegando, fíjense por qué».
+
+## 27/11/2026 · respuesta por mail al informe de la noche (PR #102)
+
+- **Las 6 mejoras:** «Ok a todos los cambios». Publicadas (PR #102 mergeado el 27/11 con las pruebas en verde).
+- **El texto de Valentina:** «lo del texto de Valentina está bien». Queda como está; no se toca.

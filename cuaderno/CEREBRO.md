@@ -21,3 +21,8 @@
   - Ramiro: cada mejora por separado con las cinco capas. En la 3 encontró que tras un «.» se tragaban números al seleccionar o mover el cursor, y en la 4 que la Guía del local seguía hablando de los 60 días: Bruno lo arregló y la segunda vuelta dio VERDE. En la 5, que un `orden` imposible daba 500: se puso el rango.
   - Cómo trabajamos: cada mejora en su propia copia del repo (worktree) y su propia base de pruebas, y la plataforma por turnos. Turbopack no acepta `node_modules` como symlink (copiar con `cp -al`); `pkill -f "next start"` no mata `next-server`; cada uno con su `NAVEGADOR_PUERTO`.
   - Para preguntarle a Ivan: el texto que le dice al local «Hablá con Valentina» (`redexpres.noLocalAssigned`) es del 19/11, antes del agente: ¿es una persona de Tienda?
+
+## 27/11/2026 · Ivan, por mail (informe de la noche, PR #102)
+
+- Dijo «Ok a todos los cambios»: las 6 mejoras de la noche del 27/11 quedaron publicadas.
+- Sobre la pregunta de «Hablá con Valentina» (y «Cuenta automática»): «lo del texto de Valentina está bien». Se deja como está; no hace falta volver a preguntarlo.
