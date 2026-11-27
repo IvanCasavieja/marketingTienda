@@ -36,7 +36,6 @@
     "comercial": "COMERCIAL",
     "loyalty": "LOYALTY",
     "guia": "GUIA",
-    "configuracion": "CONFIGURAÇÕES",
     "redexpres": "Redexpres",
     "cenefas": "Faixas",
     "convertidor": "Conversor de Excel",
@@ -48,7 +47,6 @@
     "clientesVip": "Clientes VIP",
     "guiaUso": "Guia de uso",
     "planillaPedidos": "Planilha de pedidos",
-    "administrador": "Administrador",
     "lightMode": "Modo claro",
     "darkMode": "Modo escuro",
     "toggleToLight": "Mudar para modo claro",
@@ -73,7 +71,10 @@
     "ocultarMenu": "Ocultar menu",
     "mostrarMenu": "Mostrar menu",
     "mas": "Mais",
-    "navegacion": "Navegação principal"
+    "navegacion": "Navegação principal",
+    "administracion": "Administração",
+    "usuariosYPermisos": "Usuários e permissões",
+    "verMasMenu": "Ver mais do menu"
   },
   "login": {
     "welcome": "Bem-vindo",
@@ -568,7 +569,7 @@
     }
   },
   "admin": {
-    "title": "Painel de Administração",
+    "title": "Administração",
     "subtitle": "Gestão de usuários, funções e permissões",
     "newUser": "Novo usuário",
     "accessDenied": "Acesso negado — somente administradores",

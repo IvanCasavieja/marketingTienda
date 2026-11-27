@@ -36,7 +36,6 @@
     "comercial": "COMMERCIAL",
     "loyalty": "LOYALTY",
     "guia": "GUIDE",
-    "configuracion": "SETTINGS",
     "redexpres": "Redexpres",
     "cenefas": "Banners",
     "convertidor": "Excel Converter",
@@ -48,7 +47,6 @@
     "clientesVip": "VIP customers",
     "guiaUso": "User guide",
     "planillaPedidos": "Order sheet",
-    "administrador": "Admin",
     "lightMode": "Light mode",
     "darkMode": "Dark mode",
     "toggleToLight": "Switch to light mode",
@@ -73,7 +71,10 @@
     "ocultarMenu": "Hide menu",
     "mostrarMenu": "Show menu",
     "mas": "More",
-    "navegacion": "Main navigation"
+    "navegacion": "Main navigation",
+    "administracion": "Administration",
+    "usuariosYPermisos": "Users and permissions",
+    "verMasMenu": "Show more of the menu"
   },
   "login": {
     "welcome": "Welcome",
@@ -568,7 +569,7 @@
     }
   },
   "admin": {
-    "title": "Admin Panel",
+    "title": "Administration",
     "subtitle": "User, role and permission management",
     "newUser": "New user",
     "accessDenied": "Access denied — admins only",
