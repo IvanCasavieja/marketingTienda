@@ -1489,5 +1489,9 @@
       "queHacer": "Para incluí-las, corrija no arquivo e carregue de novo. Se não, carregue o resto.",
       "ningunaSirve": "Não sobrou nenhuma linha para carregar: corrija o arquivo e carregue de novo."
     }
+  },
+  "perfil": {
+    "claveDelLocalTitulo": "A senha da loja",
+    "claveDelLocal": "A senha da sua loja é alterada por quem administra o Core Tienda. Se precisar trocá-la, peça a essa pessoa."
   }
 }

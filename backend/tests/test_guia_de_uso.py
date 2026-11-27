@@ -166,3 +166,17 @@ def test_administracion_se_explica_solo_a_quien_administra():
     assert "**Administración**" not in menu(AGENCIA)
     assert "**Administración**" not in guia.como_json(guia.secciones_para(LOCAL, True)).__str__()
     assert "En Administrador" not in guia.como_texto()
+
+
+def test_al_local_no_le_dice_que_cambie_la_contrasena():
+    # H-084: el usuario del local es compartido y el servidor no le deja
+    # cambiar la contraseña. La Guía le dice quién la cambia, no que la cambie él.
+    def perfil(usuario, tiene_local):
+        basico = guia.secciones_para(usuario, tiene_local)[0]
+        return " ".join(p for parte in basico.partes if parte.titulo == "Tu perfil" for p in parte.puntos)
+
+    del_local = perfil(LOCAL, True)
+    assert "cambiar la contraseña" not in del_local
+    assert "la cambia quien administra Core Tienda" in del_local
+    assert "cambiar la contraseña" in perfil(EQUIPO, False)
+    assert "cambiar la contraseña" in perfil(AGENCIA, False)

@@ -1489,5 +1489,9 @@
       "queHacer": "To include them, fix them in the file and load it again. If not, load the rest.",
       "ningunaSirve": "There are no rows left to load: fix the file and load it again."
     }
+  },
+  "perfil": {
+    "claveDelLocalTitulo": "Your store's password",
+    "claveDelLocal": "Your store's password is changed by whoever manages Core Tienda. If it needs changing, ask them."
   }
 }

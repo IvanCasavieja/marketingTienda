@@ -107,7 +107,15 @@ SECCIONES: tuple[Seccion, ...] = (
             Parte("Tu perfil", (
                 "Tocando tu nombre, abajo del menú: cambiar la contraseña y prender o apagar los avisos por mail.",
                 "Al lado están el modo oscuro y el idioma.",
-            )),
+            ), quienes=frozenset({EQUIPO, AGENCIA})),
+            # El usuario de un local lo comparte todo el personal: la contraseña
+            # no se cambia desde el perfil (el servidor lo rechaza, auth.py), la
+            # cambia quien administra Core Tienda (H-084).
+            Parte("Tu perfil", (
+                "Tocando tu nombre, abajo del menú: prender o apagar los avisos por mail.",
+                "La contraseña de tu local la cambia quien administra Core Tienda: si hace falta cambiarla, pedíselo.",
+                "Al lado están el modo oscuro y el idioma.",
+            ), quienes=frozenset({LOCAL})),
         ),
     ),
     Seccion(

@@ -1576,5 +1576,9 @@
       "queHacer": "Si querés que entren, corregilas en el archivo y cargalo de nuevo. Si no, cargá el resto.",
       "ningunaSirve": "No queda ninguna fila para cargar: corregí el archivo y cargalo de nuevo."
     }
+  },
+  "perfil": {
+    "claveDelLocalTitulo": "La contraseña del local",
+    "claveDelLocal": "La contraseña de tu local la cambia quien administra Core Tienda. Si hace falta cambiarla, pedíselo."
   }
 }

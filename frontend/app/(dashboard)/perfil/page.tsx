@@ -5,6 +5,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Loader2, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
 import { authApi } from "@/lib/api";
+import { useTranslation } from "react-i18next";
 
 const ROLE_COLORS: Record<string, string> = {
   Superadmin: "bg-rose-100 text-rose-700",
@@ -15,6 +16,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function PerfilPage() {
   const { user: me, loading } = useCurrentUser();
+  const { t } = useTranslation();
 
   if (loading) {
     return (
@@ -57,14 +59,30 @@ export default function PerfilPage() {
       {/* Los avisos por mail (18/11/2026): prendidos por defecto, se apagan acá. */}
       <AvisosPorMail prendidos={me?.avisos_por_mail !== false} email={me?.email ?? ""} />
 
-      {/* Cambiar contraseña */}
-      <div className="card p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <KeyRound size={15} className="text-brand-500" />
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Cambiar contraseña</p>
+      {/* El usuario de un local lo comparte el personal: el servidor no le deja
+          cambiar la contraseña (auth.py, misma regla con LocalAsignacion), así
+          que en vez de un formulario que siempre falla se dice quién la cambia (H-084). */}
+      {(me?.assigned_locales?.length ?? 0) > 0 ? (
+        <div className="card p-5">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-300">
+              <KeyRound size={17} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{t("perfil.claveDelLocalTitulo")}</p>
+              <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">{t("perfil.claveDelLocal")}</p>
+            </div>
+          </div>
         </div>
-        <ChangePasswordForm />
-      </div>
+      ) : (
+        <div className="card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <KeyRound size={15} className="text-brand-500" />
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">Cambiar contraseña</p>
+          </div>
+          <ChangePasswordForm />
+        </div>
+      )}
     </div>
   );
 }
