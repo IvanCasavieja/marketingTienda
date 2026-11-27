@@ -41,14 +41,15 @@ export const TECLAS_NO_CANTIDAD = new Set(['-', '+', 'e', 'E', '.', ','])
 
 /**
  * Qué hacer con una tecla en una casilla de cantidad. `cortado` dice si en
- * esta casilla ya se tocó «.» o «,»: desde ahí, los dígitos que siguen son
- * decimales y se ignoran (si no, «2.5» tecleado quedaba «25»). Borrar vuelve
- * a dejar escribir; salir de la casilla también (lo hace la pantalla). Pura.
+ * esta casilla se acaba de tocar «.» o «,»: desde ahí, los dígitos que siguen
+ * son decimales y se ignoran (si no, «2.5» tecleado quedaba «25»). Cualquier
+ * otra tecla (borrar, flechas, Inicio/Fin, Ctrl+A) corta esa racha: la persona
+ * ya está corrigiendo, y lo que escriba después vale. Hacer clic, seleccionar
+ * con el mouse o pegar también la corta (lo hace la pantalla). Pura.
  */
 export function teclaEnCantidad(cortado: boolean, tecla: string): { bloquear: boolean; avisar: boolean; cortado: boolean } {
   if (tecla === '.' || tecla === ',') return { bloquear: true, avisar: true, cortado: true }
   if (TECLAS_NO_CANTIDAD.has(tecla)) return { bloquear: true, avisar: true, cortado }
-  if (tecla === 'Backspace' || tecla === 'Delete') return { bloquear: false, avisar: false, cortado: false }
-  if (cortado && /^[0-9]$/.test(tecla)) return { bloquear: true, avisar: false, cortado: true }
-  return { bloquear: false, avisar: false, cortado }
+  if (/^[0-9]$/.test(tecla)) return { bloquear: cortado, avisar: false, cortado }
+  return { bloquear: false, avisar: false, cortado: false }
 }

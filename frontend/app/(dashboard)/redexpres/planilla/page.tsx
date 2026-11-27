@@ -148,7 +148,8 @@ export default function PlanillaPedidosPage() {
   // La tecla «-», «.» o «e» no se escribe (Safari en iOS manda "" con un
   // «-» a medio escribir), pero se avisa por qué no aparece. Después de un
   // «.» o «,» los dígitos que siguen son decimales y se ignoran hasta borrar
-  // o salir de la casilla: «2.5» tecleado queda «2», no «25».
+  // o salir de la casilla: «2.5» tecleado queda «2», no «25». Un clic, una
+  // selección con el mouse o pegar cortan esa racha.
   const casillaCortada = useRef<EventTarget | null>(null);
   function bloquearTeclaNoCantidad(e: React.KeyboardEvent<HTMLInputElement>) {
     const r = teclaEnCantidad(casillaCortada.current === e.currentTarget, e.key);
@@ -458,6 +459,8 @@ export default function PlanillaPedidosPage() {
                                 step={col.isText ? undefined : 1}
                                 onKeyDown={col.isText ? undefined : bloquearTeclaNoCantidad}
                                 onBlur={col.isText ? undefined : soltarCasilla}
+                                onMouseDown={col.isText ? undefined : soltarCasilla}
+                                onPaste={col.isText ? undefined : soltarCasilla}
                                 min={0}
                                 max={col.max}
                                 value={val}

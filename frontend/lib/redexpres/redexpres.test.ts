@@ -70,6 +70,10 @@ igual('"-5" tecleado da "5"', teclear(['-', '5']), '5')
 igual('después del "." borrar deja escribir de nuevo', teclear(['2', '.', '5', 'Backspace', '3']), '3')
 igual('el "." avisa', teclaEnCantidad(false, '.').avisar, true)
 igual('Tab y flechas no se bloquean después del "."', teclaEnCantidad(true, 'Tab').bloquear, false)
+igual('"3.", Ctrl+A y 8: el 8 vale', teclaEnCantidad(teclaEnCantidad(teclaEnCantidad(true, 'Control').cortado, 'a').cortado, '8').bloquear, false)
+igual('"4.", flecha izquierda y 1: el 1 vale', teclaEnCantidad(teclaEnCantidad(true, 'ArrowLeft').cortado, '1').bloquear, false)
+igual('"5.", Inicio y 1: el 1 vale', teclaEnCantidad(teclaEnCantidad(true, 'Home').cortado, '1').bloquear, false)
+igual('después del "." un "-" sigue bloqueado y la racha sigue', teclaEnCantidad(true, '-'), { bloquear: true, avisar: true, cortado: true })
 
 console.log('Estado del pedido')
 const dic26 = { year: 2026, month: 12 }
