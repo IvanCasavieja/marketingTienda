@@ -18,6 +18,15 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 
 - **Tarjetas** (ramas `feat/tarjetas-p1-back` y `feat/tarjetas-p1-front`, parte 1; la parte 2, armar el pedido pieza por pieza, viene después): pedido de Ivan del 26/11 — sin «entrega 1, entrega 2», el pedido armado pieza por pieza, revisar por pieza, la IA mira solo lo que llegó y un solo estilo. Incluye H-094 y H-089.
 
+- **Noche del 27/11** (rama `nocturno/2026-11-27-noche-de-mejoras`, un PR con 6 mejoras, cada una probada por Ramiro en VERDE). Siguen descriptos en Abiertos hasta que Ivan diga ok:
+  1. H-126 · Administración fija abajo del menú y flecha de «el menú sigue».
+  2. H-124 (y la parte de la campanita de H-005) · la Guía dice que llevar a Finalizado aprueba; el número de la campanita baja al mover. La pregunta al soltar en Finalizado (resto de H-005) queda para después de «Tarjetas» (Tomás).
+  3. H-085 · Mi pedido y la Planilla solo aceptan enteros desde 0, con aviso.
+  4. H-084 · el local ve quién cambia su contraseña en vez del formulario; la Guía del local ya no habla de los 60 días.
+  5. H-122 · «Reintentar las que fallaron» anda con el lote cerrado.
+  6. H-061 (parte: plurales «15 permisos» en toda la app) + H-125 · «Cuenta automática (no es una persona)». Lo demás de H-061 (códigos de permisos, Auditoría) sigue abierto.
+  Frenado por Tomás: H-003 (un cartel está en la zona de «Tarjetas»; va junto, después).
+
 ## Abiertos (de más a menos importante)
 
 > Ivan (25/11): «esta plataforma la van a usar varias agencias a la vez, así que tiene que adaptarse a su forma de trabajar, no al revés». H-081 (ida y vuelta con versiones) ya está en `main` (#86); H-082 (sugerencias) entra después del flujo de la agencia.
@@ -839,6 +848,14 @@ Ivan (26/11/2026) pidió estos juntos y los arregla Claude, fuera de la noche. S
 - **Cómo repetirlo:** local o agencia → Mi perfil.
 - **Evidencia:** ![H-129](recorridos/2026-11-27/H-129.jpg)
 - **Visto:** 27/11 (Lucía)
+
+### H-130 · Administración en el celular: la lista de usuarios se aprieta y el nombre se corta
+- **Gravedad:** 🟡 Desprolijo · **Quién:** equipo (quien administra) · **Dónde:** `/admin`, lista de usuarios, celular
+- **Qué ve una persona:** en cada fila, las marcas («AUTOMÁTICA», «CALENDARIO: 1 MES») se montan con el ícono de historial y el nombre queda en «Eq…».
+- **Por qué importa:** desde el celular no se lee a quién estás mirando.
+- **Cómo repetirlo:** equipo en el celular → Administración → lista de usuarios con alguna marca.
+- **Evidencia:** ![H-130](recorridos/2026-11-27/H-130.jpg)
+- **Visto:** 27/11 (Ramiro, regresión final; ya pasaba antes de esta noche)
 
 ### H-071 · Para confirmar: las miniaturas de la entrega recortan la pieza
 - **Gravedad:** ⚪ Detalle · **Quién:** agencia y equipo · **Dónde:** formulario de entrega y ficha
