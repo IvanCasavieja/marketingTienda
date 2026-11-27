@@ -143,3 +143,18 @@ def test_la_agencia_llega_a_la_guia_y_a_nada_mas_nuevo():
 
     assert externos.ruta_permitida("/api/v1/guia", "/api/v1")
     assert not externos.ruta_permitida("/api/v1/guiax", "/api/v1")
+
+
+def test_administracion_se_explica_solo_a_quien_administra():
+    # H-126: Administración está fija abajo del menú. La Guía lo dice con la
+    # misma palabra que el menú y la página, y solo a quien la tiene.
+    def menu(usuario):
+        basico = guia.secciones_para(usuario, False)[0]
+        return " ".join(p for parte in basico.partes for p in parte.puntos)
+
+    assert "**Administración**" in menu(_usuario(super_=True))
+    assert "**Administración**" in menu(_usuario("calendario.view", "platform.admin"))
+    assert "**Administración**" not in menu(EQUIPO)
+    assert "**Administración**" not in menu(AGENCIA)
+    assert "**Administración**" not in guia.como_json(guia.secciones_para(LOCAL, True)).__str__()
+    assert "En Administrador" not in guia.como_texto()

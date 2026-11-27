@@ -84,6 +84,12 @@ SECCIONES: tuple[Seccion, ...] = (
                 "tengas habilitado.",
                 "En el celular, lo principal está en la barra de abajo y el resto en **Más**.",
             ), quienes=frozenset({EQUIPO})),
+            # Fija abajo del menú desde H-126 (antes, al final de Herramientas,
+            # donde nadie la encontraba).
+            Parte("Administración", (
+                "Si administrás la plataforma, **Administración** (usuarios y permisos) está fija abajo del menú, "
+                "arriba de tu nombre.",
+            ), quienes=frozenset({EQUIPO}), permisos=("platform.admin",)),
             Parte("El menú", (
                 "Tu menú es corto: **Mi tablero** (y el **Calendario**, si te lo habilitaron) y esta guía.",
                 "En el celular, todo está en la barra de abajo.",
@@ -530,7 +536,7 @@ SECCIONES: tuple[Seccion, ...] = (
         permisos=("platform.admin",),
         resumen="Quién entra y qué puede hacer cada uno.",
         partes=(
-            Parte("En Administrador", (
+            Parte("En Administración", (
                 "Alta, edición, desactivar y eliminar cuentas (de a una o varias), con filtros por rol y en orden "
                 "alfabético.",
                 "Cada persona tiene su rol de arranque, sus permisos, sus mundos y hasta dónde ve el calendario "
