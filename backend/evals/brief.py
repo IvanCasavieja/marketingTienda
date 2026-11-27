@@ -4,7 +4,9 @@ Un caso es un JSON: {"texto": dictado, "tipo": tipo de pieza, "esperado":
 {campo: lo esperado}}. Lo esperado de cada campo puede ser:
 - null: no se dijo, tiene que quedar vacío (si la IA lo llena, es un invento);
 - ["2x1", "vinos"]: tiene que contener todas esas palabras;
-- "texto": tiene que parecerse (85% o más).
+- "texto": tiene que parecerse (85% o más);
+- {"contiene": [...], "no_contiene": [...]}: además, palabras que NO puede traer
+  (por ejemplo un mes que nadie dijo).
 """
 from __future__ import annotations
 
@@ -15,6 +17,16 @@ from pathlib import Path
 from evals import metricas as m
 
 HOY = date(2026, 11, 1)  # siempre la misma, para poder comparar corridas
+PRINCIPALES = ["todos_los_campos_dichos", "no_inventa"]
+
+
+def _cumple(valor, esperado) -> bool:
+    if m.vacio(valor):
+        return False
+    if isinstance(esperado, dict):
+        return (m.contiene(valor, esperado.get("contiene", []))
+                and not any(m.normalizar(x) in m.normalizar(valor) for x in esperado.get("no_contiene", [])))
+    return m.contiene(valor, esperado) if isinstance(esperado, list) else m.parecido(valor, esperado, 85)
 
 
 def cargar(carpeta: Path) -> list[dict]:
@@ -48,8 +60,7 @@ def puntuar(caso: dict, salida: dict) -> dict:
             sin_inventar += m.vacio(valor)
             continue
         dichos += 1
-        ok = (not m.vacio(valor)) and (
-            m.contiene(valor, esperado) if isinstance(esperado, list) else m.parecido(valor, esperado, 85))
+        ok = _cumple(valor, esperado)
         bien += ok
         p[f"campo_{clave}"] = ok
     p["todos_los_campos_dichos"] = bien == dichos if dichos else None

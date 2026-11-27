@@ -1,0 +1,14 @@
+{
+ "texto": "banner para el celular de seiscientos cuarenta por doscientos sesenta que lleve al catálogo de juguetes",
+ "tipo": "banner_web",
+ "esperado": {
+  "medidas": [
+   "640",
+   "260"
+  ],
+  "link": [
+   "juguetes"
+  ],
+  "fechas": null
+ }
+}

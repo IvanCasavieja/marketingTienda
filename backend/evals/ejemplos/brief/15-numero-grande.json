@@ -1,0 +1,17 @@
+{
+ "texto": "mil quinientas cenefas de diez por cinco con el precio de la leche a cuarenta y dos pesos",
+ "tipo": "cenefa",
+ "esperado": {
+  "cantidad": [
+   "1500"
+  ],
+  "medidas": [
+   "10",
+   "5"
+  ],
+  "precio_mecanica": [
+   "42"
+  ],
+  "locales": null
+ }
+}

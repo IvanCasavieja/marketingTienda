@@ -1,0 +1,28 @@
+{
+ "texto": "cenefas de dos por uno en cervezas del ocho al diez, para todos los locales",
+ "tipo": "cenefa",
+ "esperado": {
+  "precio_mecanica": [
+   "2x1",
+   "cervezas"
+  ],
+  "vigencia": {
+   "contiene": [
+    "8",
+    "10"
+   ],
+   "no_contiene": [
+    "/11",
+    "/12",
+    "noviembre",
+    "diciembre"
+   ]
+  },
+  "locales": [
+   "todos"
+  ],
+  "medidas": null,
+  "cantidad": null,
+  "legales": null
+ }
+}

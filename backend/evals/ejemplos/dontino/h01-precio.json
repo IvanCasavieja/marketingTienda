@@ -1,0 +1,8 @@
+{
+ "perfil": "equipo",
+ "tipo": "herramienta",
+ "pregunta": "¿A cuánto está la yerba de 1 kg en Disco?",
+ "espera_herramienta": [
+  "buscar_precio"
+ ]
+}

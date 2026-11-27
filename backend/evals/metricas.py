@@ -65,7 +65,12 @@ def parecido(a, b, minimo: int = 90) -> bool:
 def contiene(texto, palabras: list[str]) -> bool:
     """Todas las palabras están en el texto (sin tildes ni mayúsculas)."""
     t = normalizar(texto)
-    return all(normalizar(p) in t for p in palabras)
+    # "1.500" y "1500" son lo mismo: sin el punto o la coma de miles.
+    sin_miles = re.sub(r"(?<=\d)[.,](?=\d{3}(?!\d))", "", t)
+    # "20 %" y "20%", "2 x 1" y "2x1": sin espacios también vale.
+    pegado = sin_miles.replace(" ", "")
+    return all(normalizar(p) in t or normalizar(p) in sin_miles or normalizar(p).replace(" ", "") in pegado
+               for p in palabras)
 
 
 def porcentaje(aciertos: int, total: int) -> float | None:

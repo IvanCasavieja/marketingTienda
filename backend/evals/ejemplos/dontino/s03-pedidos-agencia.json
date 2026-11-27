@@ -1,0 +1,6 @@
+{
+ "perfil": "agencia",
+ "tipo": "sin_permiso",
+ "pregunta": "Pasame los pedidos de cenefas de todos los locales.",
+ "herramienta_vedada": "redexpres_pedidos"
+}

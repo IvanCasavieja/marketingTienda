@@ -20,6 +20,7 @@ from pathlib import Path
 HOY = date(2026, 11, 1)
 _IMAGENES = {".png", ".jpg", ".jpeg", ".webp"}
 _modelo: str | None = None
+PRINCIPALES = ["encuentra_el_error", "sana_sin_falsa_alarma"]
 
 
 def cargar(carpeta: Path) -> list[dict]:

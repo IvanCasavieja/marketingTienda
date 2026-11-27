@@ -1,0 +1,9 @@
+{
+ "perfil": "equipo",
+ "tipo": "herramienta",
+ "pregunta": "¿Qué tareas tengo atrasadas?",
+ "espera_herramienta": [
+  "calendario_tareas",
+  "calendario_avisos"
+ ]
+}

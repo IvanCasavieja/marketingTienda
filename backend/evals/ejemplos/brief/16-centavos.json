@@ -1,0 +1,15 @@
+{
+ "texto": "una cenefa para el detergente a noventa y nueve con noventa, en el local de pocitos",
+ "tipo": "cenefa",
+ "esperado": {
+  "precio_mecanica": [
+   "99",
+   "90"
+  ],
+  "locales": [
+   "pocitos"
+  ],
+  "cantidad": null,
+  "vigencia": null
+ }
+}

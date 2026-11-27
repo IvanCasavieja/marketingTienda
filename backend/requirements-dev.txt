@@ -1,2 +1,3 @@
 # Dependencias solo de desarrollo/CI -- Render instala requirements.txt, no esto.
 pytest>=8,<10
+qrcode  # solo para regenerar los ejemplos de evals (python -m evals.sinteticos)

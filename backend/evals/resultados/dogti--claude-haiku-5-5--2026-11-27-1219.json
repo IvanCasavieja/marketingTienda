@@ -1,0 +1,100 @@
+{
+ "agente": "dogti",
+ "fecha": "2026-11-27 12:19",
+ "modelo": "claude-haiku-5-5",
+ "casos": 13,
+ "repeticiones": 3,
+ "corridas": 39,
+ "errores": 0,
+ "metricas": {
+  "monto": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "moneda": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "fecha": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "proveedor_marca": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "tipo_sugerido": {
+   "aciertos": 36,
+   "casos": 36,
+   "porcentaje": 100.0
+  },
+  "numero_factura": {
+   "aciertos": 24,
+   "casos": 36,
+   "porcentaje": 66.7
+  },
+  "factura_entera_bien": {
+   "aciertos": 24,
+   "casos": 36,
+   "porcentaje": 66.7
+  },
+  "no_inventa": {
+   "aciertos": 33,
+   "casos": 33,
+   "porcentaje": 100.0
+  },
+  "confianza_alta_acierta": {
+   "aciertos": 24,
+   "casos": 36,
+   "porcentaje": 66.7
+  },
+  "vigencia_desde": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "vigencia_hasta": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  },
+  "duda_cuando_no_es_factura": {
+   "aciertos": 3,
+   "casos": 3,
+   "porcentaje": 100.0
+  }
+ },
+ "casos_perfectos": 53.8,
+ "consistencia": 69.2,
+ "tokens_entrada": 134715,
+ "tokens_salida": 16115,
+ "costo_usd": 0.021529,
+ "costo_por_caso_usd": 0.0006,
+ "costo_del_juez_usd": null,
+ "segundos_mediana": 3.7,
+ "segundos_p90": 5.6,
+ "fallas": {
+  "01-simple": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "02-dolares": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "04-canje": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 3
+  },
+  "07-monto-grande": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
+  },
+  "10-nombre-comercial": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
+  },
+  "12-escaneada-torcida": {
+   "numero_factura, factura_entera_bien, confianza_alta_acierta": 3
+  }
+ }
+}

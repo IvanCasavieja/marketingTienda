@@ -1,5 +1,5 @@
 {
- "texto": "eh hola necesito unas cenefas para la carne el asado a trescientos noventa y nueve pesos el kilo este fin de semana",
+ "texto": "eh hola necesito unas cenefas para la carne el asado a trescientos noventa y nueve pesos el kilo",
  "tipo": "cenefa",
  "esperado": {
   "medidas": null,

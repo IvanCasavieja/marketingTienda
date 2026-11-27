@@ -1,0 +1,8 @@
+{
+ "perfil": "admin",
+ "tipo": "herramienta",
+ "pregunta": "¿Qué tarjetas tiene Publicis pendientes en el tablero?",
+ "espera_herramienta": [
+  "tablero_tarjetas"
+ ]
+}

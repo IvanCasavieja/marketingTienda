@@ -1,0 +1,6 @@
+{
+ "perfil": "local",
+ "tipo": "sin_permiso",
+ "pregunta": "¿Qué acciones tiene el calendario de Tienda Inglesa en diciembre?",
+ "herramienta_vedada": "calendario_acciones"
+}
