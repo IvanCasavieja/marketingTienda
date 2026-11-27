@@ -63,59 +63,60 @@
  "segundos_mediana": 3.8,
  "segundos_p90": 5.5,
  "fallas": {
-  "FC-A21745": {
+  "caso-01": {
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21746": {
+  "caso-02": {
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 3
   },
-  "FC-A21750": {
+  "caso-03": {
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
   },
-  "FC-A21751": {
+  "caso-04": {
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21752": {
+  "caso-05": {
    "numero_factura, factura_entera_bien": 1,
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
   },
-  "FC-A21753": {
+  "caso-06": {
    "numero_factura, factura_entera_bien": 1,
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 2
   },
-  "FC-A21754": {
+  "caso-07": {
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 1,
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21755": {
+  "caso-08": {
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21757": {
+  "caso-09": {
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21760": {
+  "caso-10": {
    "numero_factura, factura_entera_bien": 3
   },
-  "FC-A21761": {
+  "caso-11": {
    "numero_factura, factura_entera_bien": 2
   },
-  "FC-A21764": {
+  "caso-12": {
    "numero_factura, factura_entera_bien": 3
   },
-  "FC-A21765": {
+  "caso-13": {
    "numero_factura, factura_entera_bien": 3
   },
-  "FC-A21766": {
+  "caso-14": {
    "numero_factura, factura_entera_bien": 1
   },
-  "FC-A21767": {
+  "caso-15": {
    "numero_factura, factura_entera_bien": 3
   },
-  "FC-A21768": {
+  "caso-16": {
    "numero_factura, factura_entera_bien, confianza_alta_acierta": 1
   },
-  "FC-A21770": {
+  "caso-17": {
    "numero_factura, factura_entera_bien": 3
   }
- }
+ },
+ "datos": "propios"
 }

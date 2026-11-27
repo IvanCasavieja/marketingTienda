@@ -155,8 +155,10 @@ def main() -> None:
         "costo_por_caso_usd": round(costo / len(filas), 4) if costo is not None else None,
         "costo_del_juez_usd": juez if juez else None,
         "segundos_mediana": tiempos[len(tiempos) // 2], "segundos_p90": tiempos[int(len(tiempos) * 0.9) - 1],
-        # Solo ids y qué falló (y en cuántas vueltas): nada del contenido de los casos.
-        "fallas": fallas,
+        "datos": "propios" if a.datos else "ejemplos",
+        # Solo ids y qué falló (y en cuántas vueltas): nada del contenido de los casos. Con casos
+        # propios, ni los ids (pueden ser números de factura o nombres de campañas).
+        "fallas": ({f"caso-{i:02d}": v for i, v in enumerate(fallas.values(), 1)} if a.datos else fallas),
     }
     antes = (_anterior(a.agente, modelo) or {}).get("metricas", {})
     print(f"\n{'Métrica':<36}{'Acierto':>9}{'Corridas':>10}   vs. anterior")

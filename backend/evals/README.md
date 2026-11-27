@@ -107,7 +107,7 @@ Dos lecciones de calibrar con material real:
 - Al principio el banner con «Empandas» contaba como falsa alarma, porque se
   supuso que lo aprobado no tenía errores. Lo tenía: se corrigió la etiqueta.
 - Haiku parecía confundir al proveedor; era el puntaje, que no toleraba los
-  paréntesis de «CMIMPRESOS (Monfort…)». Se arregló `metricas.parecido`.
+  paréntesis de «MARCA (Nombre del titular)». Se arregló `metricas.parecido`.
 
 En producción todavía hay muy pocos datos (una factura confirmada y una
 entrega con marcas). Cuando haya más, `python -m evals.reales facturas` y

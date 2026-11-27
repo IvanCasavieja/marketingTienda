@@ -62,5 +62,6 @@
  "costo_del_juez_usd": null,
  "segundos_mediana": 6.1,
  "segundos_p90": 20.8,
- "fallas": {}
+ "fallas": {},
+ "datos": "propios"
 }

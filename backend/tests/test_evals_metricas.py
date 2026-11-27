@@ -143,5 +143,5 @@ def test_casos_reales_canje_sin_fecha_y_marcas_del_revisor():
 
 
 def test_proveedor_con_signos():
-    assert m.parecido("CMIMPRESOS (Monfort Fernandez Carlos Alexis)", "Monfort Fernandez Carlos Alexis")
-    assert not m.parecido("HENDERSON Y CIA SA", "Monfort Fernandez Carlos Alexis")
+    assert m.parecido("IMPRESOS SUR (Perez Gomez Ana Maria)", "Perez Gomez Ana Maria")
+    assert not m.parecido("SUPERMERCADOS EJEMPLO SA", "Perez Gomez Ana Maria")
