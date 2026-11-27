@@ -543,15 +543,18 @@ export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
           )}
         </nav>
         {haySiguiente && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-10 items-end justify-center bg-gradient-to-t from-white to-transparent pb-1 dark:from-navy-900">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-11 items-end justify-center bg-gradient-to-t from-white to-transparent dark:from-navy-900 md:h-10">
+            {/* El círculo se ve chico, pero en el celular se toca en 44 px. */}
             <button
               type="button"
               onClick={verMasDelMenu}
               aria-label={t("sidebar.verMasMenu", "Ver más del menú")}
               title={t("sidebar.verMasMenu", "Ver más del menú")}
-              className="pointer-events-auto flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-900 active:scale-95 dark:border-white/10 dark:bg-navy-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+              className="group pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full md:h-8 md:w-8"
             >
-              <ChevronDown size={16} aria-hidden />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-600 shadow-sm transition group-hover:bg-slate-100 group-hover:text-slate-900 group-active:scale-95 dark:border-white/10 dark:bg-navy-900 dark:text-slate-300 dark:group-hover:bg-white/10 dark:group-hover:text-white">
+                <ChevronDown size={16} aria-hidden />
+              </span>
             </button>
           </div>
         )}
