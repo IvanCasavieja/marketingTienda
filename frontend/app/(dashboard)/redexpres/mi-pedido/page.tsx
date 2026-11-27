@@ -11,7 +11,7 @@ import SelectorMes from "@/components/redexpres/SelectorMes";
 import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
 import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
 import { conEdicion, sinLoGuardado, type Ediciones } from "@/lib/redexpres/ediciones";
-import { limpiarCantidad, TECLAS_NO_CANTIDAD } from "@/lib/redexpres/cantidades";
+import { limpiarCantidad, teclaEnCantidad } from "@/lib/redexpres/cantidades";
 import { estadoDelPedido } from "@/lib/redexpres/estado";
 
 // Misma lógica de datos/guardado que planilla/page.tsx (la de Valentina),
@@ -156,12 +156,17 @@ export default function MiPedidoPage() {
   }
 
   // La tecla «-», «.» o «e» no se escribe (Safari en iOS manda "" con un
-  // «-» a medio escribir), pero se avisa por qué no aparece.
+  // «-» a medio escribir), pero se avisa por qué no aparece. Después de un
+  // «.» o «,» los dígitos que siguen son decimales y se ignoran hasta borrar
+  // o salir de la casilla: «2.5» tecleado queda «2», no «25».
+  const casillaCortada = useRef<EventTarget | null>(null);
   function bloquearTeclaNoCantidad(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!TECLAS_NO_CANTIDAD.has(e.key)) return;
-    e.preventDefault();
-    toast.warning(t("redexpres.soloEnteros"), { id: "cantidades" });
+    const r = teclaEnCantidad(casillaCortada.current === e.currentTarget, e.key);
+    casillaCortada.current = r.cortado ? e.currentTarget : null;
+    if (r.bloquear) e.preventDefault();
+    if (r.avisar) toast.warning(t("redexpres.soloEnteros"), { id: "cantidades" });
   }
+  function soltarCasilla() { casillaCortada.current = null; }
 
   function handleCellChange(localNombre: string, colKey: string, value: string) {
     // Las cantidades son enteros desde 0 y sin pasar el tope (H-085): se
@@ -339,6 +344,7 @@ export default function MiPedidoPage() {
                           inputMode={col.isText ? undefined : "numeric"}
                           step={col.isText ? undefined : 1}
                           onKeyDown={col.isText ? undefined : bloquearTeclaNoCantidad}
+                          onBlur={col.isText ? undefined : soltarCasilla}
                           min={0}
                           max={col.max}
                           value={getCellValue(miRow, col.key)}

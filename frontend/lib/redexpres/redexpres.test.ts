@@ -8,7 +8,7 @@
  */
 import { conEdicion, sinLoGuardado, type Ediciones } from './ediciones'
 import { estadoDelPedido, mesExiste } from './estado'
-import { limpiarCantidad } from './cantidades'
+import { limpiarCantidad, teclaEnCantidad } from './cantidades'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -51,6 +51,25 @@ igual('"-" solo queda "" y avisa el signo', limpiarCantidad('-'), { valor: '', a
 igual('"1e3" saca la "e"', limpiarCantidad('1e3'), { valor: '13', aviso: 'signo' })
 igual('"-99.7" con tope 20 da "20" y avisa primero el signo', limpiarCantidad('-99.7', 20), { valor: '20', aviso: 'signo' })
 igual('"12" sin tope queda igual', limpiarCantidad('12'), { valor: '12', aviso: null })
+
+console.log('Cantidades tecleadas')
+function teclear(teclas: string[]): string {
+  let valor = '', cortado = false
+  for (const k of teclas) {
+    const r = teclaEnCantidad(cortado, k)
+    cortado = r.cortado
+    if (r.bloquear) continue
+    if (k === 'Backspace') valor = valor.slice(0, -1)
+    else if (k.length === 1) valor += k
+  }
+  return valor
+}
+igual('"2.5" tecleado da "2", no "25"', teclear(['2', '.', '5']), '2')
+igual('"2,75" tecleado da "2"', teclear(['2', ',', '7', '5']), '2')
+igual('"-5" tecleado da "5"', teclear(['-', '5']), '5')
+igual('después del "." borrar deja escribir de nuevo', teclear(['2', '.', '5', 'Backspace', '3']), '3')
+igual('el "." avisa', teclaEnCantidad(false, '.').avisar, true)
+igual('Tab y flechas no se bloquean después del "."', teclaEnCantidad(true, 'Tab').bloquear, false)
 
 console.log('Estado del pedido')
 const dic26 = { year: 2026, month: 12 }
