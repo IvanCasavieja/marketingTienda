@@ -26,3 +26,4 @@
 
 - Dijo «Ok a todos los cambios»: las 6 mejoras de la noche del 27/11 quedaron publicadas.
 - Sobre la pregunta de «Hablá con Valentina» (y «Cuenta automática»): «lo del texto de Valentina está bien». Se deja como está; no hace falta volver a preguntarlo.
+- 27/11/2026 · Ivan pidió presentar al Escuadrón a Pablo (jefe de su jefa): qué hace el equipo y quién es cada uno. Su indicación: con alguien de ese nivel, presentación amable y cordial, con respeto (de usted), **sin hacerle preguntas** (no como con Fernanda). Clara mandó la presentación en el mismo hilo.
