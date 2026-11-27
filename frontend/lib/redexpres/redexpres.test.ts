@@ -2,10 +2,13 @@
  * El guardado de la planilla de Redexpres (lib/redexpres/ediciones.ts) y en
  * qué situación está el pedido del mes (lib/redexpres/estado.ts).
  *
+ * Y que las cantidades sean enteros desde 0 (lib/redexpres/cantidades.ts).
+ *
  *     npm run test:redexpres
  */
 import { conEdicion, sinLoGuardado, type Ediciones } from './ediciones'
 import { estadoDelPedido, mesExiste } from './estado'
+import { limpiarCantidad } from './cantidades'
 
 let fallos = 0
 function igual<T>(nombre: string, obtenido: T, esperado: T) {
@@ -35,6 +38,19 @@ igual('las otras filas no se tocan',
   sinLoGuardado({ Pocitos: { cenefas: '12' }, Centro: { afiches: '3' } }, 'Pocitos', { cenefas: '12' }), { Centro: { afiches: '3' } })
 const igualito: Ediciones = { Centro: { afiches: '3' } }
 igual('un local sin pendientes devuelve lo mismo', sinLoGuardado(igualito, 'Pocitos', { a: '1' }) === igualito, true)
+
+console.log('Cantidades: enteros desde 0')
+igual('"-5" da "5" y avisa el signo', limpiarCantidad('-5'), { valor: '5', aviso: 'signo' })
+igual('"+3" da "3" y avisa el signo', limpiarCantidad('+3'), { valor: '3', aviso: 'signo' })
+igual('"2.5" da "2" y avisa el decimal', limpiarCantidad('2.5'), { valor: '2', aviso: 'decimal' })
+igual('"2,5" da "2" y avisa el decimal', limpiarCantidad('2,5'), { valor: '2', aviso: 'decimal' })
+igual('"99" con tope 20 da "20" y avisa el tope', limpiarCantidad('99', 20), { valor: '20', aviso: 'maximo' })
+igual('"20" con tope 20 queda igual', limpiarCantidad('20', 20), { valor: '20', aviso: null })
+igual('"" queda "" sin aviso', limpiarCantidad(''), { valor: '', aviso: null })
+igual('"-" solo queda "" y avisa el signo', limpiarCantidad('-'), { valor: '', aviso: 'signo' })
+igual('"1e3" saca la "e"', limpiarCantidad('1e3'), { valor: '13', aviso: 'signo' })
+igual('"-99.7" con tope 20 da "20" y avisa primero el signo', limpiarCantidad('-99.7', 20), { valor: '20', aviso: 'signo' })
+igual('"12" sin tope queda igual', limpiarCantidad('12'), { valor: '12', aviso: null })
 
 console.log('Estado del pedido')
 const dic26 = { year: 2026, month: 12 }

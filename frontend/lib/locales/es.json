@@ -749,6 +749,8 @@
     "footerConfirmados": "{{count}} de {{total}} locales confirmados",
     "footerAutosave": "Los cambios se guardan automáticamente al dejar de escribir",
     "limiteMaximo": "Máximo {{max}} por sucursal",
+    "soloEnteros": "Solo números enteros, sin signo ni decimales",
+    "revisaCantidades": "No se guardó: revisá las cantidades",
     "errorGuardarLocal": "Error al guardar {{local}}",
     "pedidoConfirmado": "Pedido confirmado",
     "errorConfirmar": "Error al confirmar",

@@ -749,6 +749,8 @@
     "footerConfirmados": "{{count}} of {{total}} stores confirmed",
     "footerAutosave": "Changes are saved automatically when you stop typing",
     "limiteMaximo": "Maximum {{max}} per store",
+    "soloEnteros": "Whole numbers only, no signs or decimals",
+    "revisaCantidades": "Not saved: check the quantities",
     "errorGuardarLocal": "Error saving {{local}}",
     "pedidoConfirmado": "Order confirmed",
     "errorConfirmar": "Error confirming",

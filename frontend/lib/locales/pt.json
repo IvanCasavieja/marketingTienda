@@ -749,6 +749,8 @@
     "footerConfirmados": "{{count}} de {{total}} lojas confirmadas",
     "footerAutosave": "As alterações são salvas automaticamente ao parar de digitar",
     "limiteMaximo": "Máximo {{max}} por loja",
+    "soloEnteros": "Somente números inteiros, sem sinal nem decimais",
+    "revisaCantidades": "Não foi salvo: revise as quantidades",
     "errorGuardarLocal": "Erro ao salvar {{local}}",
     "pedidoConfirmado": "Pedido confirmado",
     "errorConfirmar": "Erro ao confirmar",

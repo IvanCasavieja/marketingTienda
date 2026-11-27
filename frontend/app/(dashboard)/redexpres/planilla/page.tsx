@@ -12,6 +12,7 @@ import SelectorMes from "@/components/redexpres/SelectorMes";
 import EditorPlanilla from "@/components/redexpres/EditorPlanilla";
 import { useEstructura, valorDeColumna, payloadDeEdicion } from "@/lib/redexpres/estructura";
 import { conEdicion, sinLoGuardado, type Ediciones } from "@/lib/redexpres/ediciones";
+import { limpiarCantidad, TECLAS_NO_CANTIDAD } from "@/lib/redexpres/cantidades";
 
 type ColKey = string;
 
@@ -131,6 +132,11 @@ export default function PlanillaPedidosPage() {
       if (e?.response?.status === 409) {
         toast.error(e.response.data?.detail || t("redexpres.errorGuardarLocal", { local: localNombre }));
         loadPlanilla(selectedMes.year, selectedMes.month);
+      } else if (e?.response?.status === 422) {
+        // El servidor no aceptó alguna cantidad: lo mandado se descarta y la
+        // casilla vuelve a lo guardado, así no queda mostrando algo que no entró.
+        ponerEdits(sinLoGuardado(editsRef.current, localNombre, rowEdits));
+        toast.error(t("redexpres.revisaCantidades"), { id: "cantidades" });
       } else {
         toast.error(t("redexpres.errorGuardarLocal", { local: localNombre }));
       }
@@ -140,13 +146,13 @@ export default function PlanillaPedidosPage() {
   }
 
   function handleCellChange(localNombre: string, colKey: string, value: string) {
-    const max = COL_MAX[colKey];
-    if (max !== undefined && value !== "") {
-      const num = parseInt(value, 10);
-      if (!isNaN(num) && num > max) {
-        value = String(max);
-        toast.warning(t("redexpres.limiteMaximo", { max }));
-      }
+    // Las cantidades son enteros desde 0 y sin pasar el tope (H-085): se
+    // corrige al escribir y se avisa una sola vez (mismo id, no se apilan).
+    if (!esTexto(colKey) && colKey !== "otros") {
+      const { valor, aviso } = limpiarCantidad(value, COL_MAX[colKey]);
+      value = valor;
+      if (aviso === "maximo") toast.warning(t("redexpres.limiteMaximo", { max: COL_MAX[colKey] }), { id: "cantidades" });
+      else if (aviso) toast.warning(t("redexpres.soloEnteros"), { id: "cantidades" });
     }
     ponerEdits(conEdicion(editsRef.current, localNombre, colKey, value));
     scheduleRowSave(localNombre);
@@ -435,6 +441,9 @@ export default function PlanillaPedidosPage() {
                             {isEditable ? (
                               <input
                                 type={col.isText ? "text" : "number"}
+                                inputMode={col.isText ? undefined : "numeric"}
+                                step={col.isText ? undefined : 1}
+                                onKeyDown={col.isText ? undefined : (e) => { if (TECLAS_NO_CANTIDAD.has(e.key)) e.preventDefault(); }}
                                 min={0}
                                 max={col.max}
                                 value={val}
